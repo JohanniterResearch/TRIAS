@@ -9,6 +9,7 @@ export interface Session {
   refreshToken?: string;
   tokenType: TokenType;
   eventSceneId?: number;
+  username?: string;
   savedAt: string;
 }
 

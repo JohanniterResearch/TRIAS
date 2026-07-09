@@ -1,5 +1,8 @@
 import { Routes } from '@angular/router';
 
+import { AdminLoginPage } from './auth/pages/admin-login-page';
+import { ChangePasswordPage } from './auth/pages/change-password-page';
+import { LoginPage } from './auth/pages/login-page';
 import { requireSession } from './auth/auth.guard';
 import { Home } from './pages/home';
 import { PagePlaceholder } from './pages/page-placeholder';
@@ -8,13 +11,16 @@ export const routes: Routes = [
   { path: '', component: Home },
   {
     path: 'login',
-    component: PagePlaceholder,
-    data: { title: 'QR Login', stage: 'F2', description: 'QR- und Responder-Login werden in F2 umgesetzt.' }
+    component: LoginPage,
   },
   {
     path: 'admin/login',
-    component: PagePlaceholder,
-    data: { title: 'Admin Login', stage: 'F2', description: 'Admin- und Leitstellen-Login werden in F2 umgesetzt.' }
+    component: AdminLoginPage,
+  },
+  {
+    path: 'change-password',
+    component: ChangePasswordPage,
+    canActivate: [requireSession('leitstelle')],
   },
   {
     path: 'role-selection',

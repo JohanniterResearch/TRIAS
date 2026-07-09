@@ -88,3 +88,103 @@ a {
 .sync-time {
   color: #52606d;
 }
+
+.auth-page {
+  display: grid;
+  gap: 1.25rem;
+  max-width: 32rem;
+}
+
+.auth-page h1,
+.auth-page h2 {
+  margin: 0;
+}
+
+.auth-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.auth-form label {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 700;
+}
+
+.auth-form input {
+  border: 1px solid #aab4c0;
+  border-radius: 0.35rem;
+  font: inherit;
+  min-height: 3rem;
+  padding: 0.65rem 0.75rem;
+}
+
+button {
+  border: 0;
+  border-radius: 0.35rem;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  min-height: 3rem;
+  padding: 0.7rem 1rem;
+}
+
+button:not(.dev-button) {
+  background: #075fa8;
+  color: #ffffff;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.form-error {
+  background: #fde8e7;
+  border-left: 4px solid #b3261e;
+  margin: 0;
+  padding: 0.8rem;
+}
+
+.auth-links {
+  display: flex;
+  gap: 1rem;
+}
+
+.camera-panel {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.camera-panel video {
+  background: #102033;
+  border-radius: 0.5rem;
+  max-height: 16rem;
+  width: 100%;
+}
+
+.dev-button {
+  background: #ffffff;
+  border: 2px dashed #b3261e;
+  color: #b3261e;
+}
+
+.my-access {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #d7dde5;
+  border-radius: 0.5rem;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  padding: 0.75rem;
+}
+
+.my-access div {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.my-access span {
+  color: #52606d;
+}
