@@ -1,0 +1,12 @@
+{
+  "name": "ambulanzsystem-contract",
+  "private": true,
+  "description": "Frozen API contract + mock server for parallel frontend/backend development (Stage 0).",
+  "scripts": {
+    "mock": "prism mock openapi.yaml --port 4010",
+    "lint": "spectral lint openapi.yaml || true"
+  },
+  "devDependencies": {
+    "@stoplight/prism-cli": "^5"
+  }
+}
