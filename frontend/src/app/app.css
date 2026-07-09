@@ -1,0 +1,23 @@
+.topbar {
+  align-items: center;
+  background: #ffffff;
+  border-bottom: 1px solid #d7dde5;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  min-height: 4rem;
+  padding: 0 1.25rem;
+}
+
+.brand {
+  color: #102033;
+  font-size: 1.1rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.app-shell {
+  margin: 0 auto;
+  max-width: 72rem;
+  padding: 2rem 1.25rem;
+}

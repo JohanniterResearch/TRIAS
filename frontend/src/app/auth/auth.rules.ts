@@ -1,0 +1,14 @@
+export type TokenType = 'admin' | 'leitstelle' | 'user' | 'qr';
+export type GuardRequirement = 'admin' | 'leitstelle' | 'responder-or-qr';
+
+export function tokenMatchesRequirement(tokenType: TokenType, requirement: GuardRequirement): boolean {
+  if (requirement === 'admin') {
+    return tokenType === 'admin';
+  }
+
+  if (requirement === 'leitstelle') {
+    return tokenType === 'admin' || tokenType === 'leitstelle';
+  }
+
+  return tokenType === 'user' || tokenType === 'qr';
+}

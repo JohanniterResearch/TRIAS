@@ -1,0 +1,90 @@
+:root {
+  color: #102033;
+  background: #f4f6f8;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+a {
+  color: #075fa8;
+}
+
+.eyebrow {
+  color: #52606d;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  margin: 0 0 0.5rem;
+  text-transform: uppercase;
+}
+
+.home,
+.placeholder {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.home h1,
+.placeholder h1 {
+  font-size: 2rem;
+  margin: 0 0 0.5rem;
+}
+
+.home p,
+.placeholder p {
+  font-size: 1.05rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.route-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+}
+
+.route-grid a {
+  background: #ffffff;
+  border: 1px solid #d7dde5;
+  border-radius: 0.5rem;
+  color: #102033;
+  display: grid;
+  gap: 0.25rem;
+  min-height: 4.5rem;
+  padding: 1rem;
+  text-decoration: none;
+}
+
+.route-grid span {
+  color: #52606d;
+}
+
+.sync-indicator {
+  align-items: center;
+  display: flex;
+  gap: 0.4rem;
+  min-height: 2.75rem;
+  white-space: nowrap;
+}
+
+.sync-dot {
+  background: #188038;
+  border-radius: 999px;
+  height: 0.65rem;
+  width: 0.65rem;
+}
+
+.sync-indicator.offline .sync-dot {
+  background: #b3261e;
+}
+
+.sync-time {
+  color: #52606d;
+}
