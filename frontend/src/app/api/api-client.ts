@@ -25,6 +25,20 @@ type DevLoginResponse =
   paths['/api/dev-login']['post']['responses'][200]['content']['application/json'];
 type ValidateTokenResponse =
   paths['/api/validate-token']['post']['responses'][200]['content']['application/json'];
+type CreateUserRequest =
+  paths['/api/users']['post']['requestBody']['content']['application/json'];
+type User =
+  paths['/api/users']['post']['responses'][201]['content']['application/json'];
+type GenerateLoginQrRequest =
+  paths['/api/login-qr-codes/generate']['post']['requestBody']['content']['application/json'];
+type LoginQrCode =
+  paths['/api/login-qr-codes']['get']['responses'][200]['content']['application/json'][number];
+type GeneratePatientQrRequest =
+  paths['/api/patient-qr-codes/generate']['post']['requestBody']['content']['application/json'];
+type SaveSceneRequest =
+  paths['/api/operation-scenes']['post']['requestBody']['content']['application/json'];
+type OperationScene =
+  paths['/api/operation-scenes']['get']['responses'][200]['content']['application/json'][number];
 
 @Injectable({ providedIn: 'root' })
 export class ApiClient {
@@ -63,6 +77,74 @@ export class ApiClient {
 
   validateToken(): Observable<ValidateTokenResponse> {
     return this.unwrap(this.client.POST('/api/validate-token', {
+      headers: this.authHeaders(),
+    }));
+  }
+
+  listScenes(): Observable<OperationScene[]> {
+    return this.unwrap(this.client.GET('/api/operation-scenes', {
+      headers: this.authHeaders(),
+    }));
+  }
+
+  saveScene(body: SaveSceneRequest): Observable<OperationScene> {
+    return this.unwrap(this.client.POST('/api/operation-scenes', {
+      body,
+      headers: this.authHeaders(),
+    }));
+  }
+
+  deleteScene(id: number): Observable<void> {
+    return this.unwrap(this.client.DELETE('/api/operation-scenes/{id}', {
+      params: { path: { id } },
+      headers: this.authHeaders(),
+    }));
+  }
+
+  createUser(body: CreateUserRequest): Observable<User> {
+    return this.unwrap(this.client.POST('/api/users', {
+      body,
+      headers: this.authHeaders(),
+    }));
+  }
+
+  revokeUser(id: number): Observable<void> {
+    return this.unwrap(this.client.POST('/api/users/{id}/revoke', {
+      params: { path: { id } },
+      headers: this.authHeaders(),
+    }));
+  }
+
+  generateLoginQrCodes(body: GenerateLoginQrRequest): Observable<LoginQrCode[]> {
+    return this.unwrap(this.client.POST('/api/login-qr-codes/generate', {
+      body,
+      headers: this.authHeaders(),
+    }));
+  }
+
+  listLoginQrCodes(eventSceneId?: number): Observable<LoginQrCode[]> {
+    return this.unwrap(this.client.GET('/api/login-qr-codes', {
+      params: { query: eventSceneId ? { eventSceneId } : {} },
+      headers: this.authHeaders(),
+    }));
+  }
+
+  revokeLoginQrCode(id: number): Observable<void> {
+    return this.unwrap(this.client.POST('/api/login-qr-codes/{id}/revoke', {
+      params: { path: { id } },
+      headers: this.authHeaders(),
+    }));
+  }
+
+  generatePatientQrCodes(body: GeneratePatientQrRequest): Observable<string[]> {
+    return this.unwrap(this.client.POST('/api/patient-qr-codes/generate', {
+      body,
+      headers: this.authHeaders(),
+    }));
+  }
+
+  listUnusedPatientQrCodes(): Observable<string[]> {
+    return this.unwrap(this.client.GET('/api/patient-qr-codes/unused', {
       headers: this.authHeaders(),
     }));
   }

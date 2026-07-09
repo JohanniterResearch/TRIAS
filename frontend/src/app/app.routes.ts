@@ -1,5 +1,6 @@
 import { Routes } from '@angular/router';
 
+import { AdminDashboard } from './admin/pages/admin-dashboard';
 import { AdminLoginPage } from './auth/pages/admin-login-page';
 import { ChangePasswordPage } from './auth/pages/change-password-page';
 import { LoginPage } from './auth/pages/login-page';
@@ -76,13 +77,11 @@ export const routes: Routes = [
     children: [
       {
         path: '',
-        component: PagePlaceholder,
-        data: { title: 'Admin', stage: 'F3' }
+        component: AdminDashboard,
       },
       {
         path: '**',
-        component: PagePlaceholder,
-        data: { title: 'Admin', stage: 'F3' }
+        component: AdminDashboard,
       }
     ]
   },

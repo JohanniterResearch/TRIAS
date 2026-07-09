@@ -188,3 +188,98 @@ button:disabled {
 .my-access span {
   color: #52606d;
 }
+
+.admin-page {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.admin-page header h1 {
+  margin: 0;
+}
+
+.admin-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+}
+
+.admin-panel,
+.admin-result,
+.status-message {
+  background: #ffffff;
+  border: 1px solid #d7dde5;
+  border-radius: 0.5rem;
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.admin-panel h2 {
+  margin: 0;
+}
+
+.auth-form select {
+  border: 1px solid #aab4c0;
+  border-radius: 0.35rem;
+  font: inherit;
+  min-height: 3rem;
+  padding: 0.65rem 0.75rem;
+}
+
+.check-row {
+  align-items: center;
+  display: flex;
+  flex-direction: row;
+}
+
+.check-row input {
+  min-height: auto;
+}
+
+.admin-list,
+.print-sheet {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.admin-list article,
+.print-token {
+  border: 1px solid #d7dde5;
+  border-radius: 0.35rem;
+  display: grid;
+  gap: 0.35rem;
+  overflow-wrap: anywhere;
+  padding: 0.75rem;
+}
+
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+@media print {
+  .topbar,
+  .my-access,
+  .auth-form,
+  .row-actions,
+  .admin-panel > button,
+  .form-error,
+  .status-message {
+    display: none;
+  }
+
+  .admin-grid {
+    display: block;
+  }
+
+  .admin-panel {
+    border: 0;
+    break-after: page;
+  }
+
+  .print-sheet {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
