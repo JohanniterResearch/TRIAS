@@ -7,6 +7,7 @@ import { LoginPage } from './auth/pages/login-page';
 import { requireSession } from './auth/auth.guard';
 import { Home } from './pages/home';
 import { PagePlaceholder } from './pages/page-placeholder';
+import { AmbulanzprotokollPage } from './protokoll/pages/ambulanzprotokoll-page';
 import { BodyMapPage } from './responder/pages/body-map-page';
 import { PatientChoicePage } from './responder/pages/patient-choice-page';
 import { PatientScanPage } from './responder/pages/patient-scan-page';
@@ -50,9 +51,8 @@ export const routes: Routes = [
   },
   {
     path: 'ambulanzprotokoll/:patientId',
-    component: PagePlaceholder,
+    component: AmbulanzprotokollPage,
     canActivate: [requireSession('responder-or-qr')],
-    data: { title: 'Ambulanzprotokoll', stage: 'F5' }
   },
   {
     path: 'body/front',

@@ -57,6 +57,12 @@ type BodyParts =
   paths['/api/body-parts']['get']['responses'][200]['content']['application/json'];
 type BodyPartToggleRequest =
   paths['/api/body-parts']['put']['requestBody']['content']['application/json'];
+type ProtokollRecord =
+  paths['/api/persons/{patientId}/ambulanzprotokoll-page1']['get']['responses'][200]['content']['application/json'];
+type SaveProtokollRequest =
+  paths['/api/persons/{patientId}/ambulanzprotokoll-page1']['put']['requestBody']['content']['application/json'];
+type ProtokollExport =
+  paths['/api/persons/{patientId}/ambulanzprotokoll-page1/export']['get']['responses'][200]['content']['application/json'];
 
 @Injectable({ providedIn: 'root' })
 export class ApiClient {
@@ -215,6 +221,28 @@ export class ApiClient {
   toggleBodyPart(body: BodyPartToggleRequest): Observable<BodyParts> {
     return this.unwrap(this.client.PUT('/api/body-parts', {
       body,
+      headers: this.authHeaders(),
+    }));
+  }
+
+  getProtokollPage1(patientId: number): Observable<ProtokollRecord> {
+    return this.unwrap(this.client.GET('/api/persons/{patientId}/ambulanzprotokoll-page1', {
+      params: { path: { patientId } },
+      headers: this.authHeaders(),
+    }));
+  }
+
+  saveProtokollPage1(patientId: number, body: SaveProtokollRequest): Observable<ProtokollRecord> {
+    return this.unwrap(this.client.PUT('/api/persons/{patientId}/ambulanzprotokoll-page1', {
+      params: { path: { patientId } },
+      body,
+      headers: this.authHeaders(),
+    }));
+  }
+
+  exportProtokollPage1(patientId: number): Observable<ProtokollExport> {
+    return this.unwrap(this.client.GET('/api/persons/{patientId}/ambulanzprotokoll-page1/export', {
+      params: { path: { patientId } },
       headers: this.authHeaders(),
     }));
   }
