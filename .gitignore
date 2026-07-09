@@ -1,0 +1,11 @@
+/.git
+/.serena
+node_modules/
+dist/
+bin/
+obj/
+.env
+.codex
+.agents
+
+/docs

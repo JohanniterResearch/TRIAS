@@ -1,0 +1,31 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ambulanzsystem
+      POSTGRES_USER: pls
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-dev-only-password}
+    ports:
+      # Host port 5434: 5432/5433 were already in use by unrelated local projects.
+      - "${DB_HOST_PORT:-5434}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pls -d ambulanzsystem"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Backend service is added in stage B1 (backend flow). Placeholder:
+  # backend:
+  #   build: ./backend
+  #   depends_on:
+  #     db: { condition: service_healthy }
+  #   environment:
+  #     ConnectionStrings__Default: Host=db;Database=ambulanzsystem;Username=pls;Password=${DB_PASSWORD:-dev-only-password}
+  #     Jwt__Secret: ${JWT_SECRET}
+  #   ports:
+  #     - "5000:8080"
+
+volumes:
+  pgdata:
