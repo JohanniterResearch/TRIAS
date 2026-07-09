@@ -253,6 +253,74 @@ button:disabled {
   padding: 0.75rem;
 }
 
+.responder-page {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.responder-page h1,
+.responder-page h2 {
+  margin: 0;
+}
+
+.choice-grid,
+.triage-colors,
+.flag-grid,
+.body-region-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+}
+
+.choice-grid a,
+.choice-grid button,
+.selected-panel {
+  background: #ffffff;
+  border: 1px solid #d7dde5;
+  border-radius: 0.5rem;
+  color: #102033;
+  display: grid;
+  gap: 0.35rem;
+  min-height: 4rem;
+  padding: 1rem;
+  text-decoration: none;
+}
+
+.triage-colors button {
+  color: #ffffff;
+  min-height: 5rem;
+}
+
+.triage-colors .rot {
+  background: #b3261e;
+}
+
+.triage-colors .gelb {
+  background: #b77900;
+}
+
+.triage-colors .gruen {
+  background: #188038;
+}
+
+.triage-colors .schwarz {
+  background: #1f2933;
+}
+
+.flag-grid label,
+.body-region-grid button {
+  background: #ffffff;
+  border: 1px solid #d7dde5;
+  border-radius: 0.5rem;
+  min-height: 3.5rem;
+  padding: 0.75rem;
+}
+
+.body-region-grid button.marked {
+  background: #b3261e;
+  color: #ffffff;
+}
+
 .row-actions {
   display: flex;
   flex-wrap: wrap;

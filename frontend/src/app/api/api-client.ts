@@ -39,6 +39,24 @@ type SaveSceneRequest =
   paths['/api/operation-scenes']['post']['requestBody']['content']['application/json'];
 type OperationScene =
   paths['/api/operation-scenes']['get']['responses'][200]['content']['application/json'][number];
+type VerifyPatientQrRequest =
+  paths['/api/verify-patient-qr-code']['post']['requestBody']['content']['application/json'];
+type VerifyPatientQrResult =
+  paths['/api/verify-patient-qr-code']['post']['responses'][200]['content']['application/json'];
+type ManualPatientRequest =
+  paths['/api/persons/manual']['post']['requestBody']['content']['application/json'];
+type Patient =
+  paths['/api/persons/manual']['post']['responses'][201]['content']['application/json'];
+type TriageUpdateRequest =
+  paths['/api/persons/{id}/update-triage-color']['post']['requestBody']['content']['application/json'];
+type LocationUpdateRequest =
+  paths['/api/persons/{id}/location']['post']['requestBody']['content']['application/json'];
+type ReassignQrRequest =
+  paths['/api/persons/{id}/reassign-qr-code']['post']['requestBody']['content']['application/json'];
+type BodyParts =
+  paths['/api/body-parts']['get']['responses'][200]['content']['application/json'];
+type BodyPartToggleRequest =
+  paths['/api/body-parts']['put']['requestBody']['content']['application/json'];
 
 @Injectable({ providedIn: 'root' })
 export class ApiClient {
@@ -145,6 +163,58 @@ export class ApiClient {
 
   listUnusedPatientQrCodes(): Observable<string[]> {
     return this.unwrap(this.client.GET('/api/patient-qr-codes/unused', {
+      headers: this.authHeaders(),
+    }));
+  }
+
+  verifyPatientQrCode(body: VerifyPatientQrRequest): Observable<VerifyPatientQrResult> {
+    return this.unwrap(this.client.POST('/api/verify-patient-qr-code', {
+      body,
+      headers: this.authHeaders(),
+    }));
+  }
+
+  createManualPatient(body: ManualPatientRequest): Observable<Patient> {
+    return this.unwrap(this.client.POST('/api/persons/manual', {
+      body,
+      headers: this.authHeaders(),
+    }));
+  }
+
+  updateTriage(patientId: number, body: TriageUpdateRequest): Observable<Patient> {
+    return this.unwrap(this.client.POST('/api/persons/{id}/update-triage-color', {
+      params: { path: { id: patientId } },
+      body,
+      headers: this.authHeaders(),
+    }));
+  }
+
+  updatePatientLocation(patientId: number, body: LocationUpdateRequest): Observable<Patient> {
+    return this.unwrap(this.client.POST('/api/persons/{id}/location', {
+      params: { path: { id: patientId } },
+      body,
+      headers: this.authHeaders(),
+    }));
+  }
+
+  reassignPatientQrCode(patientId: number, body: ReassignQrRequest): Observable<Patient> {
+    return this.unwrap(this.client.POST('/api/persons/{id}/reassign-qr-code', {
+      params: { path: { id: patientId } },
+      body,
+      headers: this.authHeaders(),
+    }));
+  }
+
+  getBodyParts(patientId: number): Observable<BodyParts> {
+    return this.unwrap(this.client.GET('/api/body-parts', {
+      params: { query: { idpatient: patientId } },
+      headers: this.authHeaders(),
+    }));
+  }
+
+  toggleBodyPart(body: BodyPartToggleRequest): Observable<BodyParts> {
+    return this.unwrap(this.client.PUT('/api/body-parts', {
+      body,
       headers: this.authHeaders(),
     }));
   }

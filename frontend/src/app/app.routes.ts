@@ -7,6 +7,11 @@ import { LoginPage } from './auth/pages/login-page';
 import { requireSession } from './auth/auth.guard';
 import { Home } from './pages/home';
 import { PagePlaceholder } from './pages/page-placeholder';
+import { BodyMapPage } from './responder/pages/body-map-page';
+import { PatientChoicePage } from './responder/pages/patient-choice-page';
+import { PatientScanPage } from './responder/pages/patient-scan-page';
+import { RoleSelectionPage } from './responder/pages/role-selection-page';
+import { TriagePage } from './responder/pages/triage-page';
 
 export const routes: Routes = [
   { path: '', component: Home },
@@ -25,21 +30,23 @@ export const routes: Routes = [
   },
   {
     path: 'role-selection',
-    component: PagePlaceholder,
+    component: RoleSelectionPage,
     canActivate: [requireSession('responder-or-qr')],
-    data: { title: 'Rollenwahl', stage: 'F4' }
   },
   {
     path: 'scan-patient',
-    component: PagePlaceholder,
+    component: PatientScanPage,
     canActivate: [requireSession('responder-or-qr')],
-    data: { title: 'Patient scannen', stage: 'F4' }
+  },
+  {
+    path: 'patient/:patientId',
+    component: PatientChoicePage,
+    canActivate: [requireSession('responder-or-qr')],
   },
   {
     path: 'triage',
-    component: PagePlaceholder,
+    component: TriagePage,
     canActivate: [requireSession('responder-or-qr')],
-    data: { title: 'START Triage erfassen', stage: 'F4', description: 'Record-only Triage, kein Entscheidungsbaum.' }
   },
   {
     path: 'ambulanzprotokoll/:patientId',
@@ -49,15 +56,13 @@ export const routes: Routes = [
   },
   {
     path: 'body/front',
-    component: PagePlaceholder,
+    component: BodyMapPage,
     canActivate: [requireSession('responder-or-qr')],
-    data: { title: 'Körper vorne markieren', stage: 'F4/F5' }
   },
   {
     path: 'body/back',
-    component: PagePlaceholder,
+    component: BodyMapPage,
     canActivate: [requireSession('responder-or-qr')],
-    data: { title: 'Körper hinten markieren', stage: 'F4/F5' }
   },
   {
     path: 'teams',
@@ -68,7 +73,7 @@ export const routes: Routes = [
   {
     path: 'situation-room',
     component: PagePlaceholder,
-    canActivate: [requireSession('leitstelle')],
+    canActivate: [requireSession('responder-or-qr')],
     data: { title: 'Lagebild', stage: 'F6' }
   },
   {

@@ -3,7 +3,9 @@
   "version": "0.0.0",
   "scripts": {
     "ng": "ng",
+    "prestart": "node scripts/copy-body-regions.mjs",
     "start": "ng serve",
+    "prebuild": "node scripts/copy-body-regions.mjs",
     "build": "ng build",
     "check:auth": "node scripts/check-auth-rules.mjs",
     "watch": "ng build --watch --configuration development",
