@@ -6,7 +6,9 @@ import { RouterLink } from '@angular/router';
 import { ApiClient } from '../../api/api-client';
 import type { components } from '../../api/openapi-types';
 import { MyAccess } from '../../auth/components/my-access';
+import { OfflineQueueService } from '../../sync/offline-queue.service';
 import { ResponderStateStore } from '../services/responder-state';
+import { TriageDraftStore } from '../services/triage-draft-store';
 
 type TriageColor = components['schemas']['TriageColor'];
 
@@ -115,6 +117,18 @@ export class TriagePage {
   ] as const;
 
   private readonly api = inject(ApiClient);
+  private readonly drafts = inject(TriageDraftStore);
+  private readonly offlineQueue = inject(OfflineQueueService);
+
+  constructor() {
+    const patient = this.state.patient();
+    if (!patient) {
+      return;
+    }
+    const draft = this.drafts.get(patient.id);
+    this.flagsForm.patchValue(draft);
+    this.locationForm.patchValue(draft);
+  }
 
   protected saveFlags(): void {
     this.save(this.flagsForm.getRawValue());
@@ -126,13 +140,18 @@ export class TriagePage {
       return;
     }
 
+    const queuedBody = { ...body, clientUpdatedAt: new Date().toISOString() };
+    this.drafts.merge(patient.id, queuedBody);
     this.error.set('');
-    this.api.updateTriage(patient.id, { ...body, clientUpdatedAt: new Date().toISOString() }).subscribe({
+    this.api.updateTriage(patient.id, queuedBody).subscribe({
       next: (updated) => {
         this.state.setPatient(updated);
         this.message.set('Gespeichert.');
       },
-      error: () => this.error.set('Triage konnte nicht gespeichert werden.'),
+      error: () => {
+        this.offlineQueue.queueTriage(patient.id, queuedBody);
+        this.message.set('Lokal gespeichert, Sync ausstehend.');
+      },
     });
   }
 

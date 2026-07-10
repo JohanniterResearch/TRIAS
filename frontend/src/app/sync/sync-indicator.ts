@@ -10,6 +10,12 @@ import { SyncStatusService } from './sync-status.service';
     <div class="sync-indicator" [class.offline]="!sync.online()">
       <span class="sync-dot" aria-hidden="true"></span>
       <span>{{ sync.online() ? 'Online' : 'Offline' }}</span>
+      @if (sync.pendingCount()) {
+        <span>{{ sync.pendingCount() }} offen</span>
+      }
+      @if (isOld()) {
+        <span class="form-error">älter als 12 h</span>
+      }
       @if (sync.lastSuccessfulSync(); as lastSync) {
         <span class="sync-time">Sync {{ lastSync | date: 'shortTime' }}</span>
       }
@@ -18,4 +24,9 @@ import { SyncStatusService } from './sync-status.service';
 })
 export class SyncIndicator {
   protected readonly sync = inject(SyncStatusService);
+
+  protected isOld(): boolean {
+    const oldest = this.sync.oldestPendingAt();
+    return oldest ? Date.now() - Date.parse(oldest) > 12 * 60 * 60 * 1000 : false;
+  }
 }

@@ -4,6 +4,7 @@ import { Router, RouterLink } from '@angular/router';
 
 import { ApiClient } from '../../api/api-client';
 import { MyAccess } from '../../auth/components/my-access';
+import { OfflineQueueService } from '../../sync/offline-queue.service';
 import { GeolocationService } from '../services/geolocation.service';
 import { ResponderStateStore } from '../services/responder-state';
 
@@ -26,6 +27,9 @@ declare const BarcodeDetector: undefined | {
       } @else {
         @if (error()) {
           <p class="form-error">{{ error() }}</p>
+        }
+        @if (!online()) {
+          <button type="button" (click)="createManual()" [disabled]="busy()">Offline manuell anlegen</button>
         }
 
         <form [formGroup]="qrForm" (ngSubmit)="verifyQr()" class="auth-form">
@@ -66,6 +70,7 @@ export class PatientScanPage implements OnDestroy {
   });
 
   private readonly api = inject(ApiClient);
+  private readonly offlineQueue = inject(OfflineQueueService);
   private readonly geo = inject(GeolocationService);
   private readonly router = inject(Router);
   private readonly video = viewChild<ElementRef<HTMLVideoElement>>('video');
@@ -99,19 +104,24 @@ export class PatientScanPage implements OnDestroy {
       return;
     }
 
+    const clientGeneratedId = crypto.randomUUID();
     this.run();
     this.api.createManualPatient({
       operationSceneId: scene.id,
       name: this.manualForm.controls.name.value || undefined,
-      clientGeneratedId: crypto.randomUUID(),
+      clientGeneratedId,
     }).subscribe({
       next: async (patient) => {
         this.state.setPatient(patient);
         await this.captureLocation(patient.id);
         this.router.navigateByUrl(`/patient/${patient.id}`);
       },
-      error: () => this.fail('Patient konnte nicht angelegt werden.'),
+      error: () => navigator.onLine ? this.fail('Patient konnte nicht angelegt werden.') : this.createManualOffline(clientGeneratedId),
     });
+  }
+
+  protected online(): boolean {
+    return navigator.onLine;
   }
 
   protected async startScan(): Promise<void> {
@@ -158,6 +168,22 @@ export class PatientScanPage implements OnDestroy {
       source: 'gps',
       accuracyMeters: fix.accuracyMeters,
     }).subscribe({ next: (patient) => this.state.setPatient(patient), error: () => undefined });
+  }
+
+  private async createManualOffline(clientGeneratedId = crypto.randomUUID()): Promise<void> {
+    const scene = this.state.scene();
+    if (!scene) {
+      return;
+    }
+
+    const patient = await this.offlineQueue.createProvisionalPatient({
+      operationSceneId: scene.id,
+      name: this.manualForm.controls.name.value || undefined,
+      clientGeneratedId,
+    });
+    this.state.setPatient(patient);
+    this.busy.set(false);
+    this.router.navigateByUrl(`/patient/${patient.id}`);
   }
 
   private run(): void {

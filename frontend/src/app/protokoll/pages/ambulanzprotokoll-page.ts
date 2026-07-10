@@ -5,6 +5,7 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import { ApiClient } from '../../api/api-client';
 import { MyAccess } from '../../auth/components/my-access';
 import { ResponderStateStore } from '../../responder/services/responder-state';
+import { OfflineQueueService } from '../../sync/offline-queue.service';
 import { ProtokollDraftRecord, ProtokollDraftStore } from '../services/protokoll-draft-store';
 
 type Status = 'draft' | 'finalized';
@@ -166,6 +167,7 @@ export class AmbulanzprotokollPage {
 
   private readonly api = inject(ApiClient);
   private readonly drafts = inject(ProtokollDraftStore);
+  private readonly offlineQueue = inject(OfflineQueueService);
   private readonly route = inject(ActivatedRoute);
   private readonly responderState = inject(ResponderStateStore);
   private readonly signatureCanvas = viewChild<ElementRef<HTMLCanvasElement>>('signatureCanvas');
@@ -272,13 +274,17 @@ export class AmbulanzprotokollPage {
     this.status.set(status);
     const patientId = this.patientId();
     const formState = this.form();
+    const body = { status, formState: formState as unknown as Record<string, never>, clientUpdatedAt: new Date().toISOString() };
     this.saveLocal(status, formState);
-    this.api.saveProtokollPage1(patientId, { status, formState: formState as unknown as Record<string, never>, clientUpdatedAt: new Date().toISOString() }).subscribe({
+    this.api.saveProtokollPage1(patientId, body).subscribe({
       next: (record) => {
         this.status.set(record.status);
         this.saveState.set(`server ${new Date(record.updatedAt).toLocaleTimeString()}`);
       },
-      error: () => this.saveState.set('local-only, sync pending'),
+      error: () => {
+        this.offlineQueue.queueProtocol(patientId, body);
+        this.saveState.set('local-only, sync pending');
+      },
     });
   }
 
