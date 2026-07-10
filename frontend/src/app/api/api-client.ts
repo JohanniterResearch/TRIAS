@@ -63,6 +63,16 @@ type SaveProtokollRequest =
   paths['/api/persons/{patientId}/ambulanzprotokoll-page1']['put']['requestBody']['content']['application/json'];
 type ProtokollExport =
   paths['/api/persons/{patientId}/ambulanzprotokoll-page1/export']['get']['responses'][200]['content']['application/json'];
+type PatientList =
+  paths['/api/persons']['get']['responses'][200]['content']['application/json'];
+type Team =
+  paths['/api/teams']['get']['responses'][200]['content']['application/json'][number];
+type TeamCreateRequest =
+  paths['/api/teams']['post']['requestBody']['content']['application/json'];
+type TeamUpdateRequest =
+  paths['/api/teams/{id}']['put']['requestBody']['content']['application/json'];
+type TriageHistoryEntry =
+  paths['/api/persons/{id}/triage-history']['get']['responses'][200]['content']['application/json'][number];
 
 @Injectable({ providedIn: 'root' })
 export class ApiClient {
@@ -243,6 +253,42 @@ export class ApiClient {
   exportProtokollPage1(patientId: number): Observable<ProtokollExport> {
     return this.unwrap(this.client.GET('/api/persons/{patientId}/ambulanzprotokoll-page1/export', {
       params: { path: { patientId } },
+      headers: this.authHeaders(),
+    }));
+  }
+
+  listPatients(operationSceneId: number): Observable<PatientList> {
+    return this.unwrap(this.client.GET('/api/persons', {
+      params: { query: { operationSceneId } },
+      headers: this.authHeaders(),
+    }));
+  }
+
+  listTeams(operationSceneId: number): Observable<Team[]> {
+    return this.unwrap(this.client.GET('/api/teams', {
+      params: { query: { operationSceneId } },
+      headers: this.authHeaders(),
+    }));
+  }
+
+  createTeam(body: TeamCreateRequest): Observable<Team> {
+    return this.unwrap(this.client.POST('/api/teams', {
+      body,
+      headers: this.authHeaders(),
+    }));
+  }
+
+  updateTeam(id: number, body: TeamUpdateRequest): Observable<Team> {
+    return this.unwrap(this.client.PUT('/api/teams/{id}', {
+      params: { path: { id } },
+      body,
+      headers: this.authHeaders(),
+    }));
+  }
+
+  getTriageHistory(patientId: number): Observable<TriageHistoryEntry[]> {
+    return this.unwrap(this.client.GET('/api/persons/{id}/triage-history', {
+      params: { path: { id: patientId } },
       headers: this.authHeaders(),
     }));
   }

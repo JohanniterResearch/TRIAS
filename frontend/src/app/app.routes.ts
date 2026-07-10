@@ -72,9 +72,8 @@ export const routes: Routes = [
   },
   {
     path: 'situation-room',
-    component: PagePlaceholder,
-    canActivate: [requireSession('responder-or-qr')],
-    data: { title: 'Lagebild', stage: 'F6' }
+    loadComponent: () => import('./situation/pages/situation-room-page').then((module) => module.SituationRoomPage),
+    canActivate: [requireSession('authenticated')],
   },
   {
     canActivate: [requireSession('admin')],

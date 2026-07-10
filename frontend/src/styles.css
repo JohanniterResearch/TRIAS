@@ -1,3 +1,5 @@
+@import 'leaflet/dist/leaflet.css';
+
 :root {
   color: #102033;
   background: #f4f6f8;
@@ -485,6 +487,122 @@ button:disabled {
   .protocol-page {
     min-width: 0;
     width: 100%;
+  }
+}
+
+.situation-page {
+  display: grid;
+  gap: 1rem;
+}
+
+.situation-header {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.situation-header h1 {
+  margin: 0;
+}
+
+.scene-select {
+  align-items: end;
+  display: flex;
+  gap: 0.75rem;
+}
+
+.scene-select label {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.scene-select input {
+  min-height: 3rem;
+}
+
+.triage-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.triage-counts span {
+  border-radius: 999px;
+  color: #ffffff;
+  font-weight: 700;
+  padding: 0.45rem 0.8rem;
+}
+
+.triage-counts .rot { background: #b3261e; }
+.triage-counts .gelb { background: #b77900; }
+.triage-counts .gruen { background: #188038; }
+.triage-counts .schwarz { background: #1f2933; }
+.triage-counts .unassigned { background: #52606d; }
+
+.situation-layout {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(18rem, 1fr) minmax(28rem, 1.3fr) minmax(16rem, 0.8fr);
+}
+
+.situation-map {
+  border: 1px solid #d7dde5;
+  border-radius: 0.5rem;
+  min-height: 32rem;
+  overflow: hidden;
+}
+
+.patient-panel,
+.team-panel {
+  background: #ffffff;
+  border: 1px solid #d7dde5;
+  border-radius: 0.5rem;
+  display: grid;
+  gap: 1rem;
+  overflow: auto;
+  padding: 1rem;
+}
+
+.patient-table {
+  border-collapse: collapse;
+  min-width: 54rem;
+  width: 100%;
+}
+
+.patient-table th,
+.patient-table td {
+  border-bottom: 1px solid #d7dde5;
+  padding: 0.45rem;
+  text-align: left;
+}
+
+.patient-table tr {
+  cursor: pointer;
+}
+
+.patient-table tr:focus,
+.patient-table tr:hover {
+  background: #eef5fb;
+  outline: 2px solid #075fa8;
+}
+
+.team-panel article {
+  border: 1px solid #d7dde5;
+  border-radius: 0.35rem;
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.75rem;
+}
+
+.team-panel select {
+  min-height: 2.5rem;
+}
+
+@media (max-width: 1100px) {
+  .situation-layout {
+    grid-template-columns: 1fr;
   }
 }
 

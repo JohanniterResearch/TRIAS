@@ -21,5 +21,9 @@ assert.equal(tokenMatchesRequirement('user', 'responder-or-qr'), true);
 assert.equal(tokenMatchesRequirement('qr', 'responder-or-qr'), true);
 assert.equal(tokenMatchesRequirement('admin', 'responder-or-qr'), false);
 assert.equal(tokenMatchesRequirement('leitstelle', 'responder-or-qr'), false);
+assert.equal(tokenMatchesRequirement('admin', 'authenticated'), true);
+assert.equal(tokenMatchesRequirement('leitstelle', 'authenticated'), true);
+assert.equal(tokenMatchesRequirement('user', 'authenticated'), true);
+assert.equal(tokenMatchesRequirement('qr', 'authenticated'), true);
 
 console.log('auth role matrix ok');
