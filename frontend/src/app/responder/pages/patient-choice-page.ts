@@ -4,11 +4,12 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 
 import { ApiClient } from '../../api/api-client';
 import { MyAccess } from '../../auth/components/my-access';
+import { QrScanner } from '../../shared/qr-scanner';
 import { ResponderStateStore } from '../services/responder-state';
 
 @Component({
   selector: 'app-patient-choice-page',
-  imports: [MyAccess, ReactiveFormsModule, RouterLink],
+  imports: [MyAccess, QrScanner, ReactiveFormsModule, RouterLink],
   template: `
     <section class="responder-page">
       <app-my-access />
@@ -37,6 +38,7 @@ import { ResponderStateStore } from '../services/responder-state';
         </label>
         <button type="submit" [disabled]="reassignForm.invalid || busy()">QR ersetzen</button>
       </form>
+      <app-qr-scanner buttonLabel="Neuen QR Code scannen" (scanned)="reassignQr($event)" />
     </section>
   `,
 })
@@ -61,11 +63,11 @@ export class PatientChoicePage {
     return patient?.humanReadableId || `Patient ${this.patientId()}`;
   }
 
-  protected reassignQr(): void {
+  protected reassignQr(qrCode = this.reassignForm.controls.qrCode.value): void {
     this.busy.set(true);
     this.error.set('');
     this.message.set('');
-    this.api.reassignPatientQrCode(this.patientId(), { qr_code: this.reassignForm.controls.qrCode.value.trim() }).subscribe({
+    this.api.reassignPatientQrCode(this.patientId(), { qr_code: qrCode.trim() }).subscribe({
       next: (patient) => {
         this.state.setPatient(patient);
         this.busy.set(false);

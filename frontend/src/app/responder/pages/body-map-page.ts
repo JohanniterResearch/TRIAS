@@ -27,13 +27,30 @@ interface BodyRegions {
           <p class="form-error">{{ error() }}</p>
         }
 
-        <div class="body-region-grid">
+        <div class="body-region-map" [attr.aria-label]="view() === 'front' ? 'Körper Vorderseite' : 'Körper Rückseite'">
+          <svg viewBox="0 0 240 560" role="img" [attr.aria-label]="view() === 'front' ? 'Körpersilhouette vorne' : 'Körpersilhouette hinten'">
+            <circle cx="120" cy="48" r="30" />
+            <path d="M91 82 Q120 70 149 82 L164 225 Q150 260 148 300 L158 510 L132 510 L120 312 L108 510 L82 510 L92 300 Q90 260 76 225 Z" />
+            <path d="M82 95 L42 250 L62 256 L100 142 M158 95 L198 250 L178 256 L140 142" />
+          </svg>
           @for (region of regionList(); track region) {
-            <button type="button" [class.marked]="isMarked(region)" (click)="toggle(region)">
-              {{ label(region) }}
+            <button
+              type="button"
+              [class.marked]="isMarked(region)"
+              [style.left.%]="position(region).x"
+              [style.top.%]="position(region).y"
+              [attr.aria-pressed]="isMarked(region)"
+              [attr.aria-label]="label(region)"
+              [title]="label(region)"
+              (click)="toggle(region)">
+              <span class="visually-hidden">{{ label(region) }}</span>
             </button>
           }
         </div>
+
+        @if (markedLabels().length) {
+          <p><strong>Markiert:</strong> {{ markedLabels().join(', ') }}</p>
+        }
 
         <div class="row-actions">
           <a routerLink="/triage">Zurück zur Triage</a>
@@ -83,7 +100,27 @@ export class BodyMapPage {
   }
 
   protected label(region: string): string {
-    return region.replace(/_/g, ' ');
+    return region.replace(/_(vorne|hinten)$/, '').replace(/_/g, ' ');
+  }
+
+  protected markedLabels(): string[] {
+    return this.regionList().filter((region) => this.isMarked(region)).map((region) => this.label(region));
+  }
+
+  protected position(region: string): { x: number; y: number } {
+    const part = region.replace(/_(links|rechts)?_?(vorne|hinten)$/, '');
+    const y: Record<string, number> = {
+      kopf: 8, gesicht: 13, auge: 14, nacken: 18, hals: 19, schulter: 24,
+      brust: 32, ruecken_oben: 31, ruecken_mitte: 40, ruecken_unten: 49,
+      oberarm: 34, ellenbogen: 44, unterarm: 53, hand: 62, bauch: 43,
+      becken: 53, genitalbereich: 59, gesaess: 58, oberschenkel: 69,
+      knie: 79, kniekehle: 79, unterschenkel: 88, ferse: 95, fuss: 97,
+    };
+    const isLeft = region.includes('_links_');
+    const isRight = region.includes('_rechts_');
+    const limb = /arm|ellenbogen|hand|schulter/.test(part);
+    const x = isLeft ? (limb ? 25 : 42) : isRight ? (limb ? 75 : 58) : 50;
+    return { x, y: y[part] ?? 50 };
   }
 
   private load(): void {

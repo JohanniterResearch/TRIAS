@@ -255,6 +255,15 @@ button:disabled {
   padding: 0.75rem;
 }
 
+.qr-code-image {
+  aspect-ratio: 1;
+  background: #ffffff;
+  display: block;
+  height: auto;
+  max-width: 15rem;
+  width: 100%;
+}
+
 .responder-page {
   display: grid;
   gap: 1.25rem;
@@ -267,8 +276,7 @@ button:disabled {
 
 .choice-grid,
 .triage-colors,
-.flag-grid,
-.body-region-grid {
+.flag-grid {
   display: grid;
   gap: 0.75rem;
   grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
@@ -309,8 +317,12 @@ button:disabled {
   background: #1f2933;
 }
 
-.flag-grid label,
-.body-region-grid button {
+.location-correction-map {
+  height: 18rem;
+  width: 100%;
+}
+
+.flag-grid label {
   background: #ffffff;
   border: 1px solid #d7dde5;
   border-radius: 0.5rem;
@@ -318,9 +330,50 @@ button:disabled {
   padding: 0.75rem;
 }
 
-.body-region-grid button.marked {
+.body-region-map {
+  aspect-ratio: 240 / 560;
+  background: #ffffff;
+  border: 1px solid #aab4c0;
+  margin: 0 auto;
+  max-height: 70vh;
+  position: relative;
+  width: min(100%, 30rem);
+}
+
+.body-region-map svg {
+  fill: #e4e7eb;
+  height: 100%;
+  stroke: #52606d;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 9;
+  width: 100%;
+}
+
+.body-region-map button {
+  background: #ffffff;
+  border: 2px solid #52606d;
+  border-radius: 50%;
+  min-height: 2rem;
+  padding: 0;
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 2rem;
+}
+
+.body-region-map button.marked {
   background: #b3261e;
   color: #ffffff;
+}
+
+.visually-hidden {
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
 }
 
 .protocol-workspace {

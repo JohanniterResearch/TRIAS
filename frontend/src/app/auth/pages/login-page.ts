@@ -1,18 +1,15 @@
-import { Component, ElementRef, inject, OnDestroy, viewChild } from '@angular/core';
+import { Component, inject } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 
 import { ApiClient } from '../../api/api-client';
+import { QrScanner } from '../../shared/qr-scanner';
 import { AuthStore } from '../auth.store';
 import { DevAccess } from '../components/dev-access';
 
-declare const BarcodeDetector: undefined | {
-  new(options?: { formats?: string[] }): { detect(source: CanvasImageSource): Promise<Array<{ rawValue: string }>> };
-};
-
 @Component({
   selector: 'app-login-page',
-  imports: [DevAccess, ReactiveFormsModule, RouterLink],
+  imports: [DevAccess, QrScanner, ReactiveFormsModule, RouterLink],
   template: `
     <section class="auth-page">
       <p class="eyebrow">Responder Zugang</p>
@@ -30,12 +27,7 @@ declare const BarcodeDetector: undefined | {
         <button type="submit" [disabled]="busy || qrForm.invalid">Einloggen</button>
       </form>
 
-      <div class="camera-panel">
-        <video #video autoplay muted playsinline></video>
-        <button type="button" (click)="startScan()" [disabled]="busy || scanning">
-          {{ scanning ? 'Kamera aktiv' : 'Mit Kamera scannen' }}
-        </button>
-      </div>
+      <app-qr-scanner (scanned)="submitQr($event)" />
 
       <h2>Responder Login</h2>
       <form [formGroup]="userForm" (ngSubmit)="submitUser()" class="auth-form">
@@ -58,7 +50,7 @@ declare const BarcodeDetector: undefined | {
     </section>
   `,
 })
-export class LoginPage implements OnDestroy {
+export class LoginPage {
   protected readonly qrForm = inject(FormBuilder).nonNullable.group({
     qrCode: ['', [Validators.required, Validators.maxLength(128)]],
   });
@@ -68,18 +60,10 @@ export class LoginPage implements OnDestroy {
   });
   protected busy = false;
   protected error = '';
-  protected scanning = false;
 
   private readonly api = inject(ApiClient);
   private readonly auth = inject(AuthStore);
   private readonly router = inject(Router);
-  private readonly video = viewChild<ElementRef<HTMLVideoElement>>('video');
-  private stream: MediaStream | null = null;
-  private scanTimer = 0;
-
-  ngOnDestroy(): void {
-    this.stopScan();
-  }
 
   protected submitQr(qrCode = this.qrForm.controls.qrCode.value): void {
     this.run(() => this.api.qrLogin(qrCode.trim()).subscribe({
@@ -106,38 +90,6 @@ export class LoginPage implements OnDestroy {
     }));
   }
 
-  protected async startScan(): Promise<void> {
-    if (!BarcodeDetector) {
-      this.fail('QR Scan wird von diesem Browser nicht unterstützt. QR Code bitte eintippen.');
-      return;
-    }
-
-    try {
-      this.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-      const video = this.video()?.nativeElement;
-      if (!video) {
-        return;
-      }
-
-      video.srcObject = this.stream;
-      this.scanning = true;
-      const detector = new BarcodeDetector({ formats: ['qr_code'] });
-      const scan = async () => {
-        const [code] = await detector.detect(video);
-        if (code?.rawValue) {
-          this.stopScan();
-          this.qrForm.controls.qrCode.setValue(code.rawValue);
-          this.submitQr(code.rawValue);
-          return;
-        }
-        this.scanTimer = window.setTimeout(scan, 500);
-      };
-      this.scanTimer = window.setTimeout(scan, 500);
-    } catch {
-      this.fail('Kamera konnte nicht gestartet werden. QR Code bitte eintippen.');
-    }
-  }
-
   private run(action: () => void): void {
     this.busy = true;
     this.error = '';
@@ -149,10 +101,4 @@ export class LoginPage implements OnDestroy {
     this.error = message;
   }
 
-  private stopScan(): void {
-    window.clearTimeout(this.scanTimer);
-    this.stream?.getTracks().forEach((track) => track.stop());
-    this.stream = null;
-    this.scanning = false;
-  }
 }

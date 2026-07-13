@@ -1,20 +1,17 @@
-import { Component, ElementRef, inject, OnDestroy, signal, viewChild } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 
 import { ApiClient } from '../../api/api-client';
 import { MyAccess } from '../../auth/components/my-access';
+import { QrScanner } from '../../shared/qr-scanner';
 import { OfflineQueueService } from '../../sync/offline-queue.service';
 import { GeolocationService } from '../services/geolocation.service';
 import { ResponderStateStore } from '../services/responder-state';
 
-declare const BarcodeDetector: undefined | {
-  new(options?: { formats?: string[] }): { detect(source: CanvasImageSource): Promise<Array<{ rawValue: string }>> };
-};
-
 @Component({
   selector: 'app-patient-scan-page',
-  imports: [MyAccess, ReactiveFormsModule, RouterLink],
+  imports: [MyAccess, QrScanner, ReactiveFormsModule, RouterLink],
   template: `
     <section class="responder-page">
       <app-my-access />
@@ -40,10 +37,7 @@ declare const BarcodeDetector: undefined | {
           <button type="submit" [disabled]="busy() || qrForm.invalid">QR prüfen</button>
         </form>
 
-        <div class="camera-panel">
-          <video #video autoplay muted playsinline></video>
-          <button type="button" (click)="startScan()" [disabled]="busy() || scanning()">Mit Kamera scannen</button>
-        </div>
+        <app-qr-scanner (scanned)="verifyQr($event)" />
 
         <h2>Manuelle Aufnahme</h2>
         <form [formGroup]="manualForm" (ngSubmit)="createManual()" class="auth-form">
@@ -57,11 +51,10 @@ declare const BarcodeDetector: undefined | {
     </section>
   `,
 })
-export class PatientScanPage implements OnDestroy {
+export class PatientScanPage {
   protected readonly state = inject(ResponderStateStore);
   protected readonly busy = signal(false);
   protected readonly error = signal('');
-  protected readonly scanning = signal(false);
   protected readonly qrForm = inject(FormBuilder).nonNullable.group({
     qrCode: ['', [Validators.required, Validators.maxLength(128)]],
   });
@@ -73,13 +66,6 @@ export class PatientScanPage implements OnDestroy {
   private readonly offlineQueue = inject(OfflineQueueService);
   private readonly geo = inject(GeolocationService);
   private readonly router = inject(Router);
-  private readonly video = viewChild<ElementRef<HTMLVideoElement>>('video');
-  private stream: MediaStream | null = null;
-  private scanTimer = 0;
-
-  ngOnDestroy(): void {
-    this.stopScan();
-  }
 
   protected verifyQr(qrCode = this.qrForm.controls.qrCode.value): void {
     const scene = this.state.scene();
@@ -124,38 +110,6 @@ export class PatientScanPage implements OnDestroy {
     return navigator.onLine;
   }
 
-  protected async startScan(): Promise<void> {
-    if (!BarcodeDetector) {
-      this.fail('QR Scan wird von diesem Browser nicht unterstützt. QR Code bitte eintippen.');
-      return;
-    }
-
-    try {
-      this.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-      const video = this.video()?.nativeElement;
-      if (!video) {
-        return;
-      }
-
-      video.srcObject = this.stream;
-      this.scanning.set(true);
-      const detector = new BarcodeDetector({ formats: ['qr_code'] });
-      const scan = async () => {
-        const [code] = await detector.detect(video);
-        if (code?.rawValue) {
-          this.stopScan();
-          this.qrForm.controls.qrCode.setValue(code.rawValue);
-          this.verifyQr(code.rawValue);
-          return;
-        }
-        this.scanTimer = window.setTimeout(scan, 500);
-      };
-      this.scanTimer = window.setTimeout(scan, 500);
-    } catch {
-      this.fail('Kamera konnte nicht gestartet werden. QR Code bitte eintippen.');
-    }
-  }
-
   private async captureLocation(patientId: number): Promise<void> {
     const fix = await this.geo.currentPosition();
     if (!fix) {
@@ -196,10 +150,4 @@ export class PatientScanPage implements OnDestroy {
     this.error.set(message);
   }
 
-  private stopScan(): void {
-    window.clearTimeout(this.scanTimer);
-    this.stream?.getTracks().forEach((track) => track.stop());
-    this.stream = null;
-    this.scanning.set(false);
-  }
 }

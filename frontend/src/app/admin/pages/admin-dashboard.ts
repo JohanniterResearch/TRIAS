@@ -1,17 +1,19 @@
 import { DatePipe } from '@angular/common';
 import { Component, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 
 import { ApiClient } from '../../api/api-client';
 import type { components } from '../../api/openapi-types';
 import { MyAccess } from '../../auth/components/my-access';
+import { QrCodeImage } from '../components/qr-code-image';
 
 type OperationScene = components['schemas']['OperationScene'];
 type LoginQrCode = components['schemas']['LoginQrCode'];
 
 @Component({
   selector: 'app-admin-dashboard',
-  imports: [DatePipe, MyAccess, ReactiveFormsModule],
+  imports: [DatePipe, MyAccess, QrCodeImage, ReactiveFormsModule, RouterLink],
   template: `
     <section class="admin-page">
       <app-my-access />
@@ -101,6 +103,7 @@ type LoginQrCode = components['schemas']['LoginQrCode'];
             @for (code of loginQrCodes(); track code.id) {
               <article class="print-token">
                 <strong>Responder QR</strong>
+                <app-qr-code-image [token]="code.qrToken" label="Responder Login QR Code" />
                 <span>{{ code.qrToken }}</span>
                 <small>Event {{ code.eventSceneId }} · {{ code.expiresAt ? (code.expiresAt | date: 'short') : 'noch nicht aktiviert' }}</small>
                 @if (!code.revokedAt) {
@@ -128,6 +131,7 @@ type LoginQrCode = components['schemas']['LoginQrCode'];
             @for (token of patientQrCodes(); track token) {
               <article class="print-token">
                 <strong>Patient QR</strong>
+                <app-qr-code-image [token]="token" label="Patient QR Code" />
                 <span>{{ token }}</span>
               </article>
             }
@@ -172,6 +176,7 @@ type LoginQrCode = components['schemas']['LoginQrCode'];
               <button type="button" (click)="revokeUser(user.id)">Zugang widerrufen</button>
             </article>
           }
+          <a routerLink="/change-password">Eigenes Passwort ändern</a>
         </section>
       </div>
     </section>

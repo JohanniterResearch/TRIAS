@@ -1,7 +1,8 @@
 import { DecimalPipe } from '@angular/common';
-import { Component, inject, signal } from '@angular/core';
+import { AfterViewInit, Component, ElementRef, inject, OnDestroy, signal, viewChild } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
+import * as L from 'leaflet';
 
 import { ApiClient } from '../../api/api-client';
 import type { components } from '../../api/openapi-types';
@@ -72,6 +73,7 @@ type TriageColor = components['schemas']['TriageColor'];
             <input formControlName="indoorLocation" placeholder="Zelt, Sektor, Raum">
           </label>
           <p>Indoor-GPS kann ungenau sein; Sektor/Zelt/Raum ergänzen.</p>
+          <div #locationMap class="location-correction-map" aria-label="Position auf Karte korrigieren"></div>
           <button type="submit">Position speichern</button>
         </form>
 
@@ -84,7 +86,7 @@ type TriageColor = components['schemas']['TriageColor'];
     </section>
   `,
 })
-export class TriagePage {
+export class TriagePage implements AfterViewInit, OnDestroy {
   protected readonly state = inject(ResponderStateStore);
   protected readonly message = signal('');
   protected readonly error = signal('');
@@ -119,6 +121,9 @@ export class TriagePage {
   private readonly api = inject(ApiClient);
   private readonly drafts = inject(TriageDraftStore);
   private readonly offlineQueue = inject(OfflineQueueService);
+  private readonly locationMap = viewChild<ElementRef<HTMLDivElement>>('locationMap');
+  private map: L.Map | null = null;
+  private marker: L.CircleMarker | null = null;
 
   constructor() {
     const patient = this.state.patient();
@@ -128,6 +133,30 @@ export class TriagePage {
     const draft = this.drafts.get(patient.id);
     this.flagsForm.patchValue(draft);
     this.locationForm.patchValue(draft);
+  }
+
+  ngAfterViewInit(): void {
+    const element = this.locationMap()?.nativeElement;
+    if (!element) {
+      return;
+    }
+    const patient = this.state.patient();
+    const lat = patient?.latitudePatient ?? 48.2082;
+    const lng = patient?.longitudePatient ?? 16.3738;
+    this.map = L.map(element).setView([lat, lng], patient?.latitudePatient == null ? 13 : 17);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors' }).addTo(this.map);
+    if (patient?.latitudePatient != null && patient.longitudePatient != null) {
+      this.setMarker(patient.latitudePatient, patient.longitudePatient);
+      this.locationForm.patchValue({ lat: patient.latitudePatient, lng: patient.longitudePatient, indoorLocation: patient.indoorLocation ?? '' });
+    }
+    this.map.on('click', ({ latlng }: L.LeafletMouseEvent) => {
+      this.locationForm.patchValue({ lat: latlng.lat, lng: latlng.lng });
+      this.setMarker(latlng.lat, latlng.lng);
+    });
+  }
+
+  ngOnDestroy(): void {
+    this.map?.remove();
   }
 
   protected saveFlags(): void {
@@ -175,5 +204,10 @@ export class TriagePage {
       },
       error: () => this.error.set('Position konnte nicht gespeichert werden.'),
     });
+  }
+
+  private setMarker(lat: number, lng: number): void {
+    this.marker?.remove();
+    this.marker = L.circleMarker([lat, lng], { radius: 9, color: '#102033', fillColor: '#d32f2f', fillOpacity: 0.9 }).addTo(this.map!);
   }
 }

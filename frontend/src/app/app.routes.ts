@@ -1,6 +1,5 @@
 import { Routes } from '@angular/router';
 
-import { AdminDashboard } from './admin/pages/admin-dashboard';
 import { AdminLoginPage } from './auth/pages/admin-login-page';
 import { ChangePasswordPage } from './auth/pages/change-password-page';
 import { LoginPage } from './auth/pages/login-page';
@@ -12,7 +11,6 @@ import { BodyMapPage } from './responder/pages/body-map-page';
 import { PatientChoicePage } from './responder/pages/patient-choice-page';
 import { PatientScanPage } from './responder/pages/patient-scan-page';
 import { RoleSelectionPage } from './responder/pages/role-selection-page';
-import { TriagePage } from './responder/pages/triage-page';
 
 export const routes: Routes = [
   { path: '', component: Home },
@@ -46,7 +44,7 @@ export const routes: Routes = [
   },
   {
     path: 'triage',
-    component: TriagePage,
+    loadComponent: () => import('./responder/pages/triage-page').then((module) => module.TriagePage),
     canActivate: [requireSession('responder-or-qr')],
   },
   {
@@ -81,11 +79,11 @@ export const routes: Routes = [
     children: [
       {
         path: '',
-        component: AdminDashboard,
+        loadComponent: () => import('./admin/pages/admin-dashboard').then((module) => module.AdminDashboard),
       },
       {
         path: '**',
-        component: AdminDashboard,
+        loadComponent: () => import('./admin/pages/admin-dashboard').then((module) => module.AdminDashboard),
       }
     ]
   },
