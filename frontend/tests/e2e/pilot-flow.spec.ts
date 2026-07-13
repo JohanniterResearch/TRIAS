@@ -100,6 +100,7 @@ test('situation room receives a triage update from another browser', async ({ br
   const commandPage = await command.newPage();
   await commandPage.goto('/admin/login');
   await commandPage.getByRole('button', { name: 'DEV Admin' }).click();
+  await expect(commandPage).toHaveURL(/\/admin$/);
   await commandPage.goto('/situation-room');
   await commandPage.getByLabel('Szene ID').fill(String(sceneId));
   await commandPage.getByRole('button', { name: 'Öffnen' }).click();
