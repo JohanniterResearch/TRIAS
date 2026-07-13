@@ -16,16 +16,27 @@ services:
       timeout: 3s
       retries: 10
 
-  # Backend service is added in stage B1 (backend flow). Placeholder:
-  # backend:
-  #   build: ./backend
-  #   depends_on:
-  #     db: { condition: service_healthy }
-  #   environment:
-  #     ConnectionStrings__Default: Host=db;Database=ambulanzsystem;Username=pls;Password=${DB_PASSWORD:-dev-only-password}
-  #     Jwt__Secret: ${JWT_SECRET}
-  #   ports:
-  #     - "5000:8080"
+  # Prod profile only (`docker compose --profile prod up`) — dev runs the backend via
+  # `dotnet run` against this same db service instead.
+  backend:
+    profiles: ["prod"]
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__Default: Host=db;Database=ambulanzsystem;Username=pls;Password=${DB_PASSWORD:-dev-only-password}
+      # No defaults on purpose: the app's own StartupValidation fails fast on missing/empty
+      # values, so an operator forgetting these gets a clear error from the container, not a
+      # `docker compose` parse-time failure that would also break unrelated commands like
+      # `docker compose ps` (compose interpolates every service's env regardless of profile).
+      Jwt__Secret: ${JWT_SECRET:-}
+      Bootstrap__AdminPassword: ${BOOTSTRAP_ADMIN_PASSWORD:-}
+      PLS_ALLOWED_ORIGINS: ${PLS_ALLOWED_ORIGINS:-}
+    ports:
+      - "5000:8080"
 
 volumes:
   pgdata:
