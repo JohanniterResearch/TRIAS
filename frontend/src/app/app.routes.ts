@@ -63,9 +63,8 @@ export const routes: Routes = [
   },
   {
     path: 'teams',
-    component: PagePlaceholder,
+    loadComponent: () => import('./situation/pages/situation-room-page').then((module) => module.SituationRoomPage),
     canActivate: [requireSession('leitstelle')],
-    data: { title: 'Teams', stage: 'F6' }
   },
   {
     path: 'situation-room',

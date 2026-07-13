@@ -1,4 +1,4 @@
-import { DecimalPipe } from '@angular/common';
+import { DatePipe, DecimalPipe } from '@angular/common';
 import { AfterViewInit, Component, ElementRef, OnDestroy, computed, inject, signal, viewChild } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -17,7 +17,7 @@ type TriageColor = components['schemas']['TriageColor'];
 
 @Component({
   selector: 'app-situation-room-page',
-  imports: [DecimalPipe, MyAccess, ReactiveFormsModule, RouterLink],
+  imports: [DatePipe, DecimalPipe, MyAccess, ReactiveFormsModule, RouterLink],
   template: `
     <section class="situation-page">
       <app-my-access />
@@ -51,7 +51,7 @@ type TriageColor = components['schemas']['TriageColor'];
         <section class="patient-panel">
           <div class="row-actions">
             <button type="button" (click)="refresh()">Aktualisieren</button>
-            <button type="button" (click)="showHistory.set(!showHistory())">
+            <button type="button" (click)="toggleHistory()">
               {{ showHistory() ? 'Aktuelle Triage' : 'Triage-Historie' }}
             </button>
             <span>{{ realtimeState() }}</span>
@@ -68,6 +68,7 @@ type TriageColor = components['schemas']['TriageColor'];
                 <th>Dringend</th>
                 <th>Name</th>
                 <th>Lon/Lat</th>
+                <th>Erstellt</th>
                 <th>Aktualisiert</th>
               </tr>
             </thead>
@@ -82,7 +83,8 @@ type TriageColor = components['schemas']['TriageColor'];
                   <td>{{ bool(patient.dringend) }}</td>
                   <td>{{ patient.name || '-' }}</td>
                   <td>{{ patient.longitudePatient | number: '1.4-4' }} / {{ patient.latitudePatient | number: '1.4-4' }}</td>
-                  <td>{{ patient.updatedAt }}</td>
+                  <td>{{ patient.createdAt | date: 'short' }}</td>
+                  <td>{{ patient.updatedAt | date: 'short' }}</td>
                 </tr>
               }
             </tbody>
@@ -171,6 +173,7 @@ export class SituationRoomPage implements AfterViewInit, OnDestroy {
 
   private readonly api = inject(ApiClient);
   private readonly realtime = inject(SceneRealtimeService);
+  private readonly responderState = inject(ResponderStateStore);
   private readonly mapElement = viewChild<ElementRef<HTMLDivElement>>('map');
   private map: L.Map | null = null;
   private markers = L.layerGroup();
@@ -219,6 +222,18 @@ export class SituationRoomPage implements AfterViewInit, OnDestroy {
 
   protected selectPatient(patient: Patient): void {
     this.selectedPatient.set(patient);
+    this.responderState.setPatient(patient);
+    if (this.showHistory()) {
+      this.loadHistory(patient.id);
+    }
+  }
+
+  protected toggleHistory(): void {
+    this.showHistory.update((value) => !value);
+    const patient = this.selectedPatient();
+    if (this.showHistory() && patient) {
+      this.loadHistory(patient.id);
+    }
   }
 
   protected loadHistory(patientId: number): void {
@@ -288,9 +303,12 @@ export class SituationRoomPage implements AfterViewInit, OnDestroy {
   }
 
   private startPolling(sceneId: number): void {
-    this.pollingSub = interval(10000).pipe(switchMap(() => this.api.listPatients(sceneId))).subscribe((patients) => {
-      this.patients.set(patients);
-      this.renderMarkers();
+    this.pollingSub = interval(10000).pipe(switchMap(() => this.api.listPatients(sceneId))).subscribe({
+      next: (patients) => {
+        this.patients.set(patients);
+        this.renderMarkers();
+      },
+      error: () => this.error.set('Live-Verbindung und Aktualisierung sind unterbrochen.'),
     });
   }
 
@@ -314,8 +332,16 @@ export class SituationRoomPage implements AfterViewInit, OnDestroy {
     this.markers.clearLayers();
     const points = this.patients().filter((patient) => patient.latitudePatient != null && patient.longitudePatient != null);
     for (const patient of points) {
-      L.marker([patient.latitudePatient!, patient.longitudePatient!])
-        .bindPopup(`${patient.humanReadableId || patient.id} · ${this.triageLabel(patient.triagefarbe)}`)
+      const label = `${patient.humanReadableId || patient.id} · ${this.triageLabel(patient.triagefarbe)}`;
+      L.circleMarker([patient.latitudePatient!, patient.longitudePatient!], {
+        radius: 10,
+        color: '#ffffff',
+        weight: 2,
+        fillColor: triageColor(patient.triagefarbe),
+        fillOpacity: 1,
+      })
+        .bindTooltip(label, { permanent: true, direction: 'top' })
+        .bindPopup(label)
         .addTo(this.markers);
     }
     if (points.length && this.map) {
@@ -331,4 +357,8 @@ export class SituationRoomPage implements AfterViewInit, OnDestroy {
   private upsertTeam(team: Team): void {
     this.teams.update((teams) => [...teams.filter((item) => item.id !== team.id), team].sort((a, b) => a.id - b.id));
   }
+}
+
+function triageColor(value?: TriageColor | null): string {
+  return ({ rot: '#b3261e', gelb: '#b77900', gruen: '#188038', schwarz: '#1f2933' } as Record<string, string>)[value ?? ''] ?? '#52606d';
 }

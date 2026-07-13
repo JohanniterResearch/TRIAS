@@ -38,8 +38,12 @@ export type SceneRealtimeEvent =
 export class SceneRealtimeService {
   private readonly auth = inject(AuthStore);
   private connection: HubConnection | null = null;
+  private sceneId: number | null = null;
 
   connect(sceneId: number): Observable<SceneRealtimeEvent> {
+    if (this.connection && this.sceneId !== null) {
+      this.disconnect(this.sceneId);
+    }
     const events = new Subject<SceneRealtimeEvent>();
     const hubUrl = `${environment.apiBaseUrl.replace(/\/$/, '')}/hubs/scene`;
 
@@ -48,6 +52,7 @@ export class SceneRealtimeService {
       .withAutomaticReconnect()
       .configureLogging(LogLevel.Warning)
       .build();
+    this.sceneId = sceneId;
 
     this.connection.on('SceneSnapshot', (payload: SceneSnapshot) => events.next({ type: 'snapshot', payload }));
     this.connection.on('PatientUpdated', (payload: PatientUpdated) => events.next({ type: 'patient', payload }));
@@ -65,6 +70,7 @@ export class SceneRealtimeService {
   disconnect(sceneId: number): void {
     const connection = this.connection;
     this.connection = null;
+    this.sceneId = null;
     if (!connection || connection.state === HubConnectionState.Disconnected) {
       return;
     }

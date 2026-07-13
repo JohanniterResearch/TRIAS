@@ -23,6 +23,7 @@ const mapStore = 'patient-map';
 export class OfflineQueueService {
   private readonly auth = inject(AuthStore);
   private readonly syncStatus = inject(SyncStatusService);
+  private flushing = false;
 
   constructor() {
     window.addEventListener('online', () => this.flush().catch(() => undefined));
@@ -49,26 +50,31 @@ export class OfflineQueueService {
   }
 
   async queueTriage(patientId: number, body: TriageUpdateRequest): Promise<void> {
-    await this.add({ id: crypto.randomUUID(), type: 'triage', patientId, body, createdAt: new Date().toISOString() });
+    await this.add({ id: `triage:${patientId}`, type: 'triage', patientId, body, createdAt: new Date().toISOString() });
   }
 
   async queueProtocol(patientId: number, body: SaveProtokollRequest): Promise<void> {
-    await this.add({ id: crypto.randomUUID(), type: 'protocol', patientId, body, createdAt: new Date().toISOString() });
+    await this.add({ id: `protocol:${patientId}`, type: 'protocol', patientId, body, createdAt: new Date().toISOString() });
   }
 
   async flush(): Promise<void> {
-    if (!navigator.onLine) {
+    if (!navigator.onLine || this.flushing) {
       return;
     }
 
-    for (const item of await this.items()) {
-      const done = await this.replay(item);
-      if (!done) {
-        break;
+    this.flushing = true;
+    try {
+      for (const item of await this.items()) {
+        const done = await this.replay(item);
+        if (!done) {
+          break;
+        }
+        await this.delete(item.id);
       }
-      await this.delete(item.id);
+    } finally {
+      this.flushing = false;
+      await this.refreshStatus();
     }
-    await this.refreshStatus();
   }
 
   private async replay(item: QueueItem): Promise<boolean> {
