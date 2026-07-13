@@ -8,6 +8,7 @@
     "prebuild": "node scripts/copy-body-regions.mjs",
     "build": "ng build",
     "check:auth": "node scripts/check-auth-rules.mjs",
+    "check:production": "node scripts/check-production-bundle.mjs",
     "watch": "ng build --watch --configuration development",
     "test": "ng test"
   },

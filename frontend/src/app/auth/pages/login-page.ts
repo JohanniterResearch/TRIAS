@@ -2,9 +2,9 @@ import { Component, ElementRef, inject, OnDestroy, viewChild } from '@angular/co
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 
-import { environment } from '../../../environments/environment';
 import { ApiClient } from '../../api/api-client';
 import { AuthStore } from '../auth.store';
+import { DevAccess } from '../components/dev-access';
 
 declare const BarcodeDetector: undefined | {
   new(options?: { formats?: string[] }): { detect(source: CanvasImageSource): Promise<Array<{ rawValue: string }>> };
@@ -12,7 +12,7 @@ declare const BarcodeDetector: undefined | {
 
 @Component({
   selector: 'app-login-page',
-  imports: [ReactiveFormsModule, RouterLink],
+  imports: [DevAccess, ReactiveFormsModule, RouterLink],
   template: `
     <section class="auth-page">
       <p class="eyebrow">Responder Zugang</p>
@@ -54,14 +54,11 @@ declare const BarcodeDetector: undefined | {
         <a routerLink="/admin/login">Admin / Leitstelle</a>
       </nav>
 
-      @if (environment.enableDevButtons) {
-        <button type="button" class="dev-button" (click)="devLogin()">DEV Responder</button>
-      }
+      <app-dev-access role="user" />
     </section>
   `,
 })
 export class LoginPage implements OnDestroy {
-  protected readonly environment = environment;
   protected readonly qrForm = inject(FormBuilder).nonNullable.group({
     qrCode: ['', [Validators.required, Validators.maxLength(128)]],
   });
@@ -106,16 +103,6 @@ export class LoginPage implements OnDestroy {
         this.router.navigateByUrl('/role-selection');
       },
       error: () => this.fail('Benutzername oder Passwort ist ungültig.'),
-    }));
-  }
-
-  protected devLogin(): void {
-    this.run(() => this.api.devLogin('user').subscribe({
-      next: (result) => {
-        this.auth.setResponderSession({ token: result.token, refreshToken: result.refreshToken, tokenType: 'user', username: 'DEV' });
-        this.router.navigateByUrl('/role-selection');
-      },
-      error: () => this.fail('DEV Login ist nicht verfügbar.'),
     }));
   }
 

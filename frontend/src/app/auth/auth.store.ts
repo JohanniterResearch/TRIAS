@@ -42,6 +42,18 @@ export class AuthStore {
     this.save(emptyState);
   }
 
+  refreshTokens(token: string, refreshToken: string): void {
+    const active = this.activeSession();
+    if (!active) {
+      return;
+    }
+
+    const refreshed = this.withSavedAt({ ...active, token, refreshToken });
+    this.save(active.tokenType === 'admin' || active.tokenType === 'leitstelle'
+      ? { admin: refreshed, responder: null }
+      : { admin: null, responder: refreshed });
+  }
+
   hasPersistedSession(requirement: GuardRequirement): boolean {
     return this.sessionMatches(this.activeSession(), requirement);
   }

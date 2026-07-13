@@ -1,6 +1,6 @@
 import { inject, Injectable } from '@angular/core';
 import createClient from 'openapi-fetch';
-import { from, map, Observable, tap } from 'rxjs';
+import { from, map, Observable, tap, throwError } from 'rxjs';
 
 import { environment } from '../../environments/environment';
 import { AuthStore } from '../auth/auth.store';
@@ -25,6 +25,8 @@ type DevLoginResponse =
   paths['/api/dev-login']['post']['responses'][200]['content']['application/json'];
 type ValidateTokenResponse =
   paths['/api/validate-token']['post']['responses'][200]['content']['application/json'];
+type RefreshTokenResponse =
+  paths['/api/refresh-token']['post']['responses'][200]['content']['application/json'];
 type CreateUserRequest =
   paths['/api/users']['post']['requestBody']['content']['application/json'];
 type User =
@@ -113,6 +115,18 @@ export class ApiClient {
     return this.unwrap(this.client.POST('/api/validate-token', {
       headers: this.authHeaders(),
     }));
+  }
+
+  refreshSession(): Observable<void> {
+    const refreshToken = this.auth.activeSession()?.refreshToken;
+    if (!refreshToken) {
+      return throwError(() => new Error('session cannot be refreshed'));
+    }
+
+    return this.unwrap(this.client.POST('/api/refresh-token', { body: { refreshToken } })).pipe(
+      tap((tokens: RefreshTokenResponse) => this.auth.refreshTokens(tokens.token, tokens.refreshToken)),
+      map(() => undefined),
+    );
   }
 
   listScenes(): Observable<OperationScene[]> {

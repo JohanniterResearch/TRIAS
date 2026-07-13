@@ -2,13 +2,13 @@ import { Component, inject } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 
-import { environment } from '../../../environments/environment';
 import { ApiClient } from '../../api/api-client';
 import { AuthStore } from '../auth.store';
+import { DevAccess } from '../components/dev-access';
 
 @Component({
   selector: 'app-admin-login-page',
-  imports: [ReactiveFormsModule, RouterLink],
+  imports: [DevAccess, ReactiveFormsModule, RouterLink],
   template: `
     <section class="auth-page">
       <p class="eyebrow">Admin / Leitstelle</p>
@@ -34,14 +34,11 @@ import { AuthStore } from '../auth.store';
         <a routerLink="/login">Responder QR Login</a>
       </nav>
 
-      @if (environment.enableDevButtons) {
-        <button type="button" class="dev-button" (click)="devLogin()">DEV Admin</button>
-      }
+      <app-dev-access role="admin" />
     </section>
   `,
 })
 export class AdminLoginPage {
-  protected readonly environment = environment;
   protected readonly form = inject(FormBuilder).nonNullable.group({
     username: ['', Validators.required],
     password: ['', Validators.required],
@@ -81,18 +78,4 @@ export class AdminLoginPage {
     });
   }
 
-  protected devLogin(): void {
-    this.busy = true;
-    this.error = '';
-    this.api.devLogin('admin').subscribe({
-      next: (result) => {
-        this.auth.setAdminSession({ token: result.token, refreshToken: result.refreshToken, tokenType: 'admin', username: 'DEV' });
-        this.router.navigateByUrl('/admin');
-      },
-      error: () => {
-        this.busy = false;
-        this.error = 'DEV Login ist nicht verfügbar.';
-      },
-    });
-  }
 }

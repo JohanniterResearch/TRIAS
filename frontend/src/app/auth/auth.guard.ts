@@ -1,6 +1,6 @@
 import { inject } from '@angular/core';
 import { CanActivateFn, Router } from '@angular/router';
-import { catchError, map, of } from 'rxjs';
+import { catchError, map, of, switchMap } from 'rxjs';
 
 import { ApiClient } from '../api/api-client';
 import { AuthStore, GuardRequirement, TokenType } from './auth.store';
@@ -19,13 +19,20 @@ export function requireSession(requirement: GuardRequirement): CanActivateFn {
       return true;
     }
 
-    return api.validateToken().pipe(
-      map((result) => auth.sessionMatches(auth.activeSession(), requirement) && (!result.role || auth.sessionMatches({ token: '', tokenType: result.role as TokenType, savedAt: '' }, requirement))
-        ? true
-        : router.createUrlTree([loginRoute(requirement)])),
-      catchError(() => of(router.createUrlTree([loginRoute(requirement)]))),
+    const validate = () => api.validateToken().pipe(map((result) => validationResult(auth, requirement, result.role as TokenType | undefined)));
+    return validate().pipe(
+      catchError(() => api.refreshSession().pipe(switchMap(validate))),
+      catchError(() => {
+        auth.clear();
+        return of(router.createUrlTree([loginRoute(requirement)]));
+      }),
     );
   };
+}
+
+function validationResult(auth: AuthStore, requirement: GuardRequirement, serverRole?: TokenType): boolean {
+  return auth.sessionMatches(auth.activeSession(), requirement)
+    && (!serverRole || auth.sessionMatches({ token: '', tokenType: serverRole, savedAt: '' }, requirement));
 }
 
 function loginRoute(requirement: GuardRequirement): string {
