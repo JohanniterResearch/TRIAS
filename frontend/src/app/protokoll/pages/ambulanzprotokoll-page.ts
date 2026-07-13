@@ -1,5 +1,5 @@
 import { JsonPipe } from '@angular/common';
-import { Component, ElementRef, inject, signal, viewChild } from '@angular/core';
+import { Component, ElementRef, inject, OnDestroy, signal, viewChild } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 
 import { ApiClient } from '../../api/api-client';
@@ -29,18 +29,73 @@ const fields: FieldConfig[] = [
   { path: 'incident.uhrzeit_beginn', label: 'Uhrzeit-Beginn', x: 71, y: 1, w: 10, h: 3, type: 'time' },
   { path: 'incident.dnr_san_1', label: 'DNr. - San.', x: 82, y: 1, w: 8, h: 3 },
   { path: 'incident.dnr_na', label: 'DNr. - NA', x: 91, y: 1, w: 7, h: 3 },
+  { path: 'incident.dnr_san_2', label: 'DNr. - San. 2', x: 82, y: 4, w: 8, h: 2 },
+  { path: 'incident.dnr_san_3', label: 'DNr. - San. 3', x: 91, y: 4, w: 7, h: 2 },
+  { path: 'incident.funkrufname', label: 'Funkrufname', x: 24, y: 4, w: 18, h: 2 },
   { path: 'patient.familienname', label: 'Patient - Familienname', x: 2, y: 8, w: 21, h: 3 },
   { path: 'patient.vorname', label: 'Vorname', x: 24, y: 8, w: 16, h: 3 },
   { path: 'patient.vers_nr', label: 'Vers.-Nr.', x: 50, y: 8, w: 15, h: 3 },
   { path: 'patient.geburtsdatum', label: 'Geb.-Datum', x: 66, y: 8, w: 13, h: 3, type: 'date' },
   { path: 'patient.adresse', label: 'Adresse', x: 2, y: 12, w: 38, h: 3 },
   { path: 'patient.telefon', label: 'Telefon', x: 66, y: 12, w: 15, h: 3 },
+  { path: 'patient.staat', label: 'Staat', x: 41, y: 12, w: 10, h: 3 },
+  { path: 'patient.arbeitgeber', label: 'Arbeitgeber', x: 2, y: 15, w: 25, h: 2 },
+  { path: 'patient.versicherungstraeger', label: 'Versicherungsträger', x: 28, y: 15, w: 25, h: 2 },
+  { path: 'patient.familienstand', label: 'Familienstand', x: 82, y: 14, w: 16, h: 2 },
   { path: 'assessment_secondary.anamnese_text', label: 'ANAMNESE / UNTERSUCHUNG', x: 3, y: 29, w: 50, h: 18, type: 'textarea' },
-  { path: 'history.allergien', label: 'Allergien', x: 53, y: 80, w: 20, h: 3 },
-  { path: 'history.medikamente', label: 'Medikamente', x: 74, y: 80, w: 20, h: 3 },
-  { path: 'history.patientengeschichte_vorerkrankungen', label: 'Patientengeschichte / Vorerkrankungen', x: 53, y: 84, w: 41, h: 4, type: 'textarea' },
-  { path: 'disposition.uhrzeit_ende', label: 'Uhrzeit-Ende', x: 32, y: 95, w: 10, h: 3, type: 'time' },
-  { path: 'disposition.kontaktdaten', label: 'Kontaktdaten', x: 62, y: 95, w: 20, h: 3 },
+  { path: 'history.allergien', label: 'Allergien', x: 72, y: 79, w: 26, h: 2.5 },
+  { path: 'history.medikamente', label: 'Medikamente', x: 72, y: 82, w: 26, h: 2.5 },
+  { path: 'history.patientengeschichte_vorerkrankungen', label: 'Patientengeschichte / Vorerkrankungen', x: 72, y: 85, w: 26, h: 3, type: 'textarea' },
+  { path: 'history.letzte_orale_aufnahme', label: 'Letzte orale Aufnahme', x: 72, y: 88.5, w: 12.5, h: 2.5 },
+  { path: 'history.ereignisse_zuvor', label: 'Ereignisse zuvor', x: 85.5, y: 88.5, w: 12.5, h: 2.5 },
+  { path: 'history.risikofaktoren', label: 'Risikofaktoren', x: 72, y: 91.5, w: 26, h: 2 },
+  { path: 'disposition.uhrzeit_ende', label: 'Uhrzeit-Ende', x: 28, y: 96, w: 10, h: 2, type: 'time' },
+  { path: 'disposition.org', label: 'Org.', x: 39, y: 96, w: 5, h: 2 },
+  { path: 'disposition.typ', label: 'Typ', x: 45, y: 96, w: 5, h: 2 },
+  { path: 'disposition.kennung', label: 'Kennung', x: 51, y: 96, w: 8, h: 2 },
+  { path: 'disposition.kontaktdaten', label: 'Kontaktdaten', x: 60, y: 96, w: 12, h: 2 },
+];
+
+interface OptionGroup {
+  path: string;
+  label: string;
+  options: string[];
+  x: number;
+  y: number;
+  w: number;
+  single?: boolean;
+}
+
+const optionGroups: OptionGroup[] = [
+  { path: 'patient.geschlecht', label: 'Geschlecht', options: ['d', 'm', 'w'], x: 80, y: 8, w: 18, single: true },
+  { path: 'assessment_primary.naca', label: 'NACA', options: ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'], x: 2, y: 18, w: 18, single: true },
+  { path: 'assessment_primary.atemweg', label: 'Atemweg', options: ['frei', 'gefaehrdet', 'verlegt'], x: 21, y: 18, w: 18 },
+  { path: 'assessment_primary.atmung', label: 'Atmung', options: ['Apnoe', 'Schnappatmung', 'Zyanose', 'unauffaellig', 'Dyspnoe', 'Atemgeraeusche', 'andere Atemstoerungen'], x: 40, y: 18, w: 20 },
+  { path: 'assessment_primary.kreislauf', label: 'Kreislauf', options: ['Puls peripher tastbar', 'Tachykardie', 'Bradykardie', 'blass', 'kalt', 'unauffaellig', 'Starke Blutung', 'geroetet', 'schweissig', 'erwaermt'], x: 61, y: 18, w: 22 },
+  { path: 'assessment_primary.bewusstsein', label: 'Bewusstsein', options: ['Wach', 'Getruebt', 'Bewusstlos', 'Agitiert'], x: 84, y: 18, w: 14 },
+  { path: 'vitals.pupillen.R', label: 'Pupille R', options: ['eng', 'mittel', 'weit', 'entrundet', 'prompte Lichtreflexe', 'verlangsamte Lichtreflexe', 'lichtstarr'], x: 2, y: 61.5, w: 14 },
+  { path: 'vitals.pupillen.L', label: 'Pupille L', options: ['eng', 'mittel', 'weit', 'entrundet', 'prompte Lichtreflexe', 'verlangsamte Lichtreflexe', 'lichtstarr'], x: 17, y: 61.5, w: 14 },
+  { path: 'vitals.puls_rhythmus', label: 'Pulsrhythmus', options: ['rhy.', 'arrhy.'], x: 32, y: 70, w: 14, single: true },
+  { path: 'measures.herz_kreislauf.massnahmen', label: 'Herz / Kreislauf', options: ['peripherven. Zugang / IO Zugang', 'Herzdruckmassage', 'Defibrillation/Kardiov.', 'Schrittmacher extern'], x: 2, y: 78, w: 22 },
+  { path: 'measures.atmung.massnahmen', label: 'Atmung', options: ['Absaugen', 'oral', 'nasal', 'endotracheal', 'Intubation', 'Wendltubus', 'Guedeltubus', 'Larynxtubus', 'endotracheal (oral)', 'endotracheal (nasal)', 'Beatmung', 'assistiert', 'kontrolliert', 'manuell', 'maschinell'], x: 25, y: 78, w: 26 },
+  { path: 'measures.weitere_massnahmen.massnahmen', label: 'Weitere Maßnahmen', options: ['Verband', 'Blutstillung', 'Abbinden', 'Lagerung', '12-Abl.-EKG', 'Monitoring', 'HF', 'RR', 'SpO2', '4-Abl.-EKG', 'etCO2', 'Schienung', 'HWS', 'Spineboard', 'Vakuummatratze', 'Extremitaet'], x: 52, y: 78, w: 18 },
+  { path: 'disposition.abschlussart', label: 'Abschlussart', options: ['Uebergabe:', 'Revers (Ruecks.)', 'Belassung', 'Entf. selbstst. o. Revers'], x: 2, y: 94.5, w: 25, single: true },
+  { path: 'disposition.klinischer_zustand', label: 'Klinischer Zustand', options: ['verbessert', 'gleich', 'verschlechtert'], x: 73, y: 94.5, w: 9, single: true },
+  { path: 'disposition.angehoerige_in_kenntnis', label: 'Angehörige in Kenntnis', options: ['durch RD', 'durch Polizei', 'durch Pat/andere'], x: 73, y: 97, w: 9, single: true },
+];
+
+const measureFields: FieldConfig[] = [
+  { path: 'measures.herz_kreislauf.dnr', label: 'DNr.', x: 2, y: 90.5, w: 4, h: 2 },
+  { path: 'measures.herz_kreislauf.anzahl', label: 'Anzahl', x: 6.5, y: 90.5, w: 4, h: 2 },
+  { path: 'measures.herz_kreislauf.letzte_joule', label: 'letzte Joule', x: 11, y: 90.5, w: 5, h: 2 },
+  { path: 'measures.herz_kreislauf.freq', label: 'Freq.', x: 16.5, y: 90.5, w: 4, h: 2 },
+  { path: 'measures.herz_kreislauf.mv', label: 'mV', x: 21, y: 90.5, w: 3, h: 2 },
+  { path: 'measures.atmung.dnr', label: 'DNr.', x: 25, y: 90.5, w: 5, h: 2 },
+  { path: 'measures.atmung.af', label: 'AF', x: 30.5, y: 90.5, w: 5, h: 2 },
+  { path: 'measures.atmung.amv', label: 'AMV', x: 36, y: 90.5, w: 6, h: 2 },
+  { path: 'measures.atmung.peep', label: 'PEEP', x: 42.5, y: 90.5, w: 7, h: 2 },
+  { path: 'measures.weitere_massnahmen.abbinden_zeit', label: 'Abbinden Zeit', x: 52, y: 91.5, w: 8, h: 2, type: 'time' },
+  { path: 'measures.weitere_massnahmen.lagerung_art', label: 'Lagerung Art', x: 61, y: 91.5, w: 9, h: 2 },
 ];
 
 const zones = [
@@ -63,6 +118,7 @@ const zones = [
       <app-my-access />
       <div class="protocol-toolbar">
         <strong>Patient {{ patientId() }}</strong>
+        <span>{{ status() === 'finalized' ? 'Finalisiert' : 'Entwurf' }}</span>
         <span>{{ saveState() }}</span>
         <button type="button" (click)="save('draft')">Speichern</button>
         <button type="button" (click)="save('finalized')">Finalisieren</button>
@@ -98,49 +154,107 @@ const zones = [
             </label>
           }
 
-          <div class="protocol-checks naca">
-            <strong>NACA</strong>
-            @for (item of naca; track item) {
-              <label><input type="checkbox" [checked]="has('assessment_primary.naca', item)" (change)="setSingle('assessment_primary.naca', item, $any($event.target).checked)"> {{ item }}</label>
-            }
+          @for (group of optionGroups; track group.path) {
+            <fieldset
+              class="protocol-checks protocol-option-group"
+              [class.primary-options]="group.path.startsWith('assessment_primary')"
+              [class.footer-options]="group.path.startsWith('disposition')"
+              [style.left.%]="group.x"
+              [style.top.%]="group.y"
+              [style.width.%]="group.w">
+              <legend>{{ group.label }}</legend>
+              @for (item of group.options; track item) {
+                <label>
+                  <input
+                    [type]="group.single ? 'radio' : 'checkbox'"
+                    [name]="group.path"
+                    [checked]="has(group.path, item) || value(group.path) === item"
+                    (change)="toggleOption(group, item, $any($event.target).checked)">
+                  {{ displayOption(item) }}
+                </label>
+              }
+            </fieldset>
+          }
+
+          @for (field of measureFields; track field.path) {
+            <label class="protocol-field" [style.left.%]="field.x" [style.top.%]="field.y" [style.width.%]="field.w" [style.height.%]="field.h">
+              <span>{{ field.label }}</span>
+              <input [type]="field.type || 'text'" [value]="value(field.path)" (input)="setValue(field.path, $any($event.target).value)">
+            </label>
+          }
+
+          <div class="protocol-emergency-time">
+            <strong>Angen. Notfallzeit</strong>
+            <input type="time" [value]="value('assessment_primary.angen_notfallzeit.zeit')" (input)="setValue('assessment_primary.angen_notfallzeit.zeit', $any($event.target).value)">
+            <label><input type="checkbox" [checked]="value('assessment_primary.angen_notfallzeit.gt24h')" (change)="setValue('assessment_primary.angen_notfallzeit.gt24h', $any($event.target).checked)"> &gt;24h</label>
+            <label><input type="checkbox" [checked]="value('assessment_primary.angen_notfallzeit.unbekannt')" (change)="setValue('assessment_primary.angen_notfallzeit.unbekannt', $any($event.target).checked)"> unbekannt</label>
           </div>
 
           <div class="protocol-checks vitals">
             <strong>GCS / Messwerte</strong>
-            <label>Augen <input type="number" min="1" max="4" [value]="value('vitals.gcs_augenoeffnen')" (input)="setNumber('vitals.gcs_augenoeffnen', $any($event.target).value)"></label>
-            <label>Verbal <input type="number" min="1" max="5" [value]="value('vitals.gcs_verbale_reaktion')" (input)="setNumber('vitals.gcs_verbale_reaktion', $any($event.target).value)"></label>
-            <label>Motorik <input type="number" min="1" max="6" [value]="value('vitals.gcs_motorische_reaktion')" (input)="setNumber('vitals.gcs_motorische_reaktion', $any($event.target).value)"></label>
+            <label>Augen
+              <select [value]="value('vitals.gcs_augenoeffnen')" (change)="setNumber('vitals.gcs_augenoeffnen', $any($event.target).value)">
+                <option value="">-</option>
+                <option value="4">4 spontan</option><option value="3">3 auf Ansprache</option><option value="2">2 auf Schmerz</option><option value="1">1 keine</option>
+              </select>
+            </label>
+            <label>Verbal
+              <select [value]="value('vitals.gcs_verbale_reaktion')" (change)="setNumber('vitals.gcs_verbale_reaktion', $any($event.target).value)">
+                <option value="">-</option>
+                <option value="5">5 orientiert</option><option value="4">4 verwirrt</option><option value="3">3 Worte</option><option value="2">2 Laute</option><option value="1">1 keine</option>
+              </select>
+            </label>
+            <label>Motorik
+              <select [value]="value('vitals.gcs_motorische_reaktion')" (change)="setNumber('vitals.gcs_motorische_reaktion', $any($event.target).value)">
+                <option value="">-</option>
+                <option value="6">6 befolgt</option><option value="5">5 lokalisiert</option><option value="4">4 Abwehr</option><option value="3">3 Beugung</option><option value="2">2 Streckung</option><option value="1">1 keine</option>
+              </select>
+            </label>
             <span>GCS-Summe: {{ value('vitals.gcs_summe') || '-' }}</span>
-            <label>RR <input [value]="value('vitals.rr')" (input)="setValue('vitals.rr', $any($event.target).value)"></label>
-            <label>Puls <input [value]="value('vitals.puls')" (input)="setValue('vitals.puls', $any($event.target).value)"></label>
-            <label>SpO2 <input [value]="value('vitals.spo2')" (input)="setValue('vitals.spo2', $any($event.target).value)"></label>
+            <label>Schmerz <input type="number" min="0" max="10" [value]="value('vitals.schmerz')" (input)="setNumber('vitals.schmerz', $any($event.target).value)"></label>
+            <label><input type="checkbox" [checked]="value('vitals.schmerz_nicht_beurteilbar')" (change)="setValue('vitals.schmerz_nicht_beurteilbar', $any($event.target).checked)"> nicht beurteilbar</label>
+            <label><input type="checkbox" [checked]="value('vitals.keine')" (change)="setValue('vitals.keine', $any($event.target).checked)"> keine Messwerte</label>
+            @for (vital of vitalFields; track vital.path) {
+              <label>{{ vital.label }} <input [value]="value(vital.path)" (input)="setValue(vital.path, $any($event.target).value)"></label>
+            }
           </div>
 
           <div class="medication-grid">
             <strong>Akutmedikation</strong>
             @for (row of medicationRows; track row) {
-              <input placeholder="Medikament" [value]="med(row, 'medikament')" (input)="setMed(row, 'medikament', $any($event.target).value)">
-              <input placeholder="Dosis" [value]="med(row, 'dosis')" (input)="setMed(row, 'dosis', $any($event.target).value)">
-              <input placeholder="Art" [value]="med(row, 'art')" (input)="setMed(row, 'art', $any($event.target).value)">
-              <input placeholder="Uhrzeit" [value]="med(row, 'uhrzeit')" (input)="setMed(row, 'uhrzeit', $any($event.target).value)">
+              <div class="medication-entry">
+                <span>{{ row + 1 }}</span>
+                <input aria-label="Medikament" placeholder="Medikament" [value]="med(row, 'medikament')" (input)="setMed(row, 'medikament', $any($event.target).value)">
+                <input aria-label="Dosis" placeholder="Dosis" [value]="med(row, 'dosis')" (input)="setMed(row, 'dosis', $any($event.target).value)">
+                <input aria-label="Art" placeholder="Art" [value]="med(row, 'art')" (input)="setMed(row, 'art', $any($event.target).value)">
+                <input aria-label="Uhrzeit" type="time" [value]="med(row, 'uhrzeit')" (input)="setMed(row, 'uhrzeit', $any($event.target).value)">
+              </div>
             }
           </div>
 
           <div class="protocol-bodymap" (click)="addMarker($event)">
-            <div class="body-silhouette">Körperkarte</div>
-            @for (marker of form().assessment_secondary.bodymap; track marker.x + '-' + marker.y + '-' + marker.marker) {
-              <button type="button" class="body-marker" [style.left.%]="marker.x" [style.top.%]="marker.y" (click)="removeMarker(marker); $event.stopPropagation()">{{ marker.marker[0].toUpperCase() }}</button>
+            <div class="protocol-bodymap-toolbar" (click)="$event.stopPropagation()">
+              <button type="button" [class.active]="bodyView() === 'front'" (click)="bodyView.set('front')">Vorne</button>
+              <button type="button" [class.active]="bodyView() === 'back'" (click)="bodyView.set('back')">Hinten</button>
+              <select aria-label="Markertyp" [value]="markerType()" (change)="markerType.set($any($event.target).value)">
+                @for (type of markerTypes; track type) {
+                  <option [value]="type">{{ displayOption(type) }}</option>
+                }
+              </select>
+            </div>
+            <svg class="protocol-silhouette" viewBox="0 0 240 560" role="img" [attr.aria-label]="bodyView() === 'front' ? 'Körper vorne' : 'Körper hinten'">
+              <circle cx="120" cy="48" r="30" />
+              <path d="M91 82 Q120 70 149 82 L164 225 Q150 260 148 300 L158 510 L132 510 L120 312 L108 510 L82 510 L92 300 Q90 260 76 225 Z" />
+              <path d="M82 95 L42 250 L62 256 L100 142 M158 95 L198 250 L178 256 L140 142" />
+            </svg>
+            @for (marker of visibleMarkers(); track $index) {
+              <button type="button" class="body-marker" [style.left.%]="marker.x" [style.top.%]="marker.y" [attr.aria-label]="displayOption(marker.marker) + ' entfernen'" (click)="removeMarker(marker); $event.stopPropagation()">{{ marker.marker[0].toUpperCase() }}</button>
             }
-            <select [value]="markerType()" (change)="markerType.set($any($event.target).value)">
-              @for (type of markerTypes; track type) {
-                <option [value]="type">{{ type }}</option>
-              }
-            </select>
           </div>
 
           <div class="signature-box">
             <span>Unterschrift - Entlass. San/NA</span>
-            <canvas #signatureCanvas width="300" height="90" (pointerdown)="drawSignature($event)" (pointermove)="drawSignature($event)"></canvas>
+            <canvas #signatureCanvas width="300" height="90" (pointerdown)="startSignature($event)" (pointermove)="drawSignature($event)" (pointerup)="endSignature()" (pointerleave)="endSignature()"></canvas>
             <button type="button" (click)="clearSignature()">Löschen</button>
           </div>
         </div>
@@ -153,15 +267,25 @@ const zones = [
     </section>
   `,
 })
-export class AmbulanzprotokollPage {
+export class AmbulanzprotokollPage implements OnDestroy {
   protected readonly fields = fields;
+  protected readonly measureFields = measureFields;
+  protected readonly optionGroups = optionGroups;
   protected readonly zones = zones;
-  protected readonly naca = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'];
   protected readonly medicationRows = Array.from({ length: 8 }, (_, index) => index);
+  protected readonly vitalFields = [
+    { path: 'vitals.rr', label: 'RR' }, { path: 'vitals.puls', label: 'Puls' },
+    { path: 'vitals.af', label: 'AF' }, { path: 'vitals.temp', label: 'Temp.' },
+    { path: 'vitals.bz', label: 'BZ' }, { path: 'vitals.etco2', label: 'etCO2' },
+    { path: 'vitals.spo2', label: 'SpO2' }, { path: 'vitals.o2_l_min', label: 'O2 l/min' },
+    { path: 'vitals.o2_beatmung_l_min', label: 'O2 Beatmung l/min' },
+  ];
   protected readonly markerTypes: MarkerType[] = ['wunde', 'fraktur', 'schmerz', 'prellung', 'amputation', 'verbrennung', 'luxation'];
   protected readonly markerType = signal<MarkerType>('wunde');
+  protected readonly bodyView = signal<'front' | 'back'>('front');
   protected readonly form = signal<FormState>(defaultState());
   protected readonly status = signal<Status>('draft');
+  protected readonly finalizedAt = signal<string | null>(null);
   protected readonly saveState = signal('lokal bereit');
   protected readonly warnings = signal<string[]>([]);
 
@@ -172,16 +296,21 @@ export class AmbulanzprotokollPage {
   private readonly responderState = inject(ResponderStateStore);
   private readonly signatureCanvas = viewChild<ElementRef<HTMLCanvasElement>>('signatureCanvas');
   private autosaveTimer = 0;
+  private signaturePoint: { x: number; y: number } | null = null;
 
   constructor() {
     this.load();
+  }
+
+  ngOnDestroy(): void {
+    window.clearTimeout(this.autosaveTimer);
   }
 
   protected patientId(): number {
     return Number(this.route.snapshot.paramMap.get('patientId') ?? this.responderState.patient()?.id ?? 0);
   }
 
-  protected value(path: string): string | number {
+  protected value(path: string): any {
     return getPath(this.form(), path) ?? '';
   }
 
@@ -196,11 +325,27 @@ export class AmbulanzprotokollPage {
   }
 
   protected has(path: string, item: string): boolean {
-    return Array.isArray(getPath(this.form(), path)) && getPath(this.form(), path).includes(item);
+    const value = getPath(this.form(), path);
+    return Array.isArray(value) && value.includes(item);
   }
 
-  protected setSingle(path: string, item: string, checked: boolean): void {
-    this.setValue(path, checked ? [item] : []);
+  protected toggleOption(group: OptionGroup, item: string, checked: boolean): void {
+    if (group.single) {
+      this.setValue(group.path, group.path === 'patient.geschlecht' ? (checked ? item : null) : (checked ? [item] : []));
+      return;
+    }
+    const current = Array.isArray(getPath(this.form(), group.path)) ? getPath(this.form(), group.path) as string[] : [];
+    this.setValue(group.path, checked ? [...new Set([...current, item])] : current.filter((value) => value !== item));
+  }
+
+  protected displayOption(value: string): string {
+    const labels: Record<string, string> = {
+      d: 'divers', m: 'männlich', w: 'weiblich', gefaehrdet: 'gefährdet',
+      unauffaellig: 'unauffällig', Atemgeraeusche: 'Atemgeräusche', Getruebt: 'Getrübt',
+      geroetet: 'gerötet', schweissig: 'schweißig', erwaermt: 'erwärmt',
+      Extremitaet: 'Extremität', Uebergabe: 'Übergabe', Ruecks: 'Rücks.',
+    };
+    return Object.entries(labels).reduce((label, [source, replacement]) => label.replace(source, replacement), value);
   }
 
   protected med(index: number, key: 'medikament' | 'dosis' | 'art' | 'uhrzeit'): string {
@@ -226,10 +371,14 @@ export class AmbulanzprotokollPage {
       ...current,
       assessment_secondary: {
         ...current.assessment_secondary,
-        bodymap: [...current.assessment_secondary.bodymap, { view: 'front', marker: this.markerType(), x, y }],
+        bodymap: [...current.assessment_secondary.bodymap, { view: this.bodyView(), marker: this.markerType(), x, y }],
       },
     }));
     this.queueAutosave();
+  }
+
+  protected visibleMarkers(): FormState['assessment_secondary']['bodymap'] {
+    return this.form().assessment_secondary.bodymap.filter((marker) => marker.view === this.bodyView());
   }
 
   protected removeMarker(marker: FormState['assessment_secondary']['bodymap'][number]): void {
@@ -243,8 +392,17 @@ export class AmbulanzprotokollPage {
     this.queueAutosave();
   }
 
+  protected startSignature(event: PointerEvent): void {
+    const canvas = this.signatureCanvas()?.nativeElement;
+    if (!canvas) {
+      return;
+    }
+    canvas.setPointerCapture(event.pointerId);
+    this.signaturePoint = this.signatureCoordinates(event, canvas);
+  }
+
   protected drawSignature(event: PointerEvent): void {
-    if (event.buttons !== 1) {
+    if (event.buttons !== 1 || !this.signaturePoint) {
       return;
     }
 
@@ -254,12 +412,20 @@ export class AmbulanzprotokollPage {
       return;
     }
 
-    const box = canvas.getBoundingClientRect();
-    context.fillStyle = '#111111';
+    const point = this.signatureCoordinates(event, canvas);
+    context.strokeStyle = '#111111';
+    context.lineWidth = 2;
+    context.lineCap = 'round';
     context.beginPath();
-    context.arc(event.clientX - box.left, event.clientY - box.top, 2, 0, Math.PI * 2);
-    context.fill();
+    context.moveTo(this.signaturePoint.x, this.signaturePoint.y);
+    context.lineTo(point.x, point.y);
+    context.stroke();
+    this.signaturePoint = point;
     this.setValue('signatures.entlass_san_na', canvas.toDataURL('image/png'));
+  }
+
+  protected endSignature(): void {
+    this.signaturePoint = null;
   }
 
   protected clearSignature(): void {
@@ -269,16 +435,23 @@ export class AmbulanzprotokollPage {
   }
 
   protected save(status: Status): void {
-    const warnings = this.collectWarnings();
-    this.warnings.set(warnings);
+    this.warnings.set(status === 'finalized' ? this.collectWarnings() : []);
     this.status.set(status);
+    if (status === 'finalized' && !this.finalizedAt()) {
+      this.finalizedAt.set(new Date().toISOString());
+    }
     const patientId = this.patientId();
     const formState = this.form();
     const body = { status, formState: formState as unknown as Record<string, never>, clientUpdatedAt: new Date().toISOString() };
     this.saveLocal(status, formState);
+    this.persistRemote(patientId, body);
+  }
+
+  private persistRemote(patientId: number, body: { status: Status; formState: Record<string, never>; clientUpdatedAt: string }): void {
     this.api.saveProtokollPage1(patientId, body).subscribe({
       next: (record) => {
         this.status.set(record.status);
+        this.finalizedAt.set(record.finalizedAt ?? this.finalizedAt());
         this.saveState.set(`server ${new Date(record.updatedAt).toLocaleTimeString()}`);
       },
       error: () => {
@@ -312,7 +485,9 @@ export class AmbulanzprotokollPage {
     if (local) {
       this.form.set(local.formState as FormState);
       this.status.set(local.status);
+      this.finalizedAt.set(local.finalizedAt ?? null);
       this.saveState.set(`lokal ${new Date(local.updatedAt).toLocaleTimeString()}`);
+      this.restoreSignature();
     }
 
     this.api.getProtokollPage1(patientId).subscribe({
@@ -322,7 +497,9 @@ export class AmbulanzprotokollPage {
         if (!local || serverTime >= localTime) {
           this.form.set(mergeState(defaultState(), record.formState as Partial<FormState>));
           this.status.set(record.status);
+          this.finalizedAt.set(record.finalizedAt ?? null);
           this.saveState.set(`server ${new Date(record.updatedAt).toLocaleTimeString()}`);
+          this.restoreSignature();
         }
       },
       error: () => undefined,
@@ -330,8 +507,12 @@ export class AmbulanzprotokollPage {
   }
 
   private queueAutosave(): void {
+    this.saveLocal(this.status(), this.form());
     window.clearTimeout(this.autosaveTimer);
-    this.autosaveTimer = window.setTimeout(() => this.saveLocal(this.status(), this.form()), 350);
+    this.autosaveTimer = window.setTimeout(() => {
+      const body = { status: this.status(), formState: this.form() as unknown as Record<string, never>, clientUpdatedAt: new Date().toISOString() };
+      this.persistRemote(this.patientId(), body);
+    }, 800);
   }
 
   private saveLocal(status: Status, formState: FormState): void {
@@ -340,7 +521,7 @@ export class AmbulanzprotokollPage {
       sceneId: this.responderState.scene()?.id,
       status,
       updatedAt: new Date().toISOString(),
-      finalizedAt: status === 'finalized' ? new Date().toISOString() : null,
+      finalizedAt: status === 'finalized' ? (this.finalizedAt() ?? new Date().toISOString()) : null,
       formState,
     };
     this.drafts.put(record).then(() => this.saveState.set(`lokal ${new Date(record.updatedAt).toLocaleTimeString()}`));
@@ -357,7 +538,32 @@ export class AmbulanzprotokollPage {
     if (!this.form().patient.familienname && !this.form().patient.vorname) {
       warnings.push('Patientenname ist leer.');
     }
+    if (!this.form().incident.datum) {
+      warnings.push('Datum ist leer.');
+    }
+    if (!this.form().incident.ambulanzort) {
+      warnings.push('Ambulanzort ist leer.');
+    }
     return warnings;
+  }
+
+  private signatureCoordinates(event: PointerEvent, canvas: HTMLCanvasElement): { x: number; y: number } {
+    const box = canvas.getBoundingClientRect();
+    return {
+      x: (event.clientX - box.left) * canvas.width / box.width,
+      y: (event.clientY - box.top) * canvas.height / box.height,
+    };
+  }
+
+  private restoreSignature(): void {
+    const source = this.form().signatures.entlass_san_na;
+    const canvas = this.signatureCanvas()?.nativeElement;
+    if (!source || !canvas) {
+      return;
+    }
+    const image = new Image();
+    image.onload = () => canvas.getContext('2d')?.drawImage(image, 0, 0, canvas.width, canvas.height);
+    image.src = source;
   }
 }
 
@@ -390,5 +596,15 @@ function setPath<T>(source: T, path: string, value: unknown): T {
 }
 
 function mergeState<T>(base: T, partial: Partial<T>): T {
-  return { ...base, ...partial };
+  if (!partial || typeof partial !== 'object' || Array.isArray(partial)) {
+    return (partial ?? base) as T;
+  }
+  const result: Record<string, unknown> = structuredClone(base as Record<string, unknown>);
+  for (const [key, value] of Object.entries(partial)) {
+    const existing = result[key];
+    result[key] = value && typeof value === 'object' && !Array.isArray(value)
+      ? mergeState(existing ?? {}, value)
+      : value;
+  }
+  return result as T;
 }
