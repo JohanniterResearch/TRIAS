@@ -77,6 +77,7 @@ builder.Services
 
 builder.Services.AddAuthorization(options => options.AddAmbulanzsystemPolicies());
 builder.Services.AddAmbulanzsystemRateLimiting();
+builder.Services.AddAmbulanzsystemCors(builder.Configuration, builder.Environment);
 
 var app = builder.Build();
 
@@ -95,8 +96,15 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
+if (app.Environment.IsProduction())
+{
+    app.UseHsts();
+}
 
+app.UseHttpsRedirection();
+app.UseAmbulanzsystemSecurityHeaders();
+
+app.UseCors(CorsPolicy.Name);
 app.UseMiddleware<MetricsMiddleware>();
 app.UseRateLimiter();
 app.UseAuthentication();
