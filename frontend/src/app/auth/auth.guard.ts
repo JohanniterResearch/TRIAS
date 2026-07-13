@@ -1,9 +1,8 @@
 import { inject } from '@angular/core';
 import { CanActivateFn, Router } from '@angular/router';
-import { catchError, from, map, switchMap } from 'rxjs';
+import { catchError, map, of, switchMap, throwError } from 'rxjs';
 
-import { ApiClient } from '../api/api-client';
-import { LocalWorkspaceService } from '../sync/local-workspace.service';
+import { ApiClient, isAuthFailure } from '../api/api-client';
 import { AuthStore, GuardRequirement, TokenType } from './auth.store';
 
 export function requireSession(requirement: GuardRequirement): CanActivateFn {
@@ -11,7 +10,6 @@ export function requireSession(requirement: GuardRequirement): CanActivateFn {
     const auth = inject(AuthStore);
     const api = inject(ApiClient);
     const router = inject(Router);
-    const localWorkspace = inject(LocalWorkspaceService);
 
     if (!auth.hasPersistedSession(requirement)) {
       return router.createUrlTree([loginRoute(requirement)]);
@@ -27,21 +25,33 @@ export function requireSession(requirement: GuardRequirement): CanActivateFn {
 
     const validate = () => api.validateToken().pipe(map((result) => validationResult(auth, requirement, result.role as TokenType | undefined)));
     return validate().pipe(
-      catchError(() => api.refreshSession().pipe(switchMap(validate))),
-      catchError(() => from(localWorkspace.clear()).pipe(map(() => {
-        auth.clear();
-        return router.createUrlTree([loginRoute(requirement)]);
-      }))),
+      catchError((error) => {
+        if (!isAuthFailure(error)) {
+          return of(true);
+        }
+        return error.status === 401 ? api.refreshSession().pipe(switchMap(validate)) : throwError(() => error);
+      }),
+      catchError((error) => {
+        if (!isAuthFailure(error)) {
+          return of(true);
+        }
+        auth.markExpired();
+        return of(router.createUrlTree([loginRoute(requirement)]));
+      }),
     );
   };
 }
 
-export const guestOnly: CanActivateFn = () => {
+export const guestOnly: CanActivateFn = (_route, state) => {
   const auth = inject(AuthStore);
   const router = inject(Router);
   const session = auth.activeSession();
   if (!session) {
     return true;
+  }
+  if (session.expired) {
+    const requiredLogin = session.tokenType === 'admin' || session.tokenType === 'leitstelle' ? '/admin/login' : '/login';
+    return state.url === requiredLogin ? true : router.createUrlTree([requiredLogin]);
   }
   if (session.requiresPasswordChange) {
     return router.createUrlTree(['/change-password']);

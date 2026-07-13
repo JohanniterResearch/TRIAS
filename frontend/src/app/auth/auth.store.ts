@@ -11,6 +11,7 @@ export interface Session {
   eventSceneId?: number;
   username?: string;
   requiresPasswordChange?: boolean;
+  expired?: boolean;
   savedAt: string;
 }
 
@@ -29,7 +30,7 @@ export class AuthStore {
   readonly adminSession = computed(() => this.state().admin);
   readonly responderSession = computed(() => this.state().responder);
   readonly activeSession = computed(() => this.state().responder ?? this.state().admin);
-  readonly bearerToken = computed(() => this.state().responder?.token ?? this.state().admin?.token ?? null);
+  readonly bearerToken = computed(() => this.activeSession()?.expired ? null : this.activeSession()?.token ?? null);
   readonly requiresPasswordChange = computed(() => this.activeSession()?.requiresPasswordChange === true);
 
   tokenExpiresAt(): number | null {
@@ -59,6 +60,17 @@ export class AuthStore {
     this.save(emptyState);
   }
 
+  markExpired(): void {
+    const active = this.activeSession();
+    if (!active) {
+      return;
+    }
+    const expired = { ...active, expired: true };
+    this.save(active.tokenType === 'admin' || active.tokenType === 'leitstelle'
+      ? { admin: expired, responder: null }
+      : { admin: null, responder: expired });
+  }
+
   refreshTokens(token: string, refreshToken: string): void {
     const active = this.activeSession();
     if (!active) {
@@ -76,7 +88,7 @@ export class AuthStore {
   }
 
   sessionMatches(session: Session | null, requirement: GuardRequirement): boolean {
-    if (!session) {
+    if (!session || session.expired) {
       return false;
     }
 

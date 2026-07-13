@@ -7,6 +7,16 @@ import { AuthStore } from '../auth/auth.store';
 import { SyncStatusService } from '../sync/sync-status.service';
 import type { paths } from './openapi-types';
 
+export class ApiRequestError extends Error {
+  constructor(readonly status: number, readonly body: unknown) {
+    super(`API request failed with status ${status}`);
+  }
+}
+
+export function isAuthFailure(error: unknown): error is ApiRequestError {
+  return error instanceof ApiRequestError && (error.status === 401 || error.status === 403);
+}
+
 type QrLoginRequest =
   paths['/api/qr-login']['post']['requestBody']['content']['application/json'];
 type QrLoginResponse =
@@ -307,11 +317,11 @@ export class ApiClient {
     }));
   }
 
-  private unwrap<T>(request: Promise<{ data?: T; error?: unknown }>): Observable<T> {
+  private unwrap<T>(request: Promise<{ data?: T; error?: unknown; response: Response }>): Observable<T> {
     return from(request).pipe(
-      map(({ data, error }) => {
+      map(({ data, error, response }) => {
         if (error) {
-          throw error;
+          throw new ApiRequestError(response.status, error);
         }
 
         return data as T;

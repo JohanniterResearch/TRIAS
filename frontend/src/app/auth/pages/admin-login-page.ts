@@ -63,6 +63,13 @@ export class AdminLoginPage {
           return;
         }
 
+        const expired = this.auth.activeSession();
+        if (expired?.expired && expired.username !== credentials.username) {
+          this.busy = false;
+          this.error = 'Die abgelaufene Sitzung muss mit demselben Benutzer fortgesetzt werden.';
+          return;
+        }
+
         this.auth.setAdminSession({
           token: result.token,
           refreshToken: result.refreshToken,

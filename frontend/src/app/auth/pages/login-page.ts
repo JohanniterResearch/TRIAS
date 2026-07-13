@@ -3,6 +3,7 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 
 import { ApiClient } from '../../api/api-client';
+import { OfflineQueueService } from '../../sync/offline-queue.service';
 import { QrScanner } from '../../shared/qr-scanner';
 import { AuthStore } from '../auth.store';
 import { DevAccess } from '../components/dev-access';
@@ -64,11 +65,18 @@ export class LoginPage {
   private readonly api = inject(ApiClient);
   private readonly auth = inject(AuthStore);
   private readonly router = inject(Router);
+  private readonly offlineQueue = inject(OfflineQueueService);
 
   protected submitQr(qrCode = this.qrForm.controls.qrCode.value): void {
     this.run(() => this.api.qrLogin(qrCode.trim()).subscribe({
       next: (result) => {
+        const expired = this.auth.activeSession();
+        if (expired?.expired && (expired.tokenType !== 'qr' || expired.eventSceneId !== result.eventSceneId)) {
+          this.fail('Die ausstehende Sitzung muss mit demselben QR Zugang fortgesetzt werden.');
+          return;
+        }
         this.auth.setResponderSession({ token: result.token, tokenType: 'qr', eventSceneId: result.eventSceneId });
+        this.offlineQueue.flush().catch(() => undefined);
         this.router.navigateByUrl('/role-selection');
       },
       error: () => this.fail('QR Code ist ungültig oder abgelaufen.'),
@@ -78,12 +86,19 @@ export class LoginPage {
   protected submitUser(): void {
     this.run(() => this.api.userLogin(this.userForm.getRawValue()).subscribe({
       next: (result) => {
+        const username = this.userForm.controls.username.value;
+        const expired = this.auth.activeSession();
+        if (expired?.expired && (expired.tokenType !== 'user' || expired.username !== username)) {
+          this.fail('Die ausstehende Sitzung muss mit demselben Benutzer fortgesetzt werden.');
+          return;
+        }
         this.auth.setResponderSession({
           token: result.token,
           refreshToken: result.refreshToken,
           tokenType: 'user',
-          username: this.userForm.controls.username.value,
+          username,
         });
+        this.offlineQueue.flush().catch(() => undefined);
         this.router.navigateByUrl('/role-selection');
       },
       error: () => this.fail('Benutzername oder Passwort ist ungültig.'),

@@ -14,6 +14,15 @@ test('persisted forced-password sessions cannot enter protected routes', async (
   await expect(page).toHaveURL(/\/change-password$/);
 });
 
+test('temporary validation outage preserves the local workspace', async ({ page }) => {
+  await loginResponder(page);
+  await page.evaluate(() => localStorage.setItem('ambulanzsystem.triage-drafts.v1', JSON.stringify({ 1: { notes: 'retain' } })));
+  await page.route('**/api/validate-token', (route) => route.abort('connectionfailed'));
+  await page.goto('/scan-patient');
+  await expect(page).toHaveURL(/\/scan-patient$/);
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('ambulanzsystem.triage-drafts.v1'))).toContain('retain');
+});
+
 async function loginResponder(page: Page): Promise<void> {
   await page.goto('/login');
   await page.getByRole('button', { name: 'DEV Responder' }).click();
