@@ -103,6 +103,7 @@ if (app.Environment.IsProduction())
 
 app.UseHttpsRedirection();
 app.UseAmbulanzsystemSecurityHeaders();
+app.UseAmbulanzsystemCorrelationId();
 
 app.UseCors(CorsPolicy.Name);
 app.UseMiddleware<MetricsMiddleware>();
