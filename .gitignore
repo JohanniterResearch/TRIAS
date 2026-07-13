@@ -8,4 +8,7 @@ obj/
 .codex
 .agents
 
-/docs
+# ignore /docs contents (not the dir itself, or the pilot negation below can never match)
+/docs/*
+# pilot handoff deliverables are shared via the repo, unlike the rest of /docs
+!/docs/pilot/
