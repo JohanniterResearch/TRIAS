@@ -68,6 +68,7 @@ export class AdminLoginPage {
           refreshToken: result.refreshToken,
           tokenType: result.role,
           username: credentials.username,
+          requiresPasswordChange: result.requiresPasswordChange,
         });
         this.router.navigateByUrl(result.requiresPasswordChange ? '/change-password' : '/admin');
       },

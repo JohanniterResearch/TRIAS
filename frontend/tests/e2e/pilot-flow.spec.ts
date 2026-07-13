@@ -2,6 +2,18 @@ import { expect, Page, test } from '@playwright/test';
 
 test.describe.configure({ mode: 'serial' });
 
+test('persisted forced-password sessions cannot enter protected routes', async ({ page }) => {
+  await page.goto('/admin/login');
+  await page.getByLabel('Benutzername').fill('admin');
+  await page.getByLabel('Passwort').fill('dev-admin-password');
+  await page.getByRole('button', { name: 'Einloggen' }).click();
+  await expect(page).toHaveURL(/\/change-password$/);
+  await page.goto('/admin');
+  await expect(page).toHaveURL(/\/change-password$/);
+  await page.goto('/admin/login');
+  await expect(page).toHaveURL(/\/change-password$/);
+});
+
 async function loginResponder(page: Page): Promise<void> {
   await page.goto('/login');
   await page.getByRole('button', { name: 'DEV Responder' }).click();

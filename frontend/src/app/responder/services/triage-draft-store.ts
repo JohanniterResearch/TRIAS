@@ -14,6 +14,10 @@ export class TriageDraftStore {
     localStorage.setItem(key, JSON.stringify(all));
   }
 
+  clear(): void {
+    localStorage.removeItem(key);
+  }
+
   private all(): Record<number, Record<string, unknown>> {
     try {
       return JSON.parse(localStorage.getItem(key) ?? '{}');

@@ -8,6 +8,7 @@ export class SyncStatusService {
   readonly lastSuccessfulSync = signal<string | null>(localStorage.getItem(lastSyncKey));
   readonly pendingCount = signal(0);
   readonly oldestPendingAt = signal<string | null>(null);
+  readonly queueReady = signal(false);
 
   constructor() {
     window.addEventListener('online', () => this.online.set(true));
@@ -23,5 +24,6 @@ export class SyncStatusService {
   setPending(count: number, oldestAt: string | null): void {
     this.pendingCount.set(count);
     this.oldestPendingAt.set(oldestAt);
+    this.queueReady.set(true);
   }
 }

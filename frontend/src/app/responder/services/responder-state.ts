@@ -32,6 +32,11 @@ export class ResponderStateStore {
     this.save({ ...this.state(), patient: null });
   }
 
+  clear(): void {
+    this.state.set(emptyState);
+    localStorage.removeItem(storageKey);
+  }
+
   private save(state: ResponderState): void {
     this.state.set(state);
     localStorage.setItem(storageKey, JSON.stringify(state));

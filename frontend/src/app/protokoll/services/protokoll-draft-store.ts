@@ -22,6 +22,10 @@ export class ProtokollDraftStore {
     await this.withStore('readwrite', (store) => request(store.put(record)));
   }
 
+  async clear(): Promise<void> {
+    await this.withStore('readwrite', (store) => request(store.clear()));
+  }
+
   private async withStore<T>(mode: IDBTransactionMode, work: (store: IDBObjectStore) => Promise<T>): Promise<T> {
     const db = await this.open();
     try {

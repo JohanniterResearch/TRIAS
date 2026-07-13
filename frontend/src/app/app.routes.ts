@@ -3,7 +3,7 @@ import { Routes } from '@angular/router';
 import { AdminLoginPage } from './auth/pages/admin-login-page';
 import { ChangePasswordPage } from './auth/pages/change-password-page';
 import { LoginPage } from './auth/pages/login-page';
-import { requireSession } from './auth/auth.guard';
+import { guestOnly, requireSession } from './auth/auth.guard';
 import { PagePlaceholder } from './pages/page-placeholder';
 import { BodyMapPage } from './responder/pages/body-map-page';
 import { PatientChoicePage } from './responder/pages/patient-choice-page';
@@ -15,10 +15,12 @@ export const routes: Routes = [
   {
     path: 'login',
     component: LoginPage,
+    canActivate: [guestOnly],
   },
   {
     path: 'admin/login',
     component: AdminLoginPage,
+    canActivate: [guestOnly],
   },
   {
     path: 'change-password',

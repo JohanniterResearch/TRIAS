@@ -77,6 +77,12 @@ export class OfflineQueueService {
     }
   }
 
+  async clear(): Promise<void> {
+    await this.withStore(queueStore, 'readwrite', (store) => request(store.clear()));
+    await this.withStore(mapStore, 'readwrite', (store) => request(store.clear()));
+    await this.refreshStatus();
+  }
+
   private async replay(item: QueueItem): Promise<boolean> {
     if (item.type === 'manual-patient') {
       const patient = await this.request<Patient>('/api/persons/manual', 'POST', item.body);

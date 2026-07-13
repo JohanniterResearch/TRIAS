@@ -10,6 +10,7 @@ export interface Session {
   tokenType: TokenType;
   eventSceneId?: number;
   username?: string;
+  requiresPasswordChange?: boolean;
   savedAt: string;
 }
 
@@ -29,6 +30,22 @@ export class AuthStore {
   readonly responderSession = computed(() => this.state().responder);
   readonly activeSession = computed(() => this.state().responder ?? this.state().admin);
   readonly bearerToken = computed(() => this.state().responder?.token ?? this.state().admin?.token ?? null);
+  readonly requiresPasswordChange = computed(() => this.activeSession()?.requiresPasswordChange === true);
+
+  tokenExpiresAt(): number | null {
+    const token = this.bearerToken();
+    if (!token) {
+      return null;
+    }
+
+    try {
+      const encoded = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+      const payload = JSON.parse(atob(encoded.padEnd(Math.ceil(encoded.length / 4) * 4, '=')));
+      return typeof payload.exp === 'number' ? payload.exp * 1000 : null;
+    } catch {
+      return null;
+    }
+  }
 
   setAdminSession(session: Omit<Session, 'savedAt'>): void {
     this.save({ admin: this.withSavedAt(session), responder: null });
