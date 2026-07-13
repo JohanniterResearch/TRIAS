@@ -15,6 +15,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<QrCodePatient> QrCodePatients => Set<QrCodePatient>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<AmbulanzprotokollPage1> AmbulanzprotokollPage1s => Set<AmbulanzprotokollPage1>();
+    public DbSet<AmbulanzprotokollExport> AmbulanzprotokollExports => Set<AmbulanzprotokollExport>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
     protected override void OnModelCreating(ModelBuilder b)
@@ -51,6 +52,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         b.Entity<Patient>(e =>
         {
             e.Property(x => x.Triagefarbe).HasMaxLength(16);
+            e.Property(x => x.FieldTimestampsJson).HasColumnType("jsonb").HasColumnName("field_timestamps");
             e.ToTable(t => t.HasCheckConstraint(
                 "ck_patients_triagefarbe",
                 "triagefarbe IN ('rot','gelb','gruen','schwarz')")); // D5: ASCII canonical, 'blau' invalid in V1
@@ -93,9 +95,20 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         b.Entity<AmbulanzprotokollPage1>(e =>
         {
             e.Property(x => x.FormStateJson).HasColumnType("jsonb").HasColumnName("form_state");
+            e.Property(x => x.FieldTimestampsJson).HasColumnType("jsonb").HasColumnName("field_timestamps");
             e.Property(x => x.Status).HasMaxLength(32);
             e.HasIndex(x => x.PatientId).IsUnique();
             e.HasOne(x => x.Patient).WithOne(x => x.AmbulanzprotokollPage1).HasForeignKey<AmbulanzprotokollPage1>(x => x.PatientId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<AmbulanzprotokollExport>(e =>
+        {
+            e.Property(x => x.FormStateSnapshotJson).HasColumnType("jsonb").HasColumnName("form_state_snapshot");
+            e.Property(x => x.Status).HasMaxLength(32);
+            e.Property(x => x.Watermark).IsRequired();
+            e.HasIndex(x => x.PatientId);
+            e.HasOne(x => x.Patient).WithMany().HasForeignKey(x => x.PatientId).OnDelete(DeleteBehavior.Restrict);
+            // Archive rows are never updated or deleted (FR-DOC-14) — no update path exists in code.
         });
 
         b.Entity<AuditLog>(e =>

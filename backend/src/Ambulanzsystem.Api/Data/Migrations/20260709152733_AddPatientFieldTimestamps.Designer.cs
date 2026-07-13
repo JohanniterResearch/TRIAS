@@ -3,6 +3,7 @@ using System;
 using Ambulanzsystem.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Ambulanzsystem.Api.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260709152733_AddPatientFieldTimestamps")]
+    partial class AddPatientFieldTimestamps
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -21,66 +24,6 @@ namespace Ambulanzsystem.Api.Data.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
-
-            modelBuilder.Entity("Ambulanzsystem.Api.Domain.AmbulanzprotokollExport", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<int?>("ActorId")
-                        .HasColumnType("integer")
-                        .HasColumnName("actor_id");
-
-                    b.Property<string>("ActorRole")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("actor_role");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<string>("FormStateSnapshotJson")
-                        .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("form_state_snapshot");
-
-                    b.Property<DateTime>("GeneratedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("generated_at");
-
-                    b.Property<int>("PatientId")
-                        .HasColumnType("integer")
-                        .HasColumnName("patient_id");
-
-                    b.Property<string>("SchemaVersion")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("schema_version");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)")
-                        .HasColumnName("status");
-
-                    b.Property<string>("Watermark")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("watermark");
-
-                    b.HasKey("Id")
-                        .HasName("pk_ambulanzprotokoll_exports");
-
-                    b.HasIndex("PatientId")
-                        .HasDatabaseName("ix_ambulanzprotokoll_exports_patient_id");
-
-                    b.ToTable("ambulanzprotokoll_exports", (string)null);
-                });
 
             modelBuilder.Entity("Ambulanzsystem.Api.Domain.AmbulanzprotokollPage1", b =>
                 {
@@ -94,11 +37,6 @@ namespace Ambulanzsystem.Api.Data.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
-
-                    b.Property<string>("FieldTimestampsJson")
-                        .IsRequired()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("field_timestamps");
 
                     b.Property<DateTime?>("FinalizedAt")
                         .HasColumnType("timestamp with time zone")
@@ -730,18 +668,6 @@ namespace Ambulanzsystem.Api.Data.Migrations
                         .HasDatabaseName("ix_users_username");
 
                     b.ToTable("users", (string)null);
-                });
-
-            modelBuilder.Entity("Ambulanzsystem.Api.Domain.AmbulanzprotokollExport", b =>
-                {
-                    b.HasOne("Ambulanzsystem.Api.Domain.Patient", "Patient")
-                        .WithMany()
-                        .HasForeignKey("PatientId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_ambulanzprotokoll_exports_patients_patient_id");
-
-                    b.Navigation("Patient");
                 });
 
             modelBuilder.Entity("Ambulanzsystem.Api.Domain.AmbulanzprotokollPage1", b =>

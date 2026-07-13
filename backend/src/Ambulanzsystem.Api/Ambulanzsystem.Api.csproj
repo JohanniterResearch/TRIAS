@@ -23,6 +23,7 @@
     <!-- contract/body-regions.json is the single source of truth (see docs/plan/master-plan.md Stage 0).
          Linked, not copied by hand, so the backend can never drift from the contract. -->
     <Content Include="../../../contract/body-regions.json" Link="Contract/body-regions.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../../contract/schemas/ambulanzprotokoll-page1-default.json" Link="Contract/ambulanzprotokoll-page1-default.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

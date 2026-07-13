@@ -29,6 +29,12 @@ public class Patient : AuditableEntity
     public string? IndoorLocation { get; set; }
     public DateTime? LocationUpdatedAt { get; set; }
 
+    // Per-field last-write-wins timestamps (NFR-SAFE-08/09): field name -> effective write time.
+    // A write only applies to a field if its clientUpdatedAt (or now, if none given) is >= the
+    // stored timestamp for that exact field — so a stale offline sync can never clobber a newer
+    // value, and untouched fields are never affected by someone else's later write.
+    public string FieldTimestampsJson { get; set; } = "{}";
+
     // Direct scene link (review finding #6) — not derived only via QrCodePatient, so manual patients
     // are scene-linked too.
     public int OperationSceneId { get; set; }

@@ -695,6 +695,7 @@ paths:
                 source: { type: string, enum: [gps, manual], default: gps }
                 accuracyMeters: { type: number, description: Reported GPS accuracy; UI flags >10m as unreliable (FR-LOC-07). }
                 indoorLocation: { type: string, description: "Optional free text: tent/sector/room/floor/treatment bay (FR-LOC-08)." }
+                clientUpdatedAt: { type: string, format: date-time, description: Client-side write timestamp for offline replay merge (NFR-SAFE-08/09), consistent with update-triage-color. }
       responses:
         "200":
           description: Updated patient.
