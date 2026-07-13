@@ -35,6 +35,8 @@ public/body-regions.json
 .sass-cache/
 /connect.lock
 /coverage
+/playwright-report
+/test-results
 /libpeerconnection.log
 testem.log
 /typings

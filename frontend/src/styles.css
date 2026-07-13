@@ -354,11 +354,11 @@ button:disabled {
   background: #ffffff;
   border: 2px solid #52606d;
   border-radius: 50%;
-  min-height: 2rem;
+  min-height: 2.75rem;
   padding: 0;
   position: absolute;
   transform: translate(-50%, -50%);
-  width: 2rem;
+  width: 2.75rem;
 }
 
 .body-region-map button.marked {

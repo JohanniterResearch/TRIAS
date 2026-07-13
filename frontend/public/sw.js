@@ -1,13 +1,12 @@
-const cacheName = 'ambulanzsystem-shell-v2';
+const cacheName = 'ambulanzsystem-shell-v3';
 const shell = ['/', '/index.html', '/favicon.ico'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(cacheName).then(async (cache) => {
     const index = await fetch('/index.html');
-    const html = await index.clone().text();
-    const assets = [...html.matchAll(/(?:src|href)="([^"?#]+\.(?:js|css))"/g)].map((match) => match[1]);
+    const manifest = await fetch('/shell-manifest.json').then((response) => response.json());
     await cache.put('/index.html', index);
-    await cache.addAll([...new Set([...shell.filter((path) => path !== '/index.html'), ...assets])]);
+    await cache.addAll([...new Set([...shell.filter((path) => path !== '/index.html'), ...manifest])]);
   }));
   self.skipWaiting();
 });

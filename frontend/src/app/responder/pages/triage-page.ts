@@ -19,7 +19,6 @@ type TriageColor = components['schemas']['TriageColor'];
   template: `
     <section class="responder-page">
       <app-my-access />
-      <p class="eyebrow">Record-only START</p>
       <h1>Triage erfassen</h1>
 
       @if (!state.patient()) {

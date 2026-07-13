@@ -23,7 +23,6 @@ type TriageColor = components['schemas']['TriageColor'];
       <app-my-access />
       <header class="situation-header">
         <div>
-          <p class="eyebrow">F6 Lagebild</p>
           <h1>Situation Room</h1>
         </div>
         <form [formGroup]="sceneForm" (ngSubmit)="setScene()" class="scene-select">

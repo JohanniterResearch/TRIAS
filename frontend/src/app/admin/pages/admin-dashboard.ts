@@ -18,7 +18,6 @@ type LoginQrCode = components['schemas']['LoginQrCode'];
     <section class="admin-page">
       <app-my-access />
       <header>
-        <p class="eyebrow">F3 Admin</p>
         <h1>Administration</h1>
       </header>
 
