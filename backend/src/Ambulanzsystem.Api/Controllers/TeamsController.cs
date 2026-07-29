@@ -31,6 +31,8 @@ public class TeamsController(AppDbContext db, SceneNotifier notifier) : Controll
             return BadRequest(new ErrorResponse("operationSceneId does not exist."));
         }
 
+        if (!await SceneAccess.CanAccessAsync(User, db, request.OperationSceneId)) return Forbid();
+
         var team = new Team { OperationSceneId = request.OperationSceneId, Name = request.Name };
         db.Teams.Add(team);
         await db.SaveChangesAsync();
@@ -44,6 +46,8 @@ public class TeamsController(AppDbContext db, SceneNotifier notifier) : Controll
     [Authorize(Policy = AuthPolicies.TriageWrite)]
     public async Task<IActionResult> List([FromQuery] int operationSceneId)
     {
+        if (!await SceneAccess.CanAccessAsync(User, db, operationSceneId)) return Forbid();
+
         var teams = await db.Teams
             .Where(t => t.OperationSceneId == operationSceneId)
             .OrderBy(t => t.Name)
@@ -61,6 +65,7 @@ public class TeamsController(AppDbContext db, SceneNotifier notifier) : Controll
     {
         var team = await db.Teams.FindAsync(id);
         if (team is null) return NotFound();
+        if (!await SceneAccess.CanAccessAsync(User, db, team.OperationSceneId)) return Forbid();
 
         if (body.TryGetProperty("status", out var statusEl))
         {

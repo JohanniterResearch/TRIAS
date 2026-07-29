@@ -21,6 +21,8 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
     [AuditRead("patient_list", AuditIdSource.Query, "operationSceneId")]
     public async Task<IActionResult> List([FromQuery] int operationSceneId)
     {
+        if (!await SceneAccess.CanAccessAsync(User, db, operationSceneId)) return Forbid();
+
         var patients = await db.Patients
             .Include(p => p.QrCodePatient)
             .Where(p => p.OperationSceneId == operationSceneId)
@@ -36,6 +38,8 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
     [Authorize(Policy = AuthPolicies.TriageWrite)]
     public async Task<IActionResult> VerifyQrCode(VerifyQrCodeRequest request)
     {
+        if (!await SceneAccess.CanAccessAsync(User, db, request.OperationSceneId)) return Forbid();
+
         await using var tx = await db.Database.BeginTransactionAsync();
 
         var code = await db.QrCodePatients
@@ -51,6 +55,12 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
         if (code.PatientId is int existingPatientId)
         {
             var existing = await db.Patients.Include(p => p.QrCodePatient).FirstAsync(p => p.Id == existingPatientId);
+            if (!await SceneAccess.CanAccessAsync(User, db, existing.OperationSceneId))
+            {
+                await tx.RollbackAsync();
+                return Forbid();
+            }
+
             var previousScene = existing.OperationSceneId;
             existing.OperationSceneId = request.OperationSceneId;
             code.OperationSceneId = request.OperationSceneId;
@@ -95,9 +105,12 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
             var existing = await db.Patients.FirstOrDefaultAsync(p => p.ClientGeneratedId == cgid);
             if (existing is not null)
             {
+                if (!await SceneAccess.CanAccessAsync(User, db, existing.OperationSceneId)) return Forbid();
                 return Ok(PatientResponse.From(existing)); // idempotent replay (D3)
             }
         }
+
+        if (!await SceneAccess.CanAccessAsync(User, db, request.OperationSceneId)) return Forbid();
 
         var patient = new Patient
         {
@@ -126,6 +139,7 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
     {
         var patient = await db.Patients.Include(p => p.QrCodePatient).FirstOrDefaultAsync(p => p.Id == id);
         if (patient is null) return NotFound();
+        if (!await SceneAccess.CanAccessAsync(User, db, patient.OperationSceneId)) return Forbid();
 
         var newCode = await db.QrCodePatients.FirstOrDefaultAsync(c => c.QrToken == request.qr_code);
         if (newCode is null) return NotFound(new ErrorResponse("Unknown QR code."));
@@ -156,6 +170,7 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
     {
         var patient = await db.Patients.FindAsync(id);
         if (patient is null) return NotFound();
+        if (!await SceneAccess.CanAccessAsync(User, db, patient.OperationSceneId)) return Forbid();
 
         DateTime? clientUpdatedAt = body.TryGetProperty("clientUpdatedAt", out var tsEl) && tsEl.ValueKind != JsonValueKind.Null
             ? tsEl.GetDateTime()
@@ -233,6 +248,7 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
     {
         var patient = await db.Patients.FindAsync(id);
         if (patient is null) return NotFound();
+        if (!await SceneAccess.CanAccessAsync(User, db, patient.OperationSceneId)) return Forbid();
 
         var merge = FieldMerge.Load(patient.FieldTimestampsJson);
         if (merge.TryApply("atmung", request.ClientUpdatedAt, DateTime.UtcNow))
@@ -253,6 +269,7 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
     {
         var patient = await db.Patients.FindAsync(id);
         if (patient is null) return NotFound();
+        if (!await SceneAccess.CanAccessAsync(User, db, patient.OperationSceneId)) return Forbid();
 
         var merge = FieldMerge.Load(patient.FieldTimestampsJson);
         if (merge.TryApply("location", request.ClientUpdatedAt, DateTime.UtcNow))
@@ -280,7 +297,9 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
     [AuditRead("patient", AuditIdSource.Route, "id")]
     public async Task<IActionResult> TriageHistory(int id)
     {
-        if (!await db.Patients.AnyAsync(p => p.Id == id)) return NotFound();
+        var patient = await db.Patients.FindAsync(id);
+        if (patient is null) return NotFound();
+        if (!await SceneAccess.CanAccessAsync(User, db, patient.OperationSceneId)) return Forbid();
 
         var triageFields = new[] { "triagefarbe", "atmung", "blutung", "radialispuls", "transport", "dringend", "kontaminiert" };
 

@@ -23,6 +23,7 @@ public class AmbulanzprotokollController(AppDbContext db, AuditService audit, Sc
     {
         var patient = await db.Patients.FindAsync(patientId);
         if (patient is null) return NotFound();
+        if (!await SceneAccess.CanAccessAsync(User, db, patient.OperationSceneId)) return Forbid();
 
         var record = await db.AmbulanzprotokollPage1s.FirstOrDefaultAsync(r => r.PatientId == patientId);
 
@@ -42,6 +43,7 @@ public class AmbulanzprotokollController(AppDbContext db, AuditService audit, Sc
     {
         var patient = await db.Patients.FindAsync(patientId);
         if (patient is null) return NotFound();
+        if (!await SceneAccess.CanAccessAsync(User, db, patient.OperationSceneId)) return Forbid();
 
         if (request.Status is not ("draft" or "finalized"))
         {
@@ -110,6 +112,7 @@ public class AmbulanzprotokollController(AppDbContext db, AuditService audit, Sc
     {
         var patient = await db.Patients.Include(p => p.OperationScene).FirstOrDefaultAsync(p => p.Id == patientId);
         if (patient is null) return NotFound();
+        if (!await SceneAccess.CanAccessAsync(User, db, patient.OperationSceneId)) return Forbid();
 
         var record = await db.AmbulanzprotokollPage1s.FirstOrDefaultAsync(r => r.PatientId == patientId);
         var formStateJson = FormStateMerge.WithDefaults(record?.FormStateJson ?? "{}");
