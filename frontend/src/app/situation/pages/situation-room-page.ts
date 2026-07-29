@@ -178,7 +178,7 @@ export class SituationRoomPage implements AfterViewInit, OnDestroy {
   });
 
   protected readonly sceneForm = inject(FormBuilder).nonNullable.group({
-    sceneId: [inject(ResponderStateStore).scene()?.id ?? null as number | null, Validators.required],
+    sceneId: [Number(history.state.sceneId) || inject(ResponderStateStore).scene()?.id || null, Validators.required],
   });
   protected readonly teamForm = inject(FormBuilder).nonNullable.group({
     name: ['', Validators.required],

@@ -17,6 +17,10 @@ export default defineConfig({
       command: 'dotnet run --project src/Ambulanzsystem.Api/Ambulanzsystem.Api.csproj --launch-profile http',
       cwd: '../backend',
       url: 'http://127.0.0.1:5042/health',
+      env: {
+        ...process.env,
+        ConnectionStrings__Default: 'Host=localhost;Port=5435;Database=ambulanzsystem;Username=pls;Password=dev-only-password',
+      },
       reuseExistingServer: true,
       timeout: 120_000,
     },

@@ -6,7 +6,7 @@ test('persisted forced-password sessions cannot enter protected routes', async (
   await page.goto('/admin/login');
   await page.getByLabel('Benutzername').fill('admin');
   await page.getByLabel('Passwort').fill('dev-admin-password');
-  await page.getByRole('button', { name: 'Einloggen' }).click();
+  await page.getByRole('button', { name: 'Einloggen', exact: true }).click();
   await expect(page).toHaveURL(/\/change-password$/);
   await page.goto('/admin');
   await expect(page).toHaveURL(/\/change-password$/);
@@ -15,7 +15,16 @@ test('persisted forced-password sessions cannot enter protected routes', async (
 });
 
 test('temporary validation outage preserves the local workspace', async ({ page }) => {
-  await loginResponder(page);
+  await page.goto('/login');
+  await page.evaluate(() => localStorage.setItem('ambulanzsystem.auth.v1', JSON.stringify({
+    admin: null,
+    responder: {
+      token: 'temporarily-unverifiable',
+      tokenType: 'user',
+      username: 'offline-responder',
+      savedAt: new Date().toISOString(),
+    },
+  })));
   await page.evaluate(() => localStorage.setItem('ambulanzsystem.triage-drafts.v1', JSON.stringify({ 1: { notes: 'retain' } })));
   await page.route('**/api/validate-token', (route) => route.abort('connectionfailed'));
   await page.goto('/scan-patient');
@@ -27,6 +36,28 @@ async function loginResponder(page: Page): Promise<void> {
   await page.goto('/login');
   await page.getByRole('button', { name: 'DEV Responder' }).click();
   await expect(page).toHaveURL(/\/role-selection$/);
+}
+
+async function loginRealResponder(page: Page): Promise<void> {
+  await page.goto('/login');
+  await page.getByLabel('Benutzername').fill('responder-demo');
+  await page.getByLabel('Passwort').fill('responder-demo');
+  await page.getByRole('button', { name: 'Mit Passwort einloggen' }).click();
+  await expect(page).toHaveURL(/\/role-selection$/);
+}
+
+async function loginDevAdmin(page: Page): Promise<string> {
+  await page.goto('/admin/login');
+  await page.getByRole('button', { name: 'DEV Admin' }).click();
+  await expect(page).toHaveURL(/\/admin$/);
+  return await activeToken(page);
+}
+
+async function activeToken(page: Page): Promise<string> {
+  return await page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('ambulanzsystem.auth.v1') ?? '{}');
+    return state.responder?.token ?? state.admin?.token ?? '';
+  });
 }
 
 async function selectFirstScene(page: Page): Promise<number> {
@@ -134,4 +165,169 @@ test('situation room receives a triage update from another browser', async ({ br
 
   await responder.close();
   await command.close();
+});
+
+test('real responder refresh and self-cancel revoke the live session', async ({ page }) => {
+  await loginRealResponder(page);
+  const session = await page.evaluate(() => JSON.parse(localStorage.getItem('ambulanzsystem.auth.v1')!).responder);
+  const refresh = await page.request.post('http://127.0.0.1:5042/api/refresh-token', {
+    data: { refreshToken: session.refreshToken },
+  });
+  expect(refresh.ok()).toBeTruthy();
+
+  await page.getByRole('button', { name: 'Zugang beenden' }).click();
+  await expect(page).toHaveURL(/\/login$/);
+  const validation = await page.request.post('http://127.0.0.1:5042/api/validate-token', {
+    headers: { Authorization: `Bearer ${session.token}` },
+  });
+  expect(validation.status()).toBe(401);
+});
+
+test('generated responder QR logs in and patient QR scanning stays idempotent', async ({ browser }) => {
+  const admin = await browser.newContext();
+  const adminPage = await admin.newPage();
+  const adminToken = await loginDevAdmin(adminPage);
+  const loginQrResponse = await adminPage.request.post('http://127.0.0.1:5042/api/login-qr-codes/generate', {
+    headers: { Authorization: `Bearer ${adminToken}` },
+    data: { eventSceneId: 1, number: 1, expiresInHours: 12 },
+  });
+  expect(loginQrResponse.ok()).toBeTruthy();
+  const [loginQr] = await loginQrResponse.json();
+  const patientQrResponse = await adminPage.request.post('http://127.0.0.1:5042/api/patient-qr-codes/generate', {
+    headers: { Authorization: `Bearer ${adminToken}` },
+    data: { number: 2 },
+  });
+  expect(patientQrResponse.ok()).toBeTruthy();
+  const [patientQr, replacementQr] = await patientQrResponse.json();
+
+  const responder = await browser.newContext();
+  const page = await responder.newPage();
+  await page.goto('/login');
+  await page.getByLabel('QR Code', { exact: true }).fill(loginQr.qrToken);
+  await page.getByRole('button', { name: 'Einloggen', exact: true }).click();
+  await expect(page).toHaveURL(/\/role-selection$/);
+  const qrSessionToken = await activeToken(page);
+  await selectFirstScene(page);
+  await page.getByLabel('Patient QR Code').fill(patientQr);
+  await page.getByRole('button', { name: 'QR prüfen' }).click();
+  await expect(page).toHaveURL(/\/patient\/\d+$/);
+  const firstId = page.url().split('/').at(-1);
+
+  await page.goto('/scan-patient');
+  await page.getByLabel('Patient QR Code').fill(patientQr);
+  await page.getByRole('button', { name: 'QR prüfen' }).click();
+  await expect(page).toHaveURL(new RegExp(`/patient/${firstId}$`));
+  await page.getByLabel('Neuer QR Code').fill(replacementQr);
+  await page.getByRole('button', { name: 'QR ersetzen' }).click();
+  await expect(page.getByText('QR Code wurde ersetzt.')).toBeVisible();
+  const revokeQr = await adminPage.request.post(`http://127.0.0.1:5042/api/login-qr-codes/${loginQr.id}/revoke`, {
+    headers: { Authorization: `Bearer ${adminToken}` },
+  });
+  expect(revokeQr.status()).toBe(204);
+  const revokedQrValidation = await page.request.post('http://127.0.0.1:5042/api/validate-token', {
+    headers: { Authorization: `Bearer ${qrSessionToken}` },
+  });
+  expect(revokedQrValidation.status()).toBe(401);
+
+  await responder.close();
+  await admin.close();
+});
+
+test('Admin completes the forced password change', async ({ browser }) => {
+  const changedPassword = 'PilotChanged123!';
+
+  const forced = await browser.newContext();
+  const forcedPage = await forced.newPage();
+  await forcedPage.goto('/admin/login');
+  await forcedPage.getByLabel('Benutzername').fill('admin');
+  await forcedPage.getByLabel('Passwort').fill('dev-admin-password');
+  await forcedPage.getByRole('button', { name: 'Einloggen' }).click();
+  await expect(forcedPage).toHaveURL(/\/change-password$/);
+  await forcedPage.getByLabel('Aktuelles Passwort').fill('dev-admin-password');
+  await forcedPage.getByLabel('Neues Passwort').fill(changedPassword);
+  await forcedPage.getByRole('button', { name: 'Passwort ändern' }).click();
+  await expect(forcedPage).toHaveURL(/\/admin\/login$/);
+  await forcedPage.getByLabel('Benutzername').fill('admin');
+  await forcedPage.getByLabel('Passwort').fill(changedPassword);
+  await forcedPage.getByRole('button', { name: 'Einloggen' }).click();
+  await expect(forcedPage).toHaveURL(/\/admin$/);
+  await forcedPage.goto('/situation-room');
+  await forcedPage.getByLabel('Szene ID').fill('1');
+  await forcedPage.getByRole('button', { name: 'Öffnen' }).click();
+  const rows = forcedPage.locator('tbody tr');
+  await expect(rows.first()).toBeVisible();
+
+  await rows.first().click();
+  await expect(forcedPage).toHaveURL(/\/ambulanzprotokoll\/\d+$/);
+  await forcedPage.getByRole('button', { name: 'Zurück' }).click();
+  await expect(forcedPage).toHaveURL(/\/situation-room$/);
+
+  await expect(rows.first()).toBeVisible();
+  await rows.first().press('Enter');
+  await expect(forcedPage).toHaveURL(/\/ambulanzprotokoll\/\d+$/);
+  await forcedPage.getByRole('button', { name: 'Zurück' }).click();
+  await expect(forcedPage.locator('.leaflet-interactive').first()).toBeVisible();
+  await forcedPage.locator('.leaflet-interactive').first().dispatchEvent('click');
+  await expect(forcedPage).toHaveURL(/\/ambulanzprotokoll\/\d+$/);
+  await forced.close();
+});
+
+test('offline provisional identity and drafts survive reload and bind to the real patient', async ({ context, page }) => {
+  await loginResponder(page);
+  await selectFirstScene(page);
+  const sourcePatient = await createManualPatient(page);
+  await page.getByRole('link', { name: 'Beides starten' }).click();
+  await page.getByRole('button', { name: 'Weiter zum Ambulanzprotokoll' }).click();
+  await page.getByLabel('Ambulanzort').fill('Draft source');
+  await page.waitForTimeout(900);
+  await page.getByRole('link', { name: 'Ambulanzsystem' }).click();
+  await expect(page).toHaveURL(/\/role-selection$/);
+  await selectFirstScene(page);
+  await context.setOffline(true);
+  const provisional = await createManualPatient(page);
+  await page.evaluate(async ({ sourceId, provisionalId }) => {
+    localStorage.setItem('ambulanzsystem.triage-drafts.v1', JSON.stringify({
+      [provisionalId]: { triageColor: 'gelb', clientUpdatedAt: new Date().toISOString() },
+    }));
+    await new Promise<void>((resolve, reject) => {
+      const open = indexedDB.open('ambulanzsystem-protokoll', 1);
+      open.onsuccess = () => {
+        const db = open.result;
+        const transaction = db.transaction('page1-drafts', 'readwrite');
+        const store = transaction.objectStore('page1-drafts');
+        const get = store.get(Number(sourceId));
+        get.onsuccess = () => {
+          const draft = get.result;
+          draft.patientId = Number(provisionalId);
+          draft.formState.incident.ambulanzort = 'Offline Pilot';
+          draft.updatedAt = new Date().toISOString();
+          store.put(draft);
+        };
+        transaction.oncomplete = () => {
+          db.close();
+          resolve();
+        };
+        transaction.onerror = () => reject(transaction.error);
+      };
+      open.onerror = () => reject(open.error);
+    });
+  }, { sourceId: sourcePatient.id, provisionalId: provisional.id });
+
+  await context.setOffline(false);
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await expect.poll(async () => await page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('ambulanzsystem.responder.v1') ?? '{}');
+    return state.patient?.id ?? 0;
+  }), { timeout: 15_000 }).toBeGreaterThan(0);
+  await expect.poll(async () => await page.evaluate((id) => {
+    const drafts = JSON.parse(localStorage.getItem('ambulanzsystem.triage-drafts.v1') ?? '{}');
+    return drafts[id] === undefined;
+  }, provisional.id)).toBeTruthy();
+
+  const restarted = await context.newPage();
+  await restarted.goto('/triage');
+  await expect(restarted.getByRole('heading', { name: 'Triage erfassen' })).toBeVisible();
+  await restarted.getByRole('link', { name: 'Ambulanzprotokoll' }).click();
+  await expect(restarted).toHaveURL(/\/ambulanzprotokoll\/\d+$/);
+  await expect(restarted.getByLabel('Ambulanzort')).toHaveValue('Offline Pilot');
 });
