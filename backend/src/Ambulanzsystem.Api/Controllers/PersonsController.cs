@@ -8,6 +8,7 @@ using Ambulanzsystem.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace Ambulanzsystem.Api.Controllers;
 
@@ -78,7 +79,7 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
             return Ok(new VerifyQrResult(PatientResponse.From(existing), false));
         }
 
-        var patient = new Patient { OperationSceneId = request.OperationSceneId };
+        var patient = new Patient { OperationSceneId = request.OperationSceneId, UserIdUser = User.OwnerUserId() };
         db.Patients.Add(patient);
         await db.SaveChangesAsync(); // assigns patient.Id
 
@@ -118,20 +119,47 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
             Name = request.Name,
             ClientGeneratedId = request.ClientGeneratedId,
             HumanReadableId = await HumanReadableIdGenerator.GenerateUniqueAsync(db),
+            UserIdUser = User.OwnerUserId(),
         };
 
+        // Patient + Body + audit row commit as one all-or-nothing unit (rebuild spec transactional
+        // requirement). The unique index on ClientGeneratedId is the concurrency authority for
+        // offline replay (D3): if two devices race to replay the same client-generated id, the
+        // loser's insert hits that constraint here rather than throwing past the caller — we
+        // discard the failed tracked insert and return the winner's already-committed row instead.
+        await using var tx = await db.Database.BeginTransactionAsync();
+
         db.Patients.Add(patient);
-        await db.SaveChangesAsync();
+        try
+        {
+            await db.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex) when (request.ClientGeneratedId is not null && IsClientGeneratedIdConflict(ex))
+        {
+            await tx.RollbackAsync();
+            db.Entry(patient).State = EntityState.Detached;
+
+            var winner = await db.Patients.FirstAsync(p => p.ClientGeneratedId == request.ClientGeneratedId);
+            if (!await SceneAccess.CanAccessAsync(User, db, winner.OperationSceneId)) return Forbid();
+            return Ok(PatientResponse.From(winner));
+        }
 
         db.Bodies.Add(new Body { PatientId = patient.Id, BodyPartsJson = BodyRegions.DefaultBodyPartsJson() });
         audit.LogFieldWrite(User, "patient", patient.Id, patient.Id, "created", null, "manual");
         await db.SaveChangesAsync();
+        await tx.CommitAsync();
 
         await PublishPatientUpdatedAsync(patient, true);
         await PublishScenePatientListAsync(patient.OperationSceneId);
 
         return StatusCode(201, PatientResponse.From(patient));
     }
+
+    // 23505 is postgres's unique-violation SQL state; the only unique constraint that can fire on
+    // a fresh Patient insert is the ClientGeneratedId index (see AppDbContext), so any unique
+    // violation here is by construction a concurrent replay of the same offline-generated id.
+    private static bool IsClientGeneratedIdConflict(DbUpdateException ex) =>
+        ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation };
 
     [HttpPost("persons/{id:int}/reassign-qr-code")]
     [Authorize(Policy = AuthPolicies.TriageWrite)]

@@ -30,6 +30,40 @@ public class AmbulanzprotokollTests(WebApplicationFactory<Program> factory) : IC
         return patient.id;
     }
 
+    private async Task<int> CreateSceneAsync(HttpClient admin)
+    {
+        var scene = (await (await admin.PostAsJsonAsync("/api/operation-scenes", new { name = $"protokoll-{Guid.NewGuid():N}" }))
+            .Content.ReadFromJsonAsync<SceneBearing>())!;
+        return scene.id;
+    }
+
+    private async Task<(HttpClient client, int userId)> ResponderClientAsync(HttpClient admin)
+    {
+        var username = $"responder-{Guid.NewGuid():N}";
+        var create = await admin.PostAsJsonAsync("/api/users", new { username, password = "somePassword1", role = "responder" });
+        create.EnsureSuccessStatusCode();
+        var userId = (await create.Content.ReadFromJsonAsync<PatientBearing>())!.id; // {id} shape shared with PatientBearing
+
+        var client = factory.CreateClient();
+        var token = await TestAuth.LoginAsync(client, "/api/user-login", username, "somePassword1");
+        client.DefaultRequestHeaders.Authorization = new("Bearer", token);
+        return (client, userId);
+    }
+
+    private record QrCode(string qrToken);
+
+    private async Task<HttpClient> QrSessionClientAsync(HttpClient admin, int eventSceneId)
+    {
+        var genRes = await admin.PostAsJsonAsync("/api/login-qr-codes/generate", new { number = 1, eventSceneId });
+        var codes = await genRes.Content.ReadFromJsonAsync<QrCode[]>();
+
+        var qrClient = factory.CreateClient();
+        var login = await qrClient.PostAsJsonAsync("/api/qr-login", new { qr_code = codes![0].qrToken });
+        var token = (await login.Content.ReadFromJsonAsync<TokenBearing>())!.token!;
+        qrClient.DefaultRequestHeaders.Authorization = new("Bearer", token);
+        return qrClient;
+    }
+
     [Fact]
     public async Task Merge_EmptyFieldInNewSave_NeverDeletesNonEmptyExistingValue()
     {
@@ -103,5 +137,88 @@ public class AmbulanzprotokollTests(WebApplicationFactory<Program> factory) : IC
             new { status = "finalized", formState = new { } });
 
         Assert.Equal(HttpStatusCode.Forbidden, attempt.StatusCode);
+    }
+
+    [Fact]
+    public async Task ResponderWhoCreatedPatient_CanCorrectOwnFinalizedRecord()
+    {
+        var admin = await AdminClientAsync();
+        var sceneId = await CreateSceneAsync(admin);
+        var (responder, _) = await ResponderClientAsync(admin);
+
+        var create = await responder.PostAsJsonAsync("/api/persons/manual", new { operationSceneId = sceneId });
+        create.EnsureSuccessStatusCode();
+        var patientId = (await create.Content.ReadFromJsonAsync<PatientBearing>())!.id;
+
+        var finalize = await responder.PutAsJsonAsync($"/api/persons/{patientId}/ambulanzprotokoll-page1",
+            new { status = "finalized", formState = new { } });
+        finalize.EnsureSuccessStatusCode();
+
+        // Same responder owns the patient it created — must be able to correct its own
+        // finalized record, not just Admin/Leitstelle (FR-DOC-11/12).
+        var correction = await responder.PutAsJsonAsync($"/api/persons/{patientId}/ambulanzprotokoll-page1",
+            new { status = "finalized", formState = new { patient = new { familienname = "Corrected" } } });
+
+        Assert.Equal(HttpStatusCode.OK, correction.StatusCode);
+    }
+
+    [Fact]
+    public async Task AnotherResponder_CannotCorrectFinalizedRecord_OwnedByADifferentResponder()
+    {
+        var admin = await AdminClientAsync();
+        var sceneId = await CreateSceneAsync(admin);
+        var (owner, _) = await ResponderClientAsync(admin);
+        var (other, _) = await ResponderClientAsync(admin);
+
+        var create = await owner.PostAsJsonAsync("/api/persons/manual", new { operationSceneId = sceneId });
+        create.EnsureSuccessStatusCode();
+        var patientId = (await create.Content.ReadFromJsonAsync<PatientBearing>())!.id;
+
+        var finalize = await owner.PutAsJsonAsync($"/api/persons/{patientId}/ambulanzprotokoll-page1",
+            new { status = "finalized", formState = new { } });
+        finalize.EnsureSuccessStatusCode();
+
+        var attempt = await other.PutAsJsonAsync($"/api/persons/{patientId}/ambulanzprotokoll-page1",
+            new { status = "finalized", formState = new { } });
+
+        Assert.Equal(HttpStatusCode.Forbidden, attempt.StatusCode);
+    }
+
+    private record PatientQrCode(string qrToken);
+
+    [Fact]
+    public async Task AnonymousQrCreatedPatient_FinalizedRecord_OnlyCorrectableByAdminOrLeitstelle()
+    {
+        var admin = await AdminClientAsync();
+        var sceneId = await CreateSceneAsync(admin);
+        var qrSession = await QrSessionClientAsync(admin, sceneId);
+
+        // Anonymous QR *session* (login-qr-codes) scans a patient QR *tag* (patient-qr-codes) to
+        // create the record — the real "QR intake" path (PersonsController.VerifyQrCode), not
+        // manual entry. No stable identity to own it (FR-AUTH-07), so Patient.UserIdUser must
+        // stay null and only Admin/Leitstelle may correct the finalized record.
+        var generated = await admin.PostAsJsonAsync("/api/patient-qr-codes/generate", new { number = 1 });
+        var patientQrCode = (await generated.Content.ReadFromJsonAsync<string[]>())![0];
+
+        var create = await qrSession.PostAsJsonAsync("/api/verify-patient-qr-code", new { qr_code = patientQrCode, operationSceneId = sceneId });
+        create.EnsureSuccessStatusCode();
+        var patientId = (await create.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("patient").GetProperty("id").GetInt32();
+
+        var finalize = await qrSession.PutAsJsonAsync($"/api/persons/{patientId}/ambulanzprotokoll-page1",
+            new { status = "finalized", formState = new { } });
+        finalize.EnsureSuccessStatusCode();
+
+        var (responder, _) = await ResponderClientAsync(admin);
+        var responderAttempt = await responder.PutAsJsonAsync($"/api/persons/{patientId}/ambulanzprotokoll-page1",
+            new { status = "finalized", formState = new { } });
+        Assert.Equal(HttpStatusCode.Forbidden, responderAttempt.StatusCode);
+
+        var qrAttempt = await qrSession.PutAsJsonAsync($"/api/persons/{patientId}/ambulanzprotokoll-page1",
+            new { status = "finalized", formState = new { } });
+        Assert.Equal(HttpStatusCode.Forbidden, qrAttempt.StatusCode);
+
+        var adminCorrection = await admin.PutAsJsonAsync($"/api/persons/{patientId}/ambulanzprotokoll-page1",
+            new { status = "finalized", formState = new { patient = new { familienname = "Corrected" } } });
+        Assert.Equal(HttpStatusCode.OK, adminCorrection.StatusCode);
     }
 }

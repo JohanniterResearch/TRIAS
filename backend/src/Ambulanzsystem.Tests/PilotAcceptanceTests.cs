@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -124,5 +125,48 @@ public class PilotAcceptanceTests(WebApplicationFactory<Program> factory) : ICla
         var replayId = (await replay.Content.ReadFromJsonAsync<PatientBearing>())!.id;
 
         Assert.Equal(firstId, replayId);
+    }
+
+    [Fact]
+    public async Task ManualPatient_ConcurrentReplayOfSameClientGeneratedId_ResultsInExactlyOnePatient()
+    {
+        // D3/offline-replay concurrency: two devices racing to create the same offline-generated
+        // patient must never end up as two rows — the unique ClientGeneratedId index is the
+        // concurrency authority, and the loser's insert must fall back to the winner's row.
+        var admin = await AdminClientAsync();
+        var sceneId = await CreateSceneAsync(admin);
+        var clientGeneratedId = Guid.NewGuid();
+        var token = admin.DefaultRequestHeaders.Authorization!.Parameter;
+
+        var tasks = Enumerable.Range(0, 8).Select(async _ =>
+        {
+            var client = factory.CreateClient();
+            client.DefaultRequestHeaders.Authorization = new("Bearer", token);
+            var res = await client.PostAsJsonAsync("/api/persons/manual", new { operationSceneId = sceneId, clientGeneratedId });
+            res.EnsureSuccessStatusCode();
+            return (await res.Content.ReadFromJsonAsync<PatientBearing>())!.id;
+        });
+
+        var ids = await Task.WhenAll(tasks);
+
+        Assert.Single(ids.Distinct());
+
+        var list = await admin.GetAsync($"/api/persons?operationSceneId={sceneId}");
+        list.EnsureSuccessStatusCode();
+        var patients = await list.Content.ReadFromJsonAsync<JsonElement[]>();
+        var matching = patients!.Count(p => p.TryGetProperty("clientGeneratedId", out var cg)
+            && cg.ValueKind != JsonValueKind.Null && cg.GetGuid() == clientGeneratedId);
+        Assert.Equal(1, matching);
+    }
+
+    [Fact]
+    public async Task ManualPatient_CreatesBodyRow_AsPartOfTransactionalFlow()
+    {
+        var admin = await AdminClientAsync();
+        var patientId = await CreatePatientAsync(admin, await CreateSceneAsync(admin));
+
+        var body = await admin.GetAsync($"/api/body-parts?idpatient={patientId}");
+
+        Assert.Equal(HttpStatusCode.OK, body.StatusCode);
     }
 }
