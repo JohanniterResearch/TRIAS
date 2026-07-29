@@ -88,15 +88,16 @@ public class OperationScenesController(AppDbContext db) : ControllerBase
     {
         var type = User.TokenType();
         var now = DateTime.UtcNow;
+        var eventSceneId = User.EventSceneId();
 
-        if (type is TokenTypes.Admin or TokenTypes.Leitstelle)
+        // Admin is always global; Leitstelle only when unscoped (mirrors SceneAccess.CanAccessAsync).
+        if (type is TokenTypes.Admin || (type == TokenTypes.Leitstelle && eventSceneId is null))
         {
             var all = await db.OperationScenes.OrderByDescending(s => s.UpdatedAt).ToListAsync();
             return Ok(all.Select(OperationSceneResponse.From));
         }
 
-        // Responder (permanent or event) or QR session.
-        var eventSceneId = User.EventSceneId();
+        // Scoped Leitstelle, responder (permanent or event), or QR session.
         IQueryable<OperationScene> query = db.OperationScenes.Where(s => s.Active);
 
         query = eventSceneId is int sceneId

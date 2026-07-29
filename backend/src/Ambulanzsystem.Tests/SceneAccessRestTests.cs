@@ -50,6 +50,30 @@ public class SceneAccessRestTests(WebApplicationFactory<Program> factory) : ICla
         return qrClient;
     }
 
+    // Event-scoped Leitstelle (Role.Leitstelle + AccountType.Event + EventSceneId): the coordinator's
+    // required fix — a scoped Leitstelle must fall through to the same event/sub-site check as
+    // responders/QR, not short-circuit to global like an unscoped Leitstelle does.
+    private async Task<HttpClient> ScopedLeitstelleClientAsync(HttpClient admin, int eventSceneId)
+    {
+        var username = $"leitstelle-{Guid.NewGuid():N}";
+        var create = await admin.PostAsJsonAsync("/api/users", new
+        {
+            username,
+            password = "somePassword1",
+            role = "leitstelle",
+            accountType = "event",
+            eventSceneId,
+        });
+        create.EnsureSuccessStatusCode();
+
+        var client = factory.CreateClient();
+        var login = await client.PostAsJsonAsync("/api/admin-login", new { username, password = "somePassword1" });
+        login.EnsureSuccessStatusCode();
+        var token = (await login.Content.ReadFromJsonAsync<TokenBearing>())!.token!;
+        client.DefaultRequestHeaders.Authorization = new("Bearer", token);
+        return client;
+    }
+
     private async Task<int> CreateSceneAsync(HttpClient admin, string name, int? parentSceneId = null)
     {
         var body = parentSceneId is null
@@ -266,5 +290,36 @@ public class SceneAccessRestTests(WebApplicationFactory<Program> factory) : ICla
         var afterFailedMove = await admin.PostAsJsonAsync("/api/verify-patient-qr-code", new { qr_code = qrToken, operationSceneId = eventB });
         var afterFailedMoveBody = await afterFailedMove.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
         Assert.Equal(eventB, afterFailedMoveBody.GetProperty("patient").GetProperty("operationSceneId").GetInt32());
+    }
+
+    [Fact]
+    public async Task EventScopedLeitstelle_AllowedInOwnEventAndSubSite_ForbiddenInOtherEvent()
+    {
+        var admin = await AdminClientAsync();
+        var eventA = await CreateSceneAsync(admin, $"event-a-{Guid.NewGuid():N}");
+        var subSite = await CreateSceneAsync(admin, $"sub-{Guid.NewGuid():N}", eventA);
+        var eventB = await CreateSceneAsync(admin, $"event-b-{Guid.NewGuid():N}");
+
+        var patientInSubSite = await CreatePatientAsync(admin, subSite);
+        var patientInB = await CreatePatientAsync(admin, eventB);
+
+        var leitstelle = await ScopedLeitstelleClientAsync(admin, eventA);
+
+        var ownEvent = await leitstelle.GetAsync($"/api/persons?operationSceneId={eventA}");
+        Assert.Equal(HttpStatusCode.OK, ownEvent.StatusCode);
+
+        var ownSubSite = await leitstelle.GetAsync($"/api/persons?operationSceneId={subSite}");
+        Assert.Equal(HttpStatusCode.OK, ownSubSite.StatusCode);
+
+        var otherEvent = await leitstelle.GetAsync($"/api/persons?operationSceneId={eventB}");
+        Assert.Equal(HttpStatusCode.Forbidden, otherEvent.StatusCode);
+
+        var updateOwnSubSitePatient = await leitstelle.PostAsJsonAsync(
+            $"/api/persons/{patientInSubSite.id}/update-triage-color", new { triageColor = "rot" });
+        Assert.Equal(HttpStatusCode.OK, updateOwnSubSitePatient.StatusCode);
+
+        var updateOtherEventPatient = await leitstelle.PostAsJsonAsync(
+            $"/api/persons/{patientInB.id}/update-triage-color", new { triageColor = "rot" });
+        Assert.Equal(HttpStatusCode.Forbidden, updateOtherEventPatient.StatusCode);
     }
 }

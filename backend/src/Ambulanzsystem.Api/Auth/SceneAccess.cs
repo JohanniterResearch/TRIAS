@@ -11,7 +11,11 @@ public static class SceneAccess
     public static async Task<bool> CanAccessAsync(ClaimsPrincipal user, AppDbContext db, int sceneId)
     {
         var type = user.TokenType();
-        if (type is TokenTypes.Admin or TokenTypes.Leitstelle) return true;
+        var eventSceneId = user.EventSceneId();
+
+        // Admin is always global. Leitstelle is global only when unscoped (no EventSceneId claim);
+        // a scoped Leitstelle falls through to the same event/sub-site check as responders/QR.
+        if (type is TokenTypes.Admin || (type == TokenTypes.Leitstelle && eventSceneId is null)) return true;
 
         var scene = await db.OperationScenes.FirstOrDefaultAsync(s => s.Id == sceneId);
         if (scene is null || !scene.Active) return false;
@@ -21,7 +25,6 @@ public static class SceneAccess
             && (scene.AccessWindowEnd is null || scene.AccessWindowEnd >= now);
         if (!withinWindow) return false;
 
-        var eventSceneId = user.EventSceneId();
         if (eventSceneId is int scoped)
         {
             return scene.Id == scoped || scene.ParentSceneId == scoped;
