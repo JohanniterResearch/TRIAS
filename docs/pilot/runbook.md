@@ -3,7 +3,7 @@
 ## Setup (one laptop, ~10 minutes)
 
 ```sh
-docker compose up -d db
+docker compose -p ambulanz-demo up -d db
 cd backend && dotnet run --project src/Ambulanzsystem.Api   # dev mode: migrates, seeds, serves
 cd frontend && npm start                                    # http://localhost:4200
 ```
@@ -35,5 +35,16 @@ Dev seeding (`Bootstrap__SeedDevSampleData=true`, on by default in
 ## Reset between demos
 
 ```sh
-docker compose down -v && docker compose up -d db   # wipes pgdata; backend reseeds on next start
+docker compose -p ambulanz-demo down -v
+docker compose -p ambulanz-demo up -d db   # wipes only the demo pgdata; backend reseeds on next start
 ```
+
+## Rehearsal record
+
+| Exercise | Actual | Result |
+|---|---:|---|
+| Production smoke | 18.80 s | pass, 2026-07-29 |
+| Backup | 1.64 s | pass, PostgreSQL custom format |
+| Isolated restore | 1.09 s | pass: 1 scene, 1 patient, 1 export, 5 audit rows |
+| Internal demo | not-run | Record operator start/end and observations. |
+| Supervised exercise | blocked | Requires G1-G6 and G8 signatures. |
