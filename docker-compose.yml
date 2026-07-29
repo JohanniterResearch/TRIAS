@@ -36,7 +36,7 @@ services:
       Bootstrap__AdminPassword: ${BOOTSTRAP_ADMIN_PASSWORD:-}
       PLS_ALLOWED_ORIGINS: ${PLS_ALLOWED_ORIGINS:-}
     ports:
-      - "5000:8080"
+      - "${APP_HOST_PORT:-5000}:8080"
 
 volumes:
   pgdata:

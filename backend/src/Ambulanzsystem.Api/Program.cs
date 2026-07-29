@@ -101,6 +101,13 @@ if (app.Environment.IsProduction())
     app.UseHsts();
 }
 
+var spaIndex = Path.Combine(app.Environment.WebRootPath ?? "wwwroot", "index.html");
+if (File.Exists(spaIndex))
+{
+    app.UseDefaultFiles();
+    app.UseStaticFiles();
+}
+
 app.UseHttpsRedirection();
 app.UseAmbulanzsystemSecurityHeaders();
 app.UseAmbulanzsystemCorrelationId();
@@ -114,6 +121,20 @@ app.UseAuthorization();
 app.MapControllers();
 app.MapHub<SceneHub>("/hubs/scene");
 app.MapHealthEndpoint();
+if (File.Exists(spaIndex))
+{
+    app.MapFallback(async context =>
+    {
+        if (context.Request.Path.StartsWithSegments("/api")
+            || context.Request.Path.StartsWithSegments("/hubs")
+            || context.Request.Path.StartsWithSegments("/health"))
+        {
+            context.Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+        await context.Response.SendFileAsync(spaIndex);
+    });
+}
 
 app.Run();
 

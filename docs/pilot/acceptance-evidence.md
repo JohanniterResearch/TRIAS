@@ -43,7 +43,7 @@ Allowed status values: `automated/pass`, `manual/pass`, `blocked`, `not-run`.
 | Body map, GCS, measures, AMPLE, and disposition remain on the same page. | automated/pass | `npm run check:protocol` and production build. |
 | Draft mode never blocks emergency documentation due to missing fields. | automated/pass | Partial finalization story. |
 | Invalid external input is rejected at trust boundaries. | blocked | Stream A validation tests await integration. |
-| Production rejects insecure default bootstrap configuration. | not-run | Production smoke is recorded separately after Step 5. |
+| Production rejects insecure default bootstrap configuration. | automated/pass | Required-variable Compose interpolation and production startup validation passed. |
 
 ## Test acceptance
 
@@ -72,3 +72,5 @@ Allowed status values: `automated/pass`, `manual/pass`, `blocked`, `not-run`.
 | Marker activation opens the correct protocol and Back restores scene context. | automated/pass | Focused Leaflet/navigation story passed. |
 | Application restart retains the rebound protocol draft. | automated/pass | New page in the same browser context restores the real-ID draft. |
 | Situation-room reconnect performs a full snapshot refetch. | not-run | Realtime update passes; explicit reconnect proof remains. |
+| Production image serves the Angular shell and preserves API/health routing. | automated/pass | Isolated production smoke passed on 2026-07-29. |
+| Backup restores into an isolated database with required evidence. | automated/pass | Restore found 1 scene, 1 patient, 1 export, and 5 audit rows. |
