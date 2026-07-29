@@ -2,18 +2,17 @@ services:
   db:
     environment:
       POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
-    ports:
-      - "${DB_HOST_PORT:-5434}:5432"
+    ports: !override
+      - "127.0.0.1:${DB_HOST_PORT:-5434}:5432"
 
   backend:
     environment:
       ASPNETCORE_ENVIRONMENT: Production
-      ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
       ConnectionStrings__Default: Host=db;Database=ambulanzsystem;Username=pls;Password=${DB_PASSWORD:?DB_PASSWORD is required}
       Jwt__Secret: ${JWT_SECRET:?JWT_SECRET is required}
       Bootstrap__AdminPassword: ${BOOTSTRAP_ADMIN_PASSWORD:?BOOTSTRAP_ADMIN_PASSWORD is required}
       Bootstrap__SeedDevSampleData: "false"
       Features__EnableDevLogin: "false"
       PLS_ALLOWED_ORIGINS: ${PLS_ALLOWED_ORIGINS:?PLS_ALLOWED_ORIGINS is required}
-    ports:
-      - "${APP_HOST_PORT:-5000}:8080"
+    ports: !override
+      - "127.0.0.1:${APP_HOST_PORT:-5000}:8080"

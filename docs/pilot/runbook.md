@@ -45,6 +45,6 @@ docker compose -p ambulanz-demo up -d db   # wipes only the demo pgdata; backend
 |---|---:|---|
 | Production smoke | 18.80 s | pass, 2026-07-29 |
 | Backup | 1.64 s | pass, PostgreSQL custom format |
-| Isolated restore | 1.09 s | pass: 1 scene, 1 patient, 1 export, 5 audit rows |
+| Isolated restore | 1.09 s | pass: named smoke scene/patient, 1 export, 3 related audit rows |
 | Internal demo | not-run | Record operator start/end and observations. |
 | Supervised exercise | blocked | Requires G1-G6 and G8 signatures. |

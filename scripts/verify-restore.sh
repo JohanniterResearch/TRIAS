@@ -16,12 +16,16 @@ docker compose -f "$restore_root/docker-compose.yml" -f "$restore_root/docker-co
 docker compose -f "$restore_root/docker-compose.yml" -f "$restore_root/docker-compose.production.yml" \
   exec -T db pg_restore -U pls -d "$restore_database" --no-owner --no-privileges <"$restore_input"
 
-counts=$(docker compose -f "$restore_root/docker-compose.yml" -f "$restore_root/docker-compose.production.yml" \
+evidence=$(docker compose -f "$restore_root/docker-compose.yml" -f "$restore_root/docker-compose.production.yml" \
   exec -T db psql -U pls -d "$restore_database" -Atc \
-  'SELECT (SELECT count(*) FROM operation_scenes), (SELECT count(*) FROM patients), (SELECT count(*) FROM ambulanzprotokoll_exports), (SELECT count(*) FROM audit_logs);')
-IFS='|' read -r scenes patients exports audits <<<"$counts"
-test "$scenes" -gt 0
-test "$patients" -gt 0
-test "$exports" -gt 0
-test "$audits" -gt 0
-echo "restore verified: scenes=$scenes patients=$patients exports=$exports audits=$audits"
+  "SELECT
+    (SELECT count(*) FROM operation_scenes WHERE name = 'Pilot smoke scene'),
+    (SELECT count(*) FROM patients WHERE name = 'Pilot smoke patient'),
+    (SELECT count(*) FROM ambulanzprotokoll_exports e JOIN patients p ON p.id = e.patient_id WHERE p.name = 'Pilot smoke patient'),
+    (SELECT count(*) FROM audit_logs a JOIN patients p ON p.id = a.patient_id WHERE p.name = 'Pilot smoke patient');")
+IFS='|' read -r scenes patients exports audits <<<"$evidence"
+test "$scenes" -eq 1
+test "$patients" -eq 1
+test "$exports" -ge 1
+test "$audits" -ge 1
+echo "restore verified known smoke evidence: scene=$scenes patient=$patients exports=$exports audits=$audits"

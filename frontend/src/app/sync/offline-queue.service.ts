@@ -140,22 +140,48 @@ export class OfflineQueueService {
   }
 
   private async reconcileMappings(): Promise<void> {
-    const mappings = await this.withStore(
+    const [keys, mappings] = await this.withStore(
       mapStore,
       'readonly',
-      (store) => request<Array<PatientMapping | number>>(store.getAll()),
+      (store) => Promise.all([
+        request<IDBValidKey[]>(store.getAllKeys()),
+        request<Array<PatientMapping | number>>(store.getAll()),
+      ]),
     );
-    for (const mapping of mappings) {
-      if (typeof mapping !== 'number') {
+    for (const [index, mapping] of mappings.entries()) {
+      if (typeof mapping === 'number') {
+        const provisionalId = Number(keys[index]);
+        const currentPatient = this.responderState.patient();
+        const patient = currentPatient?.id === provisionalId
+          ? { ...currentPatient, id: mapping }
+          : undefined;
+        await this.reconcilePatientIds(provisionalId, mapping, patient);
+        if (patient) {
+          await this.withStore(
+            mapStore,
+            'readwrite',
+            (store) => request(store.put(
+              { provisionalId, realId: mapping, patient } satisfies PatientMapping,
+              provisionalId,
+            )),
+          );
+        }
+      } else {
         await this.reconcilePatient(mapping);
       }
     }
   }
 
   private async reconcilePatient(mapping: PatientMapping): Promise<void> {
-    this.responderState.replacePatient(mapping.provisionalId, mapping.patient);
-    this.triageDrafts.rekey(mapping.provisionalId, mapping.realId);
-    await this.protocolDrafts.rekey(mapping.provisionalId, mapping.realId);
+    await this.reconcilePatientIds(mapping.provisionalId, mapping.realId, mapping.patient);
+  }
+
+  private async reconcilePatientIds(provisionalId: number, realId: number, patient?: Patient): Promise<void> {
+    if (patient) {
+      this.responderState.replacePatient(provisionalId, patient);
+    }
+    this.triageDrafts.rekey(provisionalId, realId);
+    await this.protocolDrafts.rekey(provisionalId, realId);
   }
 
   private async realPatientId(patientId: number): Promise<number> {

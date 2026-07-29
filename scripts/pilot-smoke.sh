@@ -2,7 +2,7 @@
 set -euo pipefail
 
 pilot_root=$(cd "$(dirname "$0")/.." && pwd)
-pilot_project=${COMPOSE_PROJECT_NAME:-ambulanz-smoke}
+pilot_project=${COMPOSE_PROJECT_NAME:-ambulanz-smoke-$$}
 pilot_port=${APP_HOST_PORT:-5500}
 pilot_admin_password=${BOOTSTRAP_ADMIN_PASSWORD:-PilotSmokeAdmin123!}
 pilot_changed_password=${SMOKE_CHANGED_ADMIN_PASSWORD:-PilotSmokeChanged123!}
@@ -15,6 +15,11 @@ export DB_PASSWORD=${DB_PASSWORD:-pilot-smoke-db-password}
 export JWT_SECRET=${JWT_SECRET:-pilot-smoke-jwt-secret-at-least-32-characters}
 export BOOTSTRAP_ADMIN_PASSWORD=$pilot_admin_password
 export PLS_ALLOWED_ORIGINS=${PLS_ALLOWED_ORIGINS:-https://pilot.invalid}
+
+if docker volume inspect "${pilot_project}_pgdata" >/dev/null 2>&1; then
+  echo "Refusing to reuse ${pilot_project}_pgdata; choose a fresh COMPOSE_PROJECT_NAME." >&2
+  exit 1
+fi
 
 cleanup() {
   docker compose -f "$pilot_root/docker-compose.yml" -f "$pilot_root/docker-compose.production.yml" \
@@ -71,4 +76,4 @@ curl -fsS -o /dev/null -X PUT -H "Authorization: Bearer $token" -H 'Content-Type
 curl -fsS -o /dev/null -H "Authorization: Bearer $token" \
   "http://127.0.0.1:$pilot_port/api/persons/$patient_id/ambulanzprotokoll-page1/export"
 
-echo "pilot smoke passed: http://127.0.0.1:$pilot_port"
+echo "pilot smoke passed: project=$pilot_project url=http://127.0.0.1:$pilot_port"

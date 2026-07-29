@@ -167,6 +167,35 @@ test('situation room receives a triage update from another browser', async ({ br
   await command.close();
 });
 
+test('situation room refetches the full scene snapshot after reconnect', async ({ browser }) => {
+  const command = await browser.newContext();
+  const commandPage = await command.newPage();
+  await commandPage.goto('/admin/login');
+  await commandPage.getByRole('button', { name: 'DEV Admin' }).click();
+  await expect(commandPage).toHaveURL(/\/admin$/);
+  await commandPage.goto('/situation-room');
+  await commandPage.getByLabel('Szene ID').fill('1');
+  await commandPage.getByRole('button', { name: 'Öffnen' }).click();
+  await expect(commandPage.getByText('live', { exact: true })).toBeVisible();
+  await command.setOffline(true);
+
+  const responder = await browser.newContext();
+  const responderPage = await responder.newPage();
+  await loginResponder(responderPage);
+  await selectFirstScene(responderPage);
+  const patient = await createManualPatient(responderPage);
+  await expect.poll(() => responderPage.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('ambulanzsystem.responder.v1') ?? '{}');
+    return state.patient?.id ?? 0;
+  })).toBeGreaterThan(0);
+
+  await command.setOffline(false);
+  await expect(commandPage.locator('tbody tr').filter({ hasText: patient.label })).toBeVisible({ timeout: 20_000 });
+
+  await responder.close();
+  await command.close();
+});
+
 test('real responder refresh and self-cancel revoke the live session', async ({ page }) => {
   await loginRealResponder(page);
   const session = await page.evaluate(() => JSON.parse(localStorage.getItem('ambulanzsystem.auth.v1')!).responder);
@@ -330,4 +359,99 @@ test('offline provisional identity and drafts survive reload and bind to the rea
   await restarted.getByRole('link', { name: 'Ambulanzprotokoll' }).click();
   await expect(restarted).toHaveURL(/\/ambulanzprotokoll\/\d+$/);
   await expect(restarted.getByLabel('Ambulanzort')).toHaveValue('Offline Pilot');
+});
+
+test('legacy numeric patient mappings rekey active state and drafts on startup', async ({ page }) => {
+  await loginResponder(page);
+  await selectFirstScene(page);
+  await createManualPatient(page);
+  await expect.poll(() => page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('ambulanzsystem.responder.v1') ?? '{}');
+    return state.patient?.id ?? 0;
+  })).toBeGreaterThan(0);
+  const patientId = await page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('ambulanzsystem.responder.v1') ?? '{}');
+    return Number(state.patient.id);
+  });
+  await page.goto(`/ambulanzprotokoll/${patientId}`);
+  await expect(page.getByLabel('Ambulanzort')).toBeVisible();
+  await page.getByLabel('Ambulanzort').fill('Legacy source');
+  await page.waitForTimeout(900);
+
+  const provisionalId = -987654321;
+  await page.evaluate(async ({ realId, provisionalId }) => {
+    const responder = JSON.parse(localStorage.getItem('ambulanzsystem.responder.v1')!);
+    responder.patient = { ...responder.patient, id: provisionalId };
+    localStorage.setItem('ambulanzsystem.responder.v1', JSON.stringify(responder));
+    localStorage.setItem('ambulanzsystem.triage-drafts.v1', JSON.stringify({
+      [provisionalId]: { triageColor: 'rot', clientUpdatedAt: new Date().toISOString() },
+    }));
+
+    await Promise.all([
+      new Promise<void>((resolve, reject) => {
+        const open = indexedDB.open('ambulanzsystem-offline', 1);
+        open.onsuccess = () => {
+          const db = open.result;
+          const transaction = db.transaction('patient-map', 'readwrite');
+          transaction.objectStore('patient-map').put(realId, provisionalId);
+          transaction.oncomplete = () => {
+            db.close();
+            resolve();
+          };
+          transaction.onerror = () => reject(transaction.error);
+        };
+        open.onerror = () => reject(open.error);
+      }),
+      new Promise<void>((resolve, reject) => {
+        const open = indexedDB.open('ambulanzsystem-protokoll', 1);
+        open.onsuccess = () => {
+          const db = open.result;
+          const transaction = db.transaction('page1-drafts', 'readwrite');
+          const store = transaction.objectStore('page1-drafts');
+          const get = store.get(realId);
+          get.onsuccess = () => {
+            store.put({
+              ...get.result,
+              patientId: provisionalId,
+              updatedAt: new Date(Date.now() + 1_000).toISOString(),
+              formState: {
+                ...get.result.formState,
+                incident: { ...get.result.formState.incident, ambulanzort: 'Legacy rebound' },
+              },
+            });
+          };
+          transaction.oncomplete = () => {
+            db.close();
+            resolve();
+          };
+          transaction.onerror = () => reject(transaction.error);
+        };
+        open.onerror = () => reject(open.error);
+      }),
+    ]);
+  }, { realId: patientId, provisionalId });
+
+  await page.reload();
+  await expect.poll(() => page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('ambulanzsystem.responder.v1') ?? '{}');
+    return state.patient?.id;
+  })).toBe(patientId);
+  await expect.poll(() => page.evaluate(({ realId, provisionalId }) => {
+    const drafts = JSON.parse(localStorage.getItem('ambulanzsystem.triage-drafts.v1') ?? '{}');
+    return drafts[realId]?.triageColor === 'rot' && drafts[provisionalId] === undefined;
+  }, { realId: patientId, provisionalId })).toBeTruthy();
+  await expect(page.getByLabel('Ambulanzort')).toHaveValue('Legacy rebound');
+  await expect.poll(() => page.evaluate(({ realId, provisionalId }) => new Promise<boolean>((resolve, reject) => {
+    const open = indexedDB.open('ambulanzsystem-offline', 1);
+    open.onsuccess = () => {
+      const db = open.result;
+      const request = db.transaction('patient-map', 'readonly').objectStore('patient-map').get(provisionalId);
+      request.onsuccess = () => {
+        resolve(request.result.realId === realId);
+        db.close();
+      };
+      request.onerror = () => reject(request.error);
+    };
+    open.onerror = () => reject(open.error);
+  }), { realId: patientId, provisionalId })).toBeTruthy();
 });

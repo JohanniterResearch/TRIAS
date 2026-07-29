@@ -11,6 +11,7 @@ using Ambulanzsystem.Api.Realtime;
 using Ambulanzsystem.Api.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 
@@ -24,6 +25,8 @@ builder.Services
         new JsonStringEnumConverter(JsonNamingPolicy.CamelCase)));
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto);
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("Default"))
@@ -80,6 +83,7 @@ builder.Services.AddAmbulanzsystemRateLimiting();
 builder.Services.AddAmbulanzsystemCors(builder.Configuration, builder.Environment);
 
 var app = builder.Build();
+app.UseForwardedHeaders();
 
 // One-shot migration + seed step must complete before the app serves traffic
 // (recreation spec §1). Fail hard on error rather than serving against a stale schema.
@@ -102,6 +106,7 @@ if (app.Environment.IsProduction())
 }
 
 var spaIndex = Path.Combine(app.Environment.WebRootPath ?? "wwwroot", "index.html");
+app.UseAmbulanzsystemSecurityHeaders();
 if (File.Exists(spaIndex))
 {
     app.UseDefaultFiles();
@@ -109,7 +114,6 @@ if (File.Exists(spaIndex))
 }
 
 app.UseHttpsRedirection();
-app.UseAmbulanzsystemSecurityHeaders();
 app.UseAmbulanzsystemCorrelationId();
 
 app.UseCors(CorsPolicy.Name);

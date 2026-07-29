@@ -13,7 +13,7 @@
     "check:production": "node scripts/check-production-bundle.mjs",
     "watch": "ng build --watch --configuration development",
     "test": "npm run check:auth && npm run check:protocol",
-    "test:e2e": "DB_HOST_PORT=5435 docker compose -p ambulanz-codex -f ../docker-compose.yml up -d db && playwright test",
+    "test:e2e": "bash scripts/run-e2e.sh",
     "test:offline": "npm run build && playwright test --config playwright.offline.config.ts"
   },
   "private": true,
