@@ -4,9 +4,13 @@
   "description": "Frozen API contract + mock server for parallel frontend/backend development (Stage 0).",
   "scripts": {
     "mock": "prism mock openapi.yaml --port 4010",
-    "lint": "spectral lint openapi.yaml || true"
+    "lint": "spectral lint openapi.yaml",
+    "generate": "openapi-typescript openapi.yaml -o ../frontend/src/app/api/openapi-types.ts",
+    "check:generated": "openapi-typescript openapi.yaml -o ../frontend/src/app/api/openapi-types.ts --check"
   },
   "devDependencies": {
-    "@stoplight/prism-cli": "^5"
+    "@stoplight/prism-cli": "^5",
+    "@stoplight/spectral-cli": "^6.16.2",
+    "openapi-typescript": "^7.13.0"
   }
 }

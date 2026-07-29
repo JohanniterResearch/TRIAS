@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
+import { firstValueFrom } from 'rxjs';
 
-import { environment } from '../../environments/environment';
-import { AuthStore } from '../auth/auth.store';
+import { ApiClient } from '../api/api-client';
 import type { components, paths } from '../api/openapi-types';
 import { SyncStatusService } from './sync-status.service';
 
@@ -21,7 +21,7 @@ const mapStore = 'patient-map';
 
 @Injectable({ providedIn: 'root' })
 export class OfflineQueueService {
-  private readonly auth = inject(AuthStore);
+  private readonly api = inject(ApiClient);
   private readonly syncStatus = inject(SyncStatusService);
   private flushing = false;
 
@@ -85,7 +85,7 @@ export class OfflineQueueService {
 
   private async replay(item: QueueItem): Promise<boolean> {
     if (item.type === 'manual-patient') {
-      const patient = await this.request<Patient>('/api/persons/manual', 'POST', item.body);
+      const patient = await firstValueFrom(this.api.createManualPatient(item.body));
       await this.mapPatient(item.provisionalId, patient.id);
       return true;
     }
@@ -96,27 +96,11 @@ export class OfflineQueueService {
     }
 
     if (item.type === 'triage') {
-      await this.request(`/api/persons/${patientId}/update-triage-color`, 'POST', item.body);
+      await firstValueFrom(this.api.updateTriage(patientId, item.body));
     } else {
-      await this.request(`/api/persons/${patientId}/ambulanzprotokoll-page1`, 'PUT', item.body);
+      await firstValueFrom(this.api.saveProtokollPage1(patientId, item.body));
     }
     return true;
-  }
-
-  private async request<T>(path: string, method: string, body: unknown): Promise<T> {
-    const response = await fetch(`${environment.apiBaseUrl.replace(/\/$/, '')}${path}`, {
-      method,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(this.auth.bearerToken() ? { Authorization: `Bearer ${this.auth.bearerToken()}` } : {}),
-      },
-      body: JSON.stringify(body),
-    });
-    if (!response.ok) {
-      throw new Error(`sync failed ${response.status}`);
-    }
-    this.syncStatus.markSynced();
-    return await response.json();
   }
 
   private async add(item: QueueItem): Promise<void> {
