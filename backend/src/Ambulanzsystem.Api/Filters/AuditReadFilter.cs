@@ -32,7 +32,7 @@ public class AuditReadFilter(AppDbContext db) : IAsyncActionFilter
                 && int.TryParse(q, out var qv) ? qv : (int?)null,
             _ => null,
         };
-        if (id is null) return;
+        if (attribute.IdSource != AuditIdSource.None && id is null) return;
 
         db.AuditLogs.Add(new AuditLog
         {

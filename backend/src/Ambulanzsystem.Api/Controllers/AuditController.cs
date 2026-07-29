@@ -13,9 +13,11 @@ namespace Ambulanzsystem.Api.Controllers;
 public class AuditController(AppDbContext db) : ControllerBase
 {
     [HttpGet]
+    [AuditRead("audit_query")]
     public async Task<IActionResult> Query(
         [FromQuery] int? patientId,
         [FromQuery] string? action,
+        [FromQuery] string? entityType,
         [FromQuery] DateTime? from,
         [FromQuery] DateTime? to,
         [FromQuery] int page = 1,
@@ -27,6 +29,7 @@ public class AuditController(AppDbContext db) : ControllerBase
         var query = db.AuditLogs.AsQueryable();
         if (patientId is not null) query = query.Where(a => a.PatientId == patientId);
         if (action is not null) query = query.Where(a => a.Action == action);
+        if (entityType is not null) query = query.Where(a => a.EntityType == entityType);
         if (from is not null) query = query.Where(a => a.Timestamp >= from);
         if (to is not null) query = query.Where(a => a.Timestamp <= to);
 

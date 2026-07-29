@@ -61,6 +61,8 @@ public class AmbulanzprotokollController(AppDbContext db, AuditService audit, Sc
         record ??= new AmbulanzprotokollPage1 { PatientId = patientId };
         var isNew = record.Id == 0;
 
+        var oldFormStateJson = FormStateMerge.WithDefaults(record.FormStateJson);
+
         var now = DateTime.UtcNow;
         try
         {
@@ -93,7 +95,16 @@ public class AmbulanzprotokollController(AppDbContext db, AuditService audit, Sc
             db.AmbulanzprotokollPage1s.Add(record);
         }
 
-        audit.LogFieldWrite(User, "ambulanzprotokoll", record.Id, patientId, "status", oldStatus, record.Status);
+        // D7 requirement 3: record the changed leaf paths of the formState tree (e.g.
+        // "vitals.pulse": 80 -> 92), not just a generic status field. status is folded in as one
+        // more leaf so a status-only save (no formState change) still produces a diff.
+        var newFormStateJson = FormStateMerge.WithDefaults(record.FormStateJson);
+        var diffs = JsonDiff.Leaves(oldFormStateJson, newFormStateJson);
+        if (oldStatus != record.Status)
+        {
+            diffs["status"] = (oldStatus, record.Status);
+        }
+        audit.LogFieldsWrite(User, "ambulanzprotokoll", record.Id, patientId, diffs);
 
         await db.SaveChangesAsync();
 
@@ -134,7 +145,7 @@ public class AmbulanzprotokollController(AppDbContext db, AuditService audit, Sc
             CreatedAt = now,
         });
 
-        audit.LogFieldWrite(User, "ambulanzprotokoll_export", patientId, patientId, "export", null, watermark);
+        audit.LogExport(User, "ambulanzprotokoll_export", patientId, patientId, watermark);
 
         await db.SaveChangesAsync();
 

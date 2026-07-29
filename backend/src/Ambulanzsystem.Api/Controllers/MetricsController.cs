@@ -11,5 +11,6 @@ namespace Ambulanzsystem.Api.Controllers;
 public class MetricsController(MetricsService metrics) : ControllerBase
 {
     [HttpGet]
+    [AuditRead("metrics")]
     public IActionResult Get() => Ok(metrics.Snapshot());
 }

@@ -40,12 +40,17 @@ public class LoginQrCodesController(AppDbContext db, AuditService audit) : Contr
         }
 
         db.QrCodeLogins.AddRange(codes);
+
+        // A batch tied to one scene, not a single entity — entityId is the scene it was
+        // generated for, same convention as the count-only qr_code_patient batch.
+        audit.LogFieldWrite(User, "login_qr_code_batch", request.EventSceneId, null, "created", null, request.Number);
         await db.SaveChangesAsync();
 
         return Created(string.Empty, codes.Select(LoginQrCodeResponse.From));
     }
 
     [HttpGet]
+    [AuditRead("login_qr_code_list")]
     public async Task<IActionResult> List([FromQuery] int? eventSceneId, [FromQuery] bool unusedOnly = false)
     {
         var query = db.QrCodeLogins.AsQueryable();

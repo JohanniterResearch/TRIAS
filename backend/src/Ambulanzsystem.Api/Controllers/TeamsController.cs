@@ -4,6 +4,7 @@ using Ambulanzsystem.Api.Data;
 using Ambulanzsystem.Api.Domain;
 using Ambulanzsystem.Api.Dtos;
 using Ambulanzsystem.Api.Realtime;
+using Ambulanzsystem.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -13,7 +14,7 @@ namespace Ambulanzsystem.Api.Controllers;
 [ApiController]
 [Route("api/teams")]
 [Authorize]
-public class TeamsController(AppDbContext db, SceneNotifier notifier) : ControllerBase
+public class TeamsController(AppDbContext db, SceneNotifier notifier, AuditService audit) : ControllerBase
 {
     private static readonly HashSet<string> ValidStatuses = ["free", "busy", "unavailable"];
 
@@ -35,6 +36,10 @@ public class TeamsController(AppDbContext db, SceneNotifier notifier) : Controll
 
         var team = new Team { OperationSceneId = request.OperationSceneId, Name = request.Name };
         db.Teams.Add(team);
+
+        // Id is unassigned until save; entityId stays null rather than a second save (D7
+        // requirement 4).
+        audit.LogFieldWrite(User, "team", null, null, "created", null, team.Name);
         await db.SaveChangesAsync();
 
         notifier.TeamUpdated(team.OperationSceneId, TeamResponse.From(team));
@@ -44,6 +49,7 @@ public class TeamsController(AppDbContext db, SceneNotifier notifier) : Controll
 
     [HttpGet]
     [Authorize(Policy = AuthPolicies.TriageWrite)]
+    [AuditRead("team_list", AuditIdSource.Query, "operationSceneId")]
     public async Task<IActionResult> List([FromQuery] int operationSceneId)
     {
         if (!await SceneAccess.CanAccessAsync(User, db, operationSceneId)) return Forbid();
@@ -67,8 +73,11 @@ public class TeamsController(AppDbContext db, SceneNotifier notifier) : Controll
         if (team is null) return NotFound();
         if (!await SceneAccess.CanAccessAsync(User, db, team.OperationSceneId)) return Forbid();
 
+        var changes = new Dictionary<string, (object? Before, object? After)>();
+
         if (body.TryGetProperty("status", out var statusEl))
         {
+            var beforeStatus = team.Status;
             if (statusEl.ValueKind == JsonValueKind.Null)
             {
                 team.Status = null;
@@ -82,10 +91,12 @@ public class TeamsController(AppDbContext db, SceneNotifier notifier) : Controll
                 }
                 team.Status = value;
             }
+            changes["status"] = (beforeStatus, team.Status);
         }
 
         if (body.TryGetProperty("assignedPatientId", out var patientEl))
         {
+            var before = team.AssignedPatientId;
             if (patientEl.ValueKind == JsonValueKind.Null)
             {
                 team.AssignedPatientId = null;
@@ -99,18 +110,24 @@ public class TeamsController(AppDbContext db, SceneNotifier notifier) : Controll
                 }
                 team.AssignedPatientId = patientId;
             }
+            changes["assignedPatientId"] = (before, team.AssignedPatientId);
         }
 
         if (body.TryGetProperty("assignedLocation", out var locationEl))
         {
+            var before = team.AssignedLocation;
             team.AssignedLocation = locationEl.ValueKind == JsonValueKind.Null ? null : locationEl.GetString();
+            changes["assignedLocation"] = (before, team.AssignedLocation);
         }
 
         if (body.TryGetProperty("contactInfo", out var contactEl))
         {
+            var before = team.ContactInfo;
             team.ContactInfo = contactEl.ValueKind == JsonValueKind.Null ? null : contactEl.GetString();
+            changes["contactInfo"] = (before, team.ContactInfo);
         }
 
+        audit.LogFieldsWrite(User, "team", team.Id, team.AssignedPatientId, changes);
         await db.SaveChangesAsync();
 
         notifier.TeamUpdated(team.OperationSceneId, TeamResponse.From(team));

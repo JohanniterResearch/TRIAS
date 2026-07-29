@@ -47,6 +47,10 @@ public class UsersController(AppDbContext db, RefreshTokenService refreshTokens,
         };
 
         db.Users.Add(user);
+
+        // Id is unassigned until save; entityId stays null rather than a second save (D7
+        // requirement 4). Password hash is never logged.
+        audit.LogFieldWrite(User, "user", null, null, "created", null, user.Username);
         await db.SaveChangesAsync();
 
         return CreatedAtAction(nameof(Create), new { id = user.Id }, UserResponse.From(user));
@@ -78,6 +82,8 @@ public class UsersController(AppDbContext db, RefreshTokenService refreshTokens,
         // Regenerating the stamp invalidates every outstanding access token for this user
         // (recreation spec §2.4) — a real security event, not just a local state change.
         user.SecurityStamp = Guid.NewGuid().ToString();
+        // Never log the actual hash — just that a change happened.
+        audit.LogFieldWrite(User, "user", user.Id, null, "password", null, "changed");
         await db.SaveChangesAsync();
 
         await refreshTokens.RevokeAllForUserAsync(user.Id);

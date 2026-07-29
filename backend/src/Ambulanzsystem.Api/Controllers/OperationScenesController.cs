@@ -2,6 +2,7 @@ using Ambulanzsystem.Api.Auth;
 using Ambulanzsystem.Api.Data;
 using Ambulanzsystem.Api.Domain;
 using Ambulanzsystem.Api.Dtos;
+using Ambulanzsystem.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -11,7 +12,7 @@ namespace Ambulanzsystem.Api.Controllers;
 [ApiController]
 [Route("api/operation-scenes")]
 [Authorize]
-public class OperationScenesController(AppDbContext db) : ControllerBase
+public class OperationScenesController(AppDbContext db, AuditService audit) : ControllerBase
 {
     [HttpPost]
     [Authorize(Policy = AuthPolicies.LeitstelleOrAdmin)]
@@ -69,13 +70,31 @@ public class OperationScenesController(AppDbContext db) : ControllerBase
             }
         }
 
+        var newActive = request.Active ?? (isCreate ? true : scene.Active);
+        var changes = new Dictionary<string, (object? Before, object? After)>();
+        void Track(string field, object? before, object? after)
+        {
+            if (!Equals(before, after)) changes[field] = (before, after);
+        }
+        Track("name", scene.Name, request.Name);
+        Track("description", scene.Description, request.Description);
+        Track("organisationId", scene.OrganisationId, request.OrganisationId);
+        Track("parentSceneId", scene.ParentSceneId, request.ParentSceneId);
+        Track("accessWindowStart", scene.AccessWindowStart, request.AccessWindowStart);
+        Track("accessWindowEnd", scene.AccessWindowEnd, request.AccessWindowEnd);
+        Track("active", scene.Active, newActive);
+
         scene.Name = request.Name;
         scene.Description = request.Description;
         scene.OrganisationId = request.OrganisationId;
         scene.ParentSceneId = request.ParentSceneId;
         scene.AccessWindowStart = request.AccessWindowStart;
         scene.AccessWindowEnd = request.AccessWindowEnd;
-        scene.Active = request.Active ?? (isCreate ? true : scene.Active);
+        scene.Active = newActive;
+
+        // Id is unassigned until save on create; entityId stays null rather than a second save
+        // (D7 requirement 4: audit row and entity write commit in the same transaction).
+        audit.LogFieldsWrite(User, "operation_scene", isCreate ? null : scene.Id, null, changes);
 
         await db.SaveChangesAsync();
 
@@ -84,6 +103,7 @@ public class OperationScenesController(AppDbContext db) : ControllerBase
 
     [HttpGet]
     [Authorize(Policy = AuthPolicies.TriageWrite)]
+    [AuditRead("operation_scene_list")]
     public async Task<IActionResult> List()
     {
         var type = User.TokenType();
@@ -130,6 +150,7 @@ public class OperationScenesController(AppDbContext db) : ControllerBase
         }
 
         db.OperationScenes.Remove(scene);
+        audit.LogFieldWrite(User, "operation_scene", id, null, "deleted", scene.Name, null);
         await db.SaveChangesAsync();
 
         return NoContent();
