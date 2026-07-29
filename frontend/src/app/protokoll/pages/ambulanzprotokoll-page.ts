@@ -1,6 +1,6 @@
 import { JsonPipe } from '@angular/common';
 import { Component, ElementRef, inject, OnDestroy, signal, viewChild } from '@angular/core';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 
 import { ApiClient } from '../../api/api-client';
 import { MyAccess } from '../../auth/components/my-access';
@@ -112,7 +112,7 @@ const zones = [
 
 @Component({
   selector: 'app-ambulanzprotokoll-page',
-  imports: [JsonPipe, MyAccess, RouterLink],
+  imports: [JsonPipe, MyAccess],
   template: `
     <section class="protocol-workspace">
       <app-my-access />
@@ -124,7 +124,7 @@ const zones = [
         <button type="button" (click)="save('finalized')">Finalisieren</button>
         <button type="button" (click)="downloadExport()">JSON Export</button>
         <button type="button" (click)="print()">Drucken</button>
-        <a routerLink="/triage">Zurück</a>
+        <button type="button" (click)="back()">Zurück</button>
       </div>
 
       @if (warnings().length) {
@@ -293,6 +293,7 @@ export class AmbulanzprotokollPage implements OnDestroy {
   private readonly drafts = inject(ProtokollDraftStore);
   private readonly offlineQueue = inject(OfflineQueueService);
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   private readonly responderState = inject(ResponderStateStore);
   private readonly signatureCanvas = viewChild<ElementRef<HTMLCanvasElement>>('signatureCanvas');
   private autosaveTimer = 0;
@@ -308,6 +309,13 @@ export class AmbulanzprotokollPage implements OnDestroy {
 
   protected patientId(): number {
     return Number(this.route.snapshot.paramMap.get('patientId') ?? this.responderState.patient()?.id ?? 0);
+  }
+
+  protected back(): void {
+    const returnTo = typeof history.state.returnTo === 'string'
+      ? history.state.returnTo
+      : `/patient/${this.patientId()}`;
+    this.router.navigateByUrl(returnTo, { state: { sceneId: history.state.sceneId } });
   }
 
   protected value(path: string): any {

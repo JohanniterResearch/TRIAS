@@ -1,7 +1,7 @@
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { AfterViewInit, Component, ElementRef, OnDestroy, computed, inject, signal, viewChild } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import * as L from 'leaflet';
 import { Subscription, interval, switchMap } from 'rxjs';
 
@@ -73,7 +73,7 @@ type TriageColor = components['schemas']['TriageColor'];
             </thead>
             <tbody>
               @for (patient of patients(); track patient.id) {
-                <tr tabindex="0" (click)="selectPatient(patient)" (keydown.enter)="selectPatient(patient)">
+                <tr tabindex="0" (click)="openProtocol(patient)" (keydown.enter)="openProtocol(patient)">
                   <td>{{ patient.humanReadableId || patient.id }}</td>
                   <td>{{ bool(patient.atmung) }}</td>
                   <td>{{ bool(patient.blutung) }}</td>
@@ -121,13 +121,24 @@ type TriageColor = components['schemas']['TriageColor'];
           @for (team of teams(); track team.id) {
             <article>
               <strong>{{ team.name }}</strong>
-              <select [value]="team.status || ''" (change)="updateTeam(team, $any($event.target).value || null)">
+              <select [value]="team.status || ''" (change)="updateTeam(team, { status: $any($event.target).value || null })">
                 <option value="">Status offen</option>
                 <option value="free">frei</option>
                 <option value="busy">beschäftigt</option>
                 <option value="unavailable">nicht verfügbar</option>
               </select>
-              <span>{{ team.assignedLocation || '-' }}</span>
+              <label>
+                Patient ID
+                <input type="number" [value]="team.assignedPatientId ?? ''" (change)="updateTeam(team, { assignedPatientId: numberOrNull($any($event.target).value) })">
+              </label>
+              <label>
+                Einsatzort
+                <input [value]="team.assignedLocation ?? ''" (change)="updateTeam(team, { assignedLocation: $any($event.target).value || null })">
+              </label>
+              <label>
+                Kontakt
+                <input [value]="team.contactInfo ?? ''" (change)="updateTeam(team, { contactInfo: $any($event.target).value || null })">
+              </label>
             </article>
           }
         </section>
@@ -152,7 +163,9 @@ export class SituationRoomPage implements AfterViewInit, OnDestroy {
       ['unassigned', 0],
     ]);
     for (const patient of this.patients()) {
-      counts.set(patient.triagefarbe ?? 'unassigned', (counts.get(patient.triagefarbe ?? 'unassigned') ?? 0) + 1);
+      const value = patient.triagefarbe ?? 'unassigned';
+      const key = counts.has(value) ? value : 'invalid';
+      counts.set(key, (counts.get(key) ?? 0) + 1);
     }
     return [
       { label: 'Rot', color: 'rot', value: counts.get('rot') ?? 0 },
@@ -160,17 +173,19 @@ export class SituationRoomPage implements AfterViewInit, OnDestroy {
       { label: 'Grün', color: 'gruen', value: counts.get('gruen') ?? 0 },
       { label: 'Schwarz', color: 'schwarz', value: counts.get('schwarz') ?? 0 },
       { label: 'Ohne', color: 'unassigned', value: counts.get('unassigned') ?? 0 },
+      { label: 'Ungültig', color: 'invalid', value: counts.get('invalid') ?? 0 },
     ];
   });
 
   protected readonly sceneForm = inject(FormBuilder).nonNullable.group({
-    sceneId: [inject(ResponderStateStore).scene()?.id ?? null as number | null, Validators.required],
+    sceneId: [Number(history.state.sceneId) || inject(ResponderStateStore).scene()?.id || null, Validators.required],
   });
   protected readonly teamForm = inject(FormBuilder).nonNullable.group({
     name: ['', Validators.required],
   });
 
   private readonly api = inject(ApiClient);
+  private readonly router = inject(Router);
   private readonly realtime = inject(SceneRealtimeService);
   private readonly responderState = inject(ResponderStateStore);
   private readonly mapElement = viewChild<ElementRef<HTMLDivElement>>('map');
@@ -219,12 +234,12 @@ export class SituationRoomPage implements AfterViewInit, OnDestroy {
     });
   }
 
-  protected selectPatient(patient: Patient): void {
+  protected openProtocol(patient: Patient): void {
     this.selectedPatient.set(patient);
     this.responderState.setPatient(patient);
-    if (this.showHistory()) {
-      this.loadHistory(patient.id);
-    }
+    this.router.navigate(['/ambulanzprotokoll', patient.id], {
+      state: { returnTo: '/situation-room', sceneId: this.sceneId() },
+    });
   }
 
   protected toggleHistory(): void {
@@ -256,11 +271,18 @@ export class SituationRoomPage implements AfterViewInit, OnDestroy {
     });
   }
 
-  protected updateTeam(team: Team, status: Team['status']): void {
-    this.api.updateTeam(team.id, { status }).subscribe({
+  protected updateTeam(
+    team: Team,
+    update: Partial<Pick<Team, 'status' | 'assignedPatientId' | 'assignedLocation' | 'contactInfo'>>,
+  ): void {
+    this.api.updateTeam(team.id, update).subscribe({
       next: (updated) => this.upsertTeam(updated),
       error: () => this.error.set('Team konnte nicht aktualisiert werden.'),
     });
+  }
+
+  protected numberOrNull(value: string): number | null {
+    return value === '' ? null : Number(value);
   }
 
   protected bool(value?: boolean | null): string {
@@ -341,6 +363,7 @@ export class SituationRoomPage implements AfterViewInit, OnDestroy {
       })
         .bindTooltip(label, { permanent: true, direction: 'top' })
         .bindPopup(label)
+        .on('click', () => this.openProtocol(patient))
         .addTo(this.markers);
     }
     if (points.length && this.map) {

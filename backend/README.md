@@ -15,14 +15,17 @@ Migrations and seeding run automatically on startup before the app serves traffi
 ## Run (prod)
 
 ```sh
-JWT_SECRET=<32+ char secret> \
+DB_PASSWORD=<database password> \
+JWT_SECRET=<32+ character secret> \
 BOOTSTRAP_ADMIN_PASSWORD=<password> \
 PLS_ALLOWED_ORIGINS=https://your-frontend.example \
-docker compose --profile prod up -d --build
+docker compose -f docker-compose.yml -f docker-compose.production.yml \
+  --profile prod up -d --build
 ```
 
 Startup fails fast (`Config/StartupValidation.cs`) if any of these are missing, or if
-`Features:EnableDevLogin` is true in production.
+`Features:EnableDevLogin` is true in production. The production image serves the Angular
+browser bundle from the API origin; `/api`, `/hubs`, and `/health` remain backend routes.
 
 ## Tests
 
@@ -36,20 +39,4 @@ state across runs, see test file comments).
 
 ## Backup / restore (NFR-OPS-05)
 
-Data lives entirely in the `pgdata` Docker volume.
-
-Backup:
-
-```sh
-docker compose exec db pg_dump -U pls -F c ambulanzsystem > backup-$(date +%Y%m%d).dump
-```
-
-Restore onto a fresh volume:
-
-```sh
-docker compose up -d db
-docker compose exec -T db pg_restore -U pls -d ambulanzsystem --clean --if-exists < backup-20260713.dump
-```
-
-`--clean --if-exists` drops conflicting objects before restoring, so this is safe to run
-against a db that already has the (empty) schema from the app's own migration-on-startup.
+Use the rehearsable scripts and instructions in `docs/pilot/operations.md`.

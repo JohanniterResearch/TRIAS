@@ -14,6 +14,22 @@ export class TriageDraftStore {
     localStorage.setItem(key, JSON.stringify(all));
   }
 
+  rekey(provisionalId: number, realId: number): void {
+    const all = this.all();
+    const provisional = all[provisionalId];
+    if (!provisional) {
+      return;
+    }
+    const real = all[realId];
+    const provisionalIsNewer = Date.parse(String(provisional['clientUpdatedAt'] ?? 0))
+      >= Date.parse(String(real?.['clientUpdatedAt'] ?? 0));
+    all[realId] = provisionalIsNewer
+      ? { ...real, ...provisional }
+      : { ...provisional, ...real };
+    delete all[provisionalId];
+    localStorage.setItem(key, JSON.stringify(all));
+  }
+
   clear(): void {
     localStorage.removeItem(key);
   }

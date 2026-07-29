@@ -213,6 +213,20 @@ paths:
 
   # ---------------------------------------------------------------- users
   /api/users:
+    get:
+      tags: [users]
+      summary: List users for the Admin revocation view. Policy AdminOnly.
+      responses:
+        "200":
+          description: Users.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
     post:
       tags: [users]
       summary: Create a user (admin, leitstelle, or responder). Policy AdminOnly. New admin/leitstelle users get requiresPasswordChange=true.
@@ -649,7 +663,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Patient" }
-        "400": { description: Invalid triage value (rejected at write boundary, FR-TRIAGE-04). }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 
@@ -796,7 +810,7 @@ paths:
                       warnings:
                         type: array
                         items: { type: string }
-        "400": { description: Status outside draft|finalized, or structurally unstorable payload. }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Patient does not exist. }
 
@@ -951,12 +965,12 @@ components:
 
   responses:
     Unauthorized:
-      description: Missing/invalid/expired/revoked credentials. Expired access blocks new actions and reads (FR-AUTH-09).
+      description: Missing, invalid, expired, or live-revoked credentials. Revocation returns 401 immediately and blocks new actions and reads (FR-AUTH-09).
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
     Forbidden:
-      description: Authenticated but role not permitted (e.g. responder on admin endpoint, NFR-SEC-02).
+      description: Authenticated but not permitted, including role denial and an existing resource outside the session's event scene boundary (NFR-SEC-02).
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }

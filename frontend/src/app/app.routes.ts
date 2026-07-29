@@ -50,7 +50,7 @@ export const routes: Routes = [
   {
     path: 'ambulanzprotokoll/:patientId',
     loadComponent: () => import('./protokoll/pages/ambulanzprotokoll-page').then((module) => module.AmbulanzprotokollPage),
-    canActivate: [requireSession('responder-or-qr')],
+    canActivate: [requireSession('authenticated')],
   },
   {
     path: 'body/front',

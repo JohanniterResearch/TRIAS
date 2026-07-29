@@ -1,7 +1,7 @@
 import { DecimalPipe } from '@angular/common';
 import { AfterViewInit, Component, ElementRef, inject, OnDestroy, signal, viewChild } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import * as L from 'leaflet';
 
 import { ApiClient } from '../../api/api-client';
@@ -79,8 +79,14 @@ type TriageColor = components['schemas']['TriageColor'];
         <div class="row-actions">
           <a routerLink="/body/front">Körper vorne markieren</a>
           <a routerLink="/body/back">Körper hinten markieren</a>
-          <a [routerLink]="['/ambulanzprotokoll', state.patient()?.id]">Ambulanzprotokoll</a>
+          <a [routerLink]="['/ambulanzprotokoll', state.patient()?.id]" [state]="{ returnTo: '/triage' }">Ambulanzprotokoll</a>
         </div>
+        @if (pendingProtocol()) {
+          <div class="row-actions">
+            <button type="button" (click)="continueToProtocol()">Weiter zum Ambulanzprotokoll</button>
+            <button type="button" (click)="pendingProtocol.set(false)">Überspringen</button>
+          </div>
+        }
       }
     </section>
   `,
@@ -89,6 +95,7 @@ export class TriagePage implements AfterViewInit, OnDestroy {
   protected readonly state = inject(ResponderStateStore);
   protected readonly message = signal('');
   protected readonly error = signal('');
+  protected readonly pendingProtocol = signal(history.state.pendingProtocol === true);
   protected readonly flagsForm = inject(FormBuilder).nonNullable.group({
     respiration: [false],
     blutung: [false],
@@ -118,6 +125,7 @@ export class TriagePage implements AfterViewInit, OnDestroy {
   ] as const;
 
   private readonly api = inject(ApiClient);
+  private readonly router = inject(Router);
   private readonly drafts = inject(TriageDraftStore);
   private readonly offlineQueue = inject(OfflineQueueService);
   private readonly locationMap = viewChild<ElementRef<HTMLDivElement>>('locationMap');
@@ -203,6 +211,13 @@ export class TriagePage implements AfterViewInit, OnDestroy {
       },
       error: () => this.error.set('Position konnte nicht gespeichert werden.'),
     });
+  }
+
+  protected continueToProtocol(): void {
+    const patientId = this.state.patient()?.id;
+    if (patientId) {
+      this.router.navigate(['/ambulanzprotokoll', patientId], { state: { returnTo: '/triage' } });
+    }
   }
 
   private setMarker(lat: number, lng: number): void {

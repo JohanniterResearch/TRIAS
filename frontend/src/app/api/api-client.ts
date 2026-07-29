@@ -41,6 +41,8 @@ type CreateUserRequest =
   paths['/api/users']['post']['requestBody']['content']['application/json'];
 type User =
   paths['/api/users']['post']['responses'][201]['content']['application/json'];
+type UserList =
+  paths['/api/users']['get']['responses'][200]['content']['application/json'];
 type GenerateLoginQrRequest =
   paths['/api/login-qr-codes/generate']['post']['requestBody']['content']['application/json'];
 type LoginQrCode =
@@ -92,6 +94,18 @@ export class ApiClient {
   private readonly syncStatus = inject(SyncStatusService);
   private readonly client = createClient<paths>({ baseUrl: environment.apiBaseUrl });
 
+  constructor() {
+    this.client.use({
+      onRequest: ({ request }) => {
+        const token = this.auth.bearerToken();
+        if (token) {
+          request.headers.set('Authorization', `Bearer ${token}`);
+        }
+        return request;
+      },
+    });
+  }
+
   qrLogin(qr_code: string): Observable<QrLoginResponse> {
     return this.unwrap(this.client.POST('/api/qr-login', { body: { qr_code } satisfies QrLoginRequest }));
   }
@@ -107,13 +121,11 @@ export class ApiClient {
   changePassword(body: ChangePasswordRequest): Observable<void> {
     return this.unwrap(this.client.POST('/api/users/change-password', {
       body,
-      headers: this.authHeaders(),
     }));
   }
 
   selfCancel(): Observable<void> {
     return this.unwrap(this.client.POST('/api/users/self-cancel', {
-      headers: this.authHeaders(),
     }));
   }
 
@@ -123,7 +135,6 @@ export class ApiClient {
 
   validateToken(): Observable<ValidateTokenResponse> {
     return this.unwrap(this.client.POST('/api/validate-token', {
-      headers: this.authHeaders(),
     }));
   }
 
@@ -141,83 +152,75 @@ export class ApiClient {
 
   listScenes(): Observable<OperationScene[]> {
     return this.unwrap(this.client.GET('/api/operation-scenes', {
-      headers: this.authHeaders(),
     }));
   }
 
   saveScene(body: SaveSceneRequest): Observable<OperationScene> {
     return this.unwrap(this.client.POST('/api/operation-scenes', {
       body,
-      headers: this.authHeaders(),
     }));
   }
 
   deleteScene(id: number): Observable<void> {
     return this.unwrap(this.client.DELETE('/api/operation-scenes/{id}', {
       params: { path: { id } },
-      headers: this.authHeaders(),
     }));
   }
 
   createUser(body: CreateUserRequest): Observable<User> {
     return this.unwrap(this.client.POST('/api/users', {
       body,
-      headers: this.authHeaders(),
     }));
+  }
+
+  listUsers(): Observable<UserList> {
+    return this.unwrap(this.client.GET('/api/users'));
   }
 
   revokeUser(id: number): Observable<void> {
     return this.unwrap(this.client.POST('/api/users/{id}/revoke', {
       params: { path: { id } },
-      headers: this.authHeaders(),
     }));
   }
 
   generateLoginQrCodes(body: GenerateLoginQrRequest): Observable<LoginQrCode[]> {
     return this.unwrap(this.client.POST('/api/login-qr-codes/generate', {
       body,
-      headers: this.authHeaders(),
     }));
   }
 
   listLoginQrCodes(eventSceneId?: number): Observable<LoginQrCode[]> {
     return this.unwrap(this.client.GET('/api/login-qr-codes', {
       params: { query: eventSceneId ? { eventSceneId } : {} },
-      headers: this.authHeaders(),
     }));
   }
 
   revokeLoginQrCode(id: number): Observable<void> {
     return this.unwrap(this.client.POST('/api/login-qr-codes/{id}/revoke', {
       params: { path: { id } },
-      headers: this.authHeaders(),
     }));
   }
 
   generatePatientQrCodes(body: GeneratePatientQrRequest): Observable<string[]> {
     return this.unwrap(this.client.POST('/api/patient-qr-codes/generate', {
       body,
-      headers: this.authHeaders(),
     }));
   }
 
   listUnusedPatientQrCodes(): Observable<string[]> {
     return this.unwrap(this.client.GET('/api/patient-qr-codes/unused', {
-      headers: this.authHeaders(),
     }));
   }
 
   verifyPatientQrCode(body: VerifyPatientQrRequest): Observable<VerifyPatientQrResult> {
     return this.unwrap(this.client.POST('/api/verify-patient-qr-code', {
       body,
-      headers: this.authHeaders(),
     }));
   }
 
   createManualPatient(body: ManualPatientRequest): Observable<Patient> {
     return this.unwrap(this.client.POST('/api/persons/manual', {
       body,
-      headers: this.authHeaders(),
     }));
   }
 
@@ -225,7 +228,6 @@ export class ApiClient {
     return this.unwrap(this.client.POST('/api/persons/{id}/update-triage-color', {
       params: { path: { id: patientId } },
       body,
-      headers: this.authHeaders(),
     }));
   }
 
@@ -233,7 +235,6 @@ export class ApiClient {
     return this.unwrap(this.client.POST('/api/persons/{id}/location', {
       params: { path: { id: patientId } },
       body,
-      headers: this.authHeaders(),
     }));
   }
 
@@ -241,28 +242,24 @@ export class ApiClient {
     return this.unwrap(this.client.POST('/api/persons/{id}/reassign-qr-code', {
       params: { path: { id: patientId } },
       body,
-      headers: this.authHeaders(),
     }));
   }
 
   getBodyParts(patientId: number): Observable<BodyParts> {
     return this.unwrap(this.client.GET('/api/body-parts', {
       params: { query: { idpatient: patientId } },
-      headers: this.authHeaders(),
     }));
   }
 
   toggleBodyPart(body: BodyPartToggleRequest): Observable<BodyParts> {
     return this.unwrap(this.client.PUT('/api/body-parts', {
       body,
-      headers: this.authHeaders(),
     }));
   }
 
   getProtokollPage1(patientId: number): Observable<ProtokollRecord> {
     return this.unwrap(this.client.GET('/api/persons/{patientId}/ambulanzprotokoll-page1', {
       params: { path: { patientId } },
-      headers: this.authHeaders(),
     }));
   }
 
@@ -270,35 +267,30 @@ export class ApiClient {
     return this.unwrap(this.client.PUT('/api/persons/{patientId}/ambulanzprotokoll-page1', {
       params: { path: { patientId } },
       body,
-      headers: this.authHeaders(),
     }));
   }
 
   exportProtokollPage1(patientId: number): Observable<ProtokollExport> {
     return this.unwrap(this.client.GET('/api/persons/{patientId}/ambulanzprotokoll-page1/export', {
       params: { path: { patientId } },
-      headers: this.authHeaders(),
     }));
   }
 
   listPatients(operationSceneId: number): Observable<PatientList> {
     return this.unwrap(this.client.GET('/api/persons', {
       params: { query: { operationSceneId } },
-      headers: this.authHeaders(),
     }));
   }
 
   listTeams(operationSceneId: number): Observable<Team[]> {
     return this.unwrap(this.client.GET('/api/teams', {
       params: { query: { operationSceneId } },
-      headers: this.authHeaders(),
     }));
   }
 
   createTeam(body: TeamCreateRequest): Observable<Team> {
     return this.unwrap(this.client.POST('/api/teams', {
       body,
-      headers: this.authHeaders(),
     }));
   }
 
@@ -306,14 +298,12 @@ export class ApiClient {
     return this.unwrap(this.client.PUT('/api/teams/{id}', {
       params: { path: { id } },
       body,
-      headers: this.authHeaders(),
     }));
   }
 
   getTriageHistory(patientId: number): Observable<TriageHistoryEntry[]> {
     return this.unwrap(this.client.GET('/api/persons/{id}/triage-history', {
       params: { path: { id: patientId } },
-      headers: this.authHeaders(),
     }));
   }
 
@@ -330,8 +320,4 @@ export class ApiClient {
     );
   }
 
-  private authHeaders(): { Authorization: string } | undefined {
-    const token = this.auth.bearerToken();
-    return token ? { Authorization: `Bearer ${token}` } : undefined;
-  }
 }

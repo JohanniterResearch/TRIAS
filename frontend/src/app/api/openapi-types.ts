@@ -341,7 +341,29 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** List users for the Admin revocation view. Policy AdminOnly. */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Users. */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["User"][];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+            };
+        };
         put?: never;
         /** Create a user (admin, leitstelle, or responder). Policy AdminOnly. New admin/leitstelle users get requiresPasswordChange=true. */
         post: {
@@ -1232,13 +1254,7 @@ export interface paths {
                         "application/json": components["schemas"]["Patient"];
                     };
                 };
-                /** @description Invalid triage value (rejected at write boundary */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
+                400: components["responses"]["BadRequest"];
                 401: components["responses"]["Unauthorized"];
                 404: components["responses"]["NotFound"];
             };
@@ -1330,6 +1346,11 @@ export interface paths {
                         accuracyMeters?: number;
                         /** @description Optional free text: tent/sector/room/floor/treatment bay (FR-LOC-08). */
                         indoorLocation?: string;
+                        /**
+                         * Format: date-time
+                         * @description Client-side write timestamp for offline replay merge (NFR-SAFE-08/09)
+                         */
+                        clientUpdatedAt?: string;
                     };
                 };
             };
@@ -1521,13 +1542,7 @@ export interface paths {
                         };
                     };
                 };
-                /** @description Status outside draft|finalized */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
+                400: components["responses"]["BadRequest"];
                 401: components["responses"]["Unauthorized"];
                 /** @description Patient does not exist. */
                 404: {
@@ -1997,7 +2012,7 @@ export interface components {
         };
     };
     responses: {
-        /** @description Missing/invalid/expired/revoked credentials. Expired access blocks new actions and reads (FR-AUTH-09). */
+        /** @description Missing, invalid, expired, or live-revoked credentials. Revocation returns 401 immediately and blocks new actions and reads (FR-AUTH-09). */
         Unauthorized: {
             headers: {
                 [name: string]: unknown;
@@ -2006,7 +2021,7 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description Authenticated but role not permitted (e.g. responder on admin endpoint, NFR-SEC-02). */
+        /** @description Authenticated but not permitted, including role denial and an existing resource outside the session's event scene boundary (NFR-SEC-02). */
         Forbidden: {
             headers: {
                 [name: string]: unknown;

@@ -175,6 +175,20 @@ type LoginQrCode = components['schemas']['LoginQrCode'];
               <button type="button" (click)="revokeUser(user.id)">Zugang widerrufen</button>
             </article>
           }
+          <button type="button" (click)="loadUsers()" [disabled]="busy()">Benutzer laden</button>
+          <div class="admin-list">
+            @for (user of users(); track user.id) {
+              <article>
+                <strong>{{ user.username }}</strong>
+                <span>{{ user.role }} · {{ user.accountType }}</span>
+                @if (user.revokedAt) {
+                  <span>Widerrufen: {{ user.revokedAt | date: 'short' }}</span>
+                } @else {
+                  <button type="button" (click)="revokeUser(user.id)">Zugang widerrufen</button>
+                }
+              </article>
+            }
+          </div>
           <a routerLink="/change-password">Eigenes Passwort ändern</a>
         </section>
       </div>
@@ -188,6 +202,7 @@ export class AdminDashboard {
   protected readonly scenes = signal<OperationScene[]>([]);
   protected readonly loginQrCodes = signal<LoginQrCode[]>([]);
   protected readonly patientQrCodes = signal<string[]>([]);
+  protected readonly users = signal<components['schemas']['User'][]>([]);
   protected readonly createdUser = signal<components['schemas']['User'] | null>(null);
 
   private readonly api = inject(ApiClient);
@@ -316,15 +331,25 @@ export class AdminDashboard {
       accountType: raw.accountType,
       eventSceneId: raw.eventSceneId ?? undefined,
     }).subscribe({
-      next: (user) => this.done(() => this.createdUser.set(user), 'Benutzer angelegt.'),
+      next: (user) => this.done(() => {
+        this.createdUser.set(user);
+        this.upsertUser(user);
+      }, 'Benutzer angelegt.'),
       error: () => this.fail('Benutzer konnte nicht angelegt werden.'),
     }));
   }
 
   protected revokeUser(id: number): void {
     this.run(() => this.api.revokeUser(id).subscribe({
-      next: () => this.done(undefined, 'Zugang widerrufen.'),
+      next: () => this.done(() => this.loadUsers(), 'Zugang widerrufen.'),
       error: () => this.fail('Zugang konnte nicht widerrufen werden.'),
+    }));
+  }
+
+  protected loadUsers(): void {
+    this.run(() => this.api.listUsers().subscribe({
+      next: (users) => this.done(() => this.users.set(users)),
+      error: () => this.fail('Benutzer konnten nicht geladen werden.'),
     }));
   }
 
@@ -337,6 +362,10 @@ export class AdminDashboard {
       const without = scenes.filter((item) => item.id !== scene.id);
       return [...without, scene].sort((a, b) => a.id - b.id);
     });
+  }
+
+  private upsertUser(user: components['schemas']['User']): void {
+    this.users.update((users) => [...users.filter((item) => item.id !== user.id), user].sort((a, b) => a.id - b.id));
   }
 
   private run(action: () => void): void {

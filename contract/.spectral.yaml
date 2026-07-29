@@ -1,0 +1,3 @@
+extends: spectral:oas
+rules:
+  duplicated-entry-in-enum: off

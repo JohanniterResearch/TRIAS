@@ -25,8 +25,8 @@ import { ResponderStateStore } from '../services/responder-state';
 
       <div class="choice-grid">
         <a routerLink="/triage">Triage</a>
-        <a [routerLink]="['/ambulanzprotokoll', patientId()]">Ambulanzprotokoll</a>
-        <a routerLink="/triage">Beides starten</a>
+        <a [routerLink]="['/ambulanzprotokoll', patientId()]" [state]="{ returnTo: '/patient/' + patientId() }">Ambulanzprotokoll</a>
+        <a routerLink="/triage" [state]="{ pendingProtocol: true }">Beides starten</a>
         <button type="button" disabled>Dritte Option folgt</button>
       </div>
 

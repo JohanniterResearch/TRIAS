@@ -20,6 +20,9 @@ cd contract && npm install && npm run mock   # serves http://localhost:4010
 
 Backend and frontend run instructions land with stages B1 / F1.
 
+Production deployment, smoke, reverse-proxy, backup, and restore instructions are in
+[`docs/pilot/operations.md`](docs/pilot/operations.md).
+
 ## Contract rules
 
 - `contract/openapi.yaml` is the single source of truth for the API. Generated
