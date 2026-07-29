@@ -22,6 +22,21 @@ export class ProtokollDraftStore {
     await this.withStore('readwrite', (store) => request(store.put(record)));
   }
 
+  async rekey(provisionalId: number, realId: number): Promise<void> {
+    await this.withStore('readwrite', async (store) => {
+      const provisional = await request<ProtokollDraftRecord | undefined>(store.get(provisionalId));
+      if (!provisional) {
+        return;
+      }
+      const real = await request<ProtokollDraftRecord | undefined>(store.get(realId));
+      const newer = !real || Date.parse(provisional.updatedAt) >= Date.parse(real.updatedAt)
+        ? provisional
+        : real;
+      await request(store.put({ ...newer, patientId: realId }));
+      await request(store.delete(provisionalId));
+    });
+  }
+
   async clear(): Promise<void> {
     await this.withStore('readwrite', (store) => request(store.clear()));
   }

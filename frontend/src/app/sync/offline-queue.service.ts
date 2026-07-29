@@ -3,6 +3,9 @@ import { firstValueFrom } from 'rxjs';
 
 import { ApiClient } from '../api/api-client';
 import type { components, paths } from '../api/openapi-types';
+import { ProtokollDraftStore } from '../protokoll/services/protokoll-draft-store';
+import { ResponderStateStore } from '../responder/services/responder-state';
+import { TriageDraftStore } from '../responder/services/triage-draft-store';
 import { SyncStatusService } from './sync-status.service';
 
 type Patient = components['schemas']['Patient'];
@@ -14,6 +17,8 @@ type QueueItem =
   | { id: string; type: 'manual-patient'; body: ManualPatientRequest; provisionalId: number; createdAt: string }
   | { id: string; type: 'triage'; patientId: number; body: TriageUpdateRequest; createdAt: string }
   | { id: string; type: 'protocol'; patientId: number; body: SaveProtokollRequest; createdAt: string };
+type PendingWrite = Exclude<QueueItem, { type: 'manual-patient' }>;
+type PatientMapping = { provisionalId: number; realId: number; patient: Patient };
 
 const dbName = 'ambulanzsystem-offline';
 const queueStore = 'queue';
@@ -22,15 +27,18 @@ const mapStore = 'patient-map';
 @Injectable({ providedIn: 'root' })
 export class OfflineQueueService {
   private readonly api = inject(ApiClient);
+  private readonly responderState = inject(ResponderStateStore);
+  private readonly triageDrafts = inject(TriageDraftStore);
+  private readonly protocolDrafts = inject(ProtokollDraftStore);
   private readonly syncStatus = inject(SyncStatusService);
   private flushing = false;
 
   constructor() {
     window.addEventListener('online', () => this.flush().catch(() => undefined));
     this.refreshStatus();
-    if (navigator.onLine) {
-      this.flush().catch(() => undefined);
-    }
+    this.reconcileMappings()
+      .then(() => navigator.onLine ? this.flush() : undefined)
+      .catch(() => undefined);
   }
 
   async createProvisionalPatient(body: ManualPatientRequest): Promise<Patient> {
@@ -65,6 +73,12 @@ export class OfflineQueueService {
     this.flushing = true;
     try {
       for (const item of await this.items()) {
+        if (item.type === 'manual-patient') {
+          const patient = await firstValueFrom(this.api.createManualPatient(item.body));
+          await this.commitPatientMapping(item.id, item.provisionalId, patient);
+          await this.reconcilePatient({ provisionalId: item.provisionalId, realId: patient.id, patient });
+          continue;
+        }
         const done = await this.replay(item);
         if (!done) {
           break;
@@ -83,13 +97,7 @@ export class OfflineQueueService {
     await this.refreshStatus();
   }
 
-  private async replay(item: QueueItem): Promise<boolean> {
-    if (item.type === 'manual-patient') {
-      const patient = await firstValueFrom(this.api.createManualPatient(item.body));
-      await this.mapPatient(item.provisionalId, patient.id);
-      return true;
-    }
-
+  private async replay(item: PendingWrite): Promise<boolean> {
     const patientId = await this.realPatientId(item.patientId);
     if (patientId < 0) {
       return false;
@@ -116,15 +124,49 @@ export class OfflineQueueService {
     return (await this.withStore(queueStore, 'readonly', (store) => request<QueueItem[]>(store.getAll()))).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   }
 
-  private async mapPatient(provisionalId: number, realId: number): Promise<void> {
-    await this.withStore(mapStore, 'readwrite', (store) => request(store.put(realId, provisionalId)));
+  private async commitPatientMapping(queueId: string, provisionalId: number, patient: Patient): Promise<void> {
+    const db = await openDb();
+    try {
+      const transaction = db.transaction([queueStore, mapStore], 'readwrite');
+      transaction.objectStore(mapStore).put(
+        { provisionalId, realId: patient.id, patient } satisfies PatientMapping,
+        provisionalId,
+      );
+      transaction.objectStore(queueStore).delete(queueId);
+      await transactionDone(transaction);
+    } finally {
+      db.close();
+    }
+  }
+
+  private async reconcileMappings(): Promise<void> {
+    const mappings = await this.withStore(
+      mapStore,
+      'readonly',
+      (store) => request<Array<PatientMapping | number>>(store.getAll()),
+    );
+    for (const mapping of mappings) {
+      if (typeof mapping !== 'number') {
+        await this.reconcilePatient(mapping);
+      }
+    }
+  }
+
+  private async reconcilePatient(mapping: PatientMapping): Promise<void> {
+    this.responderState.replacePatient(mapping.provisionalId, mapping.patient);
+    this.triageDrafts.rekey(mapping.provisionalId, mapping.realId);
+    await this.protocolDrafts.rekey(mapping.provisionalId, mapping.realId);
   }
 
   private async realPatientId(patientId: number): Promise<number> {
     if (patientId >= 0) {
       return patientId;
     }
-    return await this.withStore(mapStore, 'readonly', (store) => request<number | undefined>(store.get(patientId))).then((id) => id ?? patientId);
+    return await this.withStore(
+      mapStore,
+      'readonly',
+      (store) => request<PatientMapping | number | undefined>(store.get(patientId)),
+    ).then((mapping) => typeof mapping === 'number' ? mapping : mapping?.realId ?? patientId);
   }
 
   private async refreshStatus(): Promise<void> {
@@ -158,5 +200,13 @@ function request<T>(idbRequest: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
     idbRequest.onsuccess = () => resolve(idbRequest.result);
     idbRequest.onerror = () => reject(idbRequest.error);
+  });
+}
+
+function transactionDone(transaction: IDBTransaction): Promise<void> {
+  return new Promise((resolve, reject) => {
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error);
+    transaction.onabort = () => reject(transaction.error);
   });
 }

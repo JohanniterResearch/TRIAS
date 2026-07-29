@@ -28,6 +28,12 @@ export class ResponderStateStore {
     this.save({ ...this.state(), patient });
   }
 
+  replacePatient(provisionalId: number, patient: Patient): void {
+    if (this.state().patient?.id === provisionalId) {
+      this.setPatient(patient);
+    }
+  }
+
   clearPatient(): void {
     this.save({ ...this.state(), patient: null });
   }
