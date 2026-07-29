@@ -16,9 +16,7 @@ public class AmbulanzprotokollTests(WebApplicationFactory<Program> factory) : IC
     private async Task<HttpClient> AdminClientAsync()
     {
         var client = factory.CreateClient();
-        var res = await client.PostAsJsonAsync("/api/admin-login", new { username = "admin", password = "dev-admin-password" });
-        res.EnsureSuccessStatusCode();
-        var token = (await res.Content.ReadFromJsonAsync<TokenBearing>())!.token!;
+        var token = await TestAuth.LoginAsync(client, "/api/admin-login", "admin", "dev-admin-password");
         client.DefaultRequestHeaders.Authorization = new("Bearer", token);
         return client;
     }

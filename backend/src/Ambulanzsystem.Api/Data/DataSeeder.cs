@@ -8,7 +8,7 @@ public static class DataSeeder
     // Runs on every startup; both halves are idempotent (guarded on "table is empty").
     public static async Task SeedAsync(AppDbContext db, IConfiguration config, IHostEnvironment env)
     {
-        await SeedUsersAsync(db, config);
+        await SeedUsersAsync(db, config, env);
 
         if (env.IsDevelopment() && config.GetValue<bool>("Bootstrap:SeedDevSampleData"))
         {
@@ -16,14 +16,12 @@ public static class DataSeeder
         }
     }
 
-    private static async Task SeedUsersAsync(AppDbContext db, IConfiguration config)
+    private static async Task SeedUsersAsync(AppDbContext db, IConfiguration config, IHostEnvironment env)
     {
         if (await db.Users.AnyAsync()) return;
 
         var adminUsername = config["Bootstrap:AdminUsername"] ?? "admin";
         var adminPassword = config["Bootstrap:AdminPassword"];
-        var testUsername = config["Bootstrap:TestUserUsername"] ?? "responder-demo";
-        var testPassword = config["Bootstrap:TestUserPassword"] ?? "responder-demo";
 
         // Startup already fail-fasts in production when AdminPassword is unset (see StartupValidation);
         // this fallback only ever fires in dev/test where that check is skipped.
@@ -38,16 +36,24 @@ public static class DataSeeder
             RequiresPasswordChange = true,
         });
 
-        // No self-service password-change UI for non-admin roles yet — forcing a change here would
-        // strand this account. Add that UI before flipping this to true.
-        db.Users.Add(new User
+        // Demo login: only ever created in Development, and only when demo seeding is explicitly
+        // enabled (same flag that gates the demo scenes/patients below) — Production must seed
+        // only the bootstrap Admin account. No self-service password-change UI for non-admin roles
+        // yet, so this account never has RequiresPasswordChange forced on it.
+        if (env.IsDevelopment() && config.GetValue<bool>("Bootstrap:SeedDevSampleData"))
         {
-            Username = testUsername,
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword(testPassword),
-            Role = Role.Responder,
-            AccountType = AccountType.Permanent,
-            RequiresPasswordChange = false,
-        });
+            var testUsername = config["Bootstrap:TestUserUsername"] ?? "responder-demo";
+            var testPassword = config["Bootstrap:TestUserPassword"] ?? "responder-demo";
+
+            db.Users.Add(new User
+            {
+                Username = testUsername,
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(testPassword),
+                Role = Role.Responder,
+                AccountType = AccountType.Permanent,
+                RequiresPasswordChange = false,
+            });
+        }
 
         await db.SaveChangesAsync();
     }

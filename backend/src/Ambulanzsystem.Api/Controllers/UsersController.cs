@@ -40,7 +40,10 @@ public class UsersController(AppDbContext db, RefreshTokenService refreshTokens,
             Role = request.Role.Value,
             AccountType = request.AccountType,
             EventSceneId = request.EventSceneId,
-            RequiresPasswordChange = true,
+            // Forced change applies only to newly created Admin/Leitstelle accounts — Responder
+            // accounts have no self-service change UI yet (see DataSeeder), forcing it here would
+            // strand them.
+            RequiresPasswordChange = request.Role is Role.Admin or Role.Leitstelle,
         };
 
         db.Users.Add(user);
@@ -51,10 +54,21 @@ public class UsersController(AppDbContext db, RefreshTokenService refreshTokens,
 
     [HttpPost("change-password")]
     [Authorize(Policy = AuthPolicies.AuthenticatedUser)]
+    [AllowPendingPasswordChange]
     public async Task<IActionResult> ChangePassword(ChangePasswordRequest request)
     {
+        if (request.NewPassword is null or { Length: < 8 })
+        {
+            return BadRequest(new ErrorResponse("New password must be at least 8 characters."));
+        }
+
         var user = await db.Users.FirstOrDefaultAsync(u => u.Username == request.Username);
-        if (user is null || !BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
+
+        // Bound to the authenticated principal's own subject id: a correct password for a
+        // *different* account must not be enough to change it. Folded into the same "invalid
+        // credentials" response as a bad password so the error shape can't be used as a username
+        // oracle.
+        if (user is null || user.Id != User.SubjectId() || !BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
         {
             return Unauthorized(new ErrorResponse("Invalid current credentials."));
         }
@@ -88,17 +102,22 @@ public class UsersController(AppDbContext db, RefreshTokenService refreshTokens,
 
     [HttpPost("self-cancel")]
     [Authorize(Policy = AuthPolicies.TriageWrite)]
+    [AllowPendingPasswordChange]
     public async Task<IActionResult> SelfCancel()
     {
         var type = User.FindFirst(TokenTypes.ClaimType)?.Value;
         if (type == TokenTypes.Qr)
         {
-            // QR sessions have no User row to revoke; ending access is purely client-side
-            // (discard the token — recreation spec §2.4, QR sessions are short-lived by design).
-            // Still audit-logged: the fact that the session self-cancelled is meaningful even
-            // though there's no DB row to mutate.
             if (User.SubjectId() is int qrLoginId)
             {
+                var code = await db.QrCodeLogins.FindAsync(qrLoginId);
+                if (code is not null && code.RevokedAt is null)
+                {
+                    code.RevokedAt = DateTime.UtcNow;
+                }
+
+                // Same SaveChangesAsync as the RevokedAt write above: the row mutation and its
+                // audit entry commit as one transaction, or neither does.
                 audit.LogRevoke(User, null, TokenTypes.Qr, "qr_code_login", qrLoginId);
                 await db.SaveChangesAsync();
             }

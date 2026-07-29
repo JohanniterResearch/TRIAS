@@ -1,33 +1,56 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using Ambulanzsystem.Api.Data;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 
 namespace Ambulanzsystem.Api.Auth;
 
-// Instant revocation without a blocklist (recreation spec §2.4): on every request bearing a
-// security_stamp claim (i.e. every admin/leitstelle/user token — qr tokens never carry one),
-// re-fetch the user and reject if the stamp no longer matches or the account was revoked.
+// Instant revocation without a blocklist (recreation spec §2.4): on every request, re-check the
+// underlying DB row live instead of trusting the JWT's own claims.
 public static class SecurityStampValidation
 {
     public static Task OnTokenValidated(TokenValidatedContext context)
     {
-        var stampClaim = context.Principal?.FindFirst(TokenTypes.SecurityStampClaimType)?.Value;
-        if (stampClaim is null)
-        {
-            return Task.CompletedTask; // qr token — nothing to revalidate.
-        }
-
-        var subClaim = context.Principal?.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub)?.Value;
-        if (subClaim is null || !int.TryParse(subClaim, out var userId))
+        var subClaim = context.Principal?.FindFirst(JwtRegisteredClaimNames.Sub)?.Value;
+        if (subClaim is null || !int.TryParse(subClaim, out var subjectId))
         {
             context.Fail("Missing or invalid subject claim.");
             return Task.CompletedTask;
         }
 
-        return ValidateAsync(context, userId, stampClaim);
+        var typeClaim = context.Principal?.FindFirst(TokenTypes.ClaimType)?.Value;
+        if (typeClaim == TokenTypes.Qr)
+        {
+            // QR tokens carry the QrCodeLogin row's id as `sub`. Re-fetch it on every request so a
+            // revoke, self-cancel, or natural expiry takes effect immediately, not only at the next
+            // token issuance.
+            return ValidateQrSessionAsync(context, subjectId);
+        }
+
+        var stampClaim = context.Principal?.FindFirst(TokenTypes.SecurityStampClaimType)?.Value;
+        if (stampClaim is null)
+        {
+            context.Fail("Missing security stamp claim.");
+            return Task.CompletedTask;
+        }
+
+        return ValidateUserAsync(context, subjectId, stampClaim);
     }
 
-    private static async Task ValidateAsync(TokenValidatedContext context, int userId, string stampClaim)
+    private static async Task ValidateQrSessionAsync(TokenValidatedContext context, int qrCodeLoginId)
+    {
+        var db = context.HttpContext.RequestServices.GetRequiredService<AppDbContext>();
+        var code = await db.QrCodeLogins.AsNoTracking().FirstOrDefaultAsync(c => c.Id == qrCodeLoginId);
+
+        var now = DateTime.UtcNow;
+        if (code is null || code.RevokedAt is not null || (code.ExpiresAt is not null && code.ExpiresAt < now))
+        {
+            context.Fail("QR session is no longer valid (missing, revoked, self-cancelled, or expired).");
+        }
+    }
+
+    private static async Task ValidateUserAsync(TokenValidatedContext context, int userId, string stampClaim)
     {
         var db = context.HttpContext.RequestServices.GetRequiredService<AppDbContext>();
         var user = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
@@ -35,6 +58,17 @@ public static class SecurityStampValidation
         if (user is null || user.SecurityStamp != stampClaim || user.RevokedAt is not null)
         {
             context.Fail("Token is no longer valid (revoked or security stamp changed).");
+            return;
+        }
+
+        if (user.RequiresPasswordChange)
+        {
+            // Live-checked claim, not baked into the JWT: it clears itself on the very next request
+            // after the user completes the change, without needing a fresh token. AuthPolicies uses
+            // it to deny normal API access while still allowing the handful of endpoints a user in
+            // this state needs to get unstuck (change-password, logout, self-cancel, validate-token).
+            (context.Principal!.Identity as ClaimsIdentity)?.AddClaim(
+                new Claim(TokenTypes.RequiresPasswordChangeClaimType, "true"));
         }
     }
 }

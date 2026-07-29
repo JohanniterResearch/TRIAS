@@ -118,6 +118,7 @@ public class AuthController(
 
     [HttpPost("logout")]
     [Authorize(Policy = AuthPolicies.AuthenticatedUser)]
+    [AllowPendingPasswordChange]
     public async Task<IActionResult> Logout(RefreshTokenRequest request)
     {
         await refreshTokens.RevokeAsync(request.RefreshToken);
@@ -126,6 +127,7 @@ public class AuthController(
 
     [HttpPost("validate-token")]
     [Authorize(Policy = AuthPolicies.TriageWrite)]
+    [AllowPendingPasswordChange]
     public IActionResult ValidateToken()
     {
         var role = User.FindFirst(TokenTypes.ClaimType)?.Value ?? "unknown";

@@ -14,13 +14,8 @@ public class AuthFlowTests(WebApplicationFactory<Program> factory) : IClassFixtu
 
     private record TokenBearing(string? token, string? refreshToken);
 
-    private async Task<string> AdminLoginAsync(HttpClient client)
-    {
-        var res = await client.PostAsJsonAsync("/api/admin-login", new { username = "admin", password = "dev-admin-password" });
-        res.EnsureSuccessStatusCode();
-        var body = await res.Content.ReadFromJsonAsync<TokenBearing>();
-        return body!.token!;
-    }
+    private static Task<string> AdminLoginAsync(HttpClient client) =>
+        TestAuth.LoginAsync(client, "/api/admin-login", "admin", "dev-admin-password");
 
     [Fact]
     public async Task CreateUser_WithoutRole_Returns400_NotAdmin()

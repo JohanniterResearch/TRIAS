@@ -21,13 +21,8 @@ public class SceneAccessRestTests(WebApplicationFactory<Program> factory) : ICla
     // per WebApplicationFactory instance instead of re-authenticating in every test method.
     private static readonly ConcurrentDictionary<WebApplicationFactory<Program>, Task<string>> AdminTokens = new();
 
-    private Task<string> AdminTokenAsync() => AdminTokens.GetOrAdd(factory, async f =>
-    {
-        var client = f.CreateClient();
-        var res = await client.PostAsJsonAsync("/api/admin-login", new { username = "admin", password = "dev-admin-password" });
-        res.EnsureSuccessStatusCode();
-        return (await res.Content.ReadFromJsonAsync<TokenBearing>())!.token!;
-    });
+    private Task<string> AdminTokenAsync() => AdminTokens.GetOrAdd(factory, f =>
+        TestAuth.LoginAsync(f.CreateClient(), "/api/admin-login", "admin", "dev-admin-password"));
 
     private async Task<HttpClient> AdminClientAsync()
     {
@@ -67,9 +62,7 @@ public class SceneAccessRestTests(WebApplicationFactory<Program> factory) : ICla
         create.EnsureSuccessStatusCode();
 
         var client = factory.CreateClient();
-        var login = await client.PostAsJsonAsync("/api/admin-login", new { username, password = "somePassword1" });
-        login.EnsureSuccessStatusCode();
-        var token = (await login.Content.ReadFromJsonAsync<TokenBearing>())!.token!;
+        var token = await TestAuth.LoginAsync(client, "/api/admin-login", username, "somePassword1");
         client.DefaultRequestHeaders.Authorization = new("Bearer", token);
         return client;
     }
