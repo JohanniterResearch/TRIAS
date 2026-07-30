@@ -215,8 +215,10 @@ public class SceneAccessRestTests(WebApplicationFactory<Program> factory) : ICla
             new { status = "draft", formState = new { } });
         Assert.Equal(HttpStatusCode.Forbidden, putForbidden.StatusCode);
 
+        // Export is stricter than draft read/write: QR sessions can document within scene scope,
+        // but cannot create archival exports because they are anonymous and non-owning.
         var exportOwn = await qr.GetAsync($"/api/persons/{patientInA.id}/ambulanzprotokoll-page1/export");
-        Assert.Equal(HttpStatusCode.OK, exportOwn.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, exportOwn.StatusCode);
 
         var exportForbidden = await qr.GetAsync($"/api/persons/{patientInB.id}/ambulanzprotokoll-page1/export");
         Assert.Equal(HttpStatusCode.Forbidden, exportForbidden.StatusCode);

@@ -17,6 +17,19 @@ namespace Ambulanzsystem.Api.Controllers;
 [Authorize]
 public class PersonsController(AppDbContext db, AuditService audit, SceneNotifier notifier) : ControllerBase
 {
+    private static readonly HashSet<string> TriageUpdateFields =
+    [
+        "triageColor", "respiration", "blutung", "radialispuls", "transport", "dringend",
+        "kontaminiert", "clientUpdatedAt"
+    ];
+
+    private static readonly HashSet<string> LocationFields =
+    [
+        "lat", "lng", "source", "accuracyMeters", "indoorLocation", "clientUpdatedAt"
+    ];
+
+    private static readonly HashSet<string> RespirationFields = ["respiration", "clientUpdatedAt"];
+
     [HttpGet("persons")]
     [Authorize(Policy = AuthPolicies.TriageWrite)]
     [AuditRead("patient_list", AuditIdSource.Query, "operationSceneId")]
@@ -200,39 +213,39 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
         if (patient is null) return NotFound();
         if (!await SceneAccess.CanAccessAsync(User, db, patient.OperationSceneId)) return Forbid();
 
-        DateTime? clientUpdatedAt = body.TryGetProperty("clientUpdatedAt", out var tsEl) && tsEl.ValueKind != JsonValueKind.Null
-            ? tsEl.GetDateTime()
-            : null;
+        if (!TryReadTriageUpdate(body, out var update, out var error))
+        {
+            return BadRequest(error);
+        }
 
         var merge = FieldMerge.Load(patient.FieldTimestampsJson);
         var now = DateTime.UtcNow;
 
-        if (body.TryGetProperty("triageColor", out var colorEl) && colorEl.ValueKind != JsonValueKind.Null)
+        if (update.TriageColor is not null)
         {
-            var raw = colorEl.GetString();
-            if (raw is null || !TriageColors.TryNormalize(raw, out var normalized))
+            if (!TriageColors.TryNormalize(update.TriageColor, out var normalized))
             {
                 return BadRequest(new ErrorResponse("triageColor must be one of rot, gelb, gruen, schwarz."));
             }
 
-            if (merge.TryApply("triagefarbe", clientUpdatedAt, now))
+            if (merge.TryApply("triagefarbe", update.ClientUpdatedAt, now))
             {
                 audit.LogFieldWrite(User, "patient", id, id, "triagefarbe", patient.Triagefarbe, normalized);
                 patient.Triagefarbe = normalized;
             }
         }
 
-        ApplyOptionalBool(body, "respiration", merge, clientUpdatedAt, now, "atmung", patient, id,
+        ApplyOptionalBool(update.Respiration, merge, update.ClientUpdatedAt, now, "atmung", patient, id,
             () => patient.Atmung, v => patient.Atmung = v);
-        ApplyOptionalBool(body, "blutung", merge, clientUpdatedAt, now, "blutung", patient, id,
+        ApplyOptionalBool(update.Blutung, merge, update.ClientUpdatedAt, now, "blutung", patient, id,
             () => patient.Blutung, v => patient.Blutung = v);
-        ApplyOptionalBool(body, "radialispuls", merge, clientUpdatedAt, now, "radialispuls", patient, id,
+        ApplyOptionalBool(update.Radialispuls, merge, update.ClientUpdatedAt, now, "radialispuls", patient, id,
             () => patient.Radialispuls, v => patient.Radialispuls = v);
-        ApplyOptionalBool(body, "transport", merge, clientUpdatedAt, now, "transport", patient, id,
+        ApplyOptionalBool(update.Transport, merge, update.ClientUpdatedAt, now, "transport", patient, id,
             () => patient.Transport, v => patient.Transport = v);
-        ApplyOptionalBool(body, "dringend", merge, clientUpdatedAt, now, "dringend", patient, id,
+        ApplyOptionalBool(update.Dringend, merge, update.ClientUpdatedAt, now, "dringend", patient, id,
             () => patient.Dringend, v => patient.Dringend = v);
-        ApplyOptionalBool(body, "kontaminiert", merge, clientUpdatedAt, now, "kontaminiert", patient, id,
+        ApplyOptionalBool(update.Kontaminiert, merge, update.ClientUpdatedAt, now, "kontaminiert", patient, id,
             () => patient.Kontaminiert, v => patient.Kontaminiert = v);
 
         patient.FieldTimestampsJson = merge.Save();
@@ -258,12 +271,10 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
     }
 
     private void ApplyOptionalBool(
-        JsonElement body, string jsonName, FieldMerge merge, DateTime? clientUpdatedAt, DateTime now,
+        bool? value, FieldMerge merge, DateTime? clientUpdatedAt, DateTime now,
         string fieldName, Patient patient, int patientId, Func<bool?> getter, Action<bool?> setter)
     {
-        if (!body.TryGetProperty(jsonName, out var el) || el.ValueKind == JsonValueKind.Null) return;
-
-        var value = el.GetBoolean();
+        if (value is null) return;
         if (!merge.TryApply(fieldName, clientUpdatedAt, now)) return;
 
         audit.LogFieldWrite(User, "patient", patientId, patientId, fieldName, getter(), value);
@@ -272,17 +283,30 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
 
     [HttpPost("persons/{id:int}/respiration")]
     [Authorize(Policy = AuthPolicies.TriageWrite)]
-    public async Task<IActionResult> UpdateRespiration(int id, RespirationRequest request)
+    public async Task<IActionResult> UpdateRespiration(int id, [FromBody] JsonElement body)
     {
         var patient = await db.Patients.FindAsync(id);
         if (patient is null) return NotFound();
         if (!await SceneAccess.CanAccessAsync(User, db, patient.OperationSceneId)) return Forbid();
 
-        var merge = FieldMerge.Load(patient.FieldTimestampsJson);
-        if (merge.TryApply("atmung", request.ClientUpdatedAt, DateTime.UtcNow))
+        if (body.ValueKind != JsonValueKind.Object || TryFindUnknownProperty(body, RespirationFields, out _))
         {
-            audit.LogFieldWrite(User, "patient", id, id, "atmung", patient.Atmung, request.Respiration);
-            patient.Atmung = request.Respiration;
+            return BadRequest(new ErrorResponse("respiration and optional clientUpdatedAt are the only accepted fields."));
+        }
+        if (!TryReadOptionalBool(body, "respiration", out var respiration, out var error) || respiration is null)
+        {
+            return BadRequest(error ?? new ErrorResponse("respiration is required."));
+        }
+        if (!TryReadClientUpdatedAt(body, out var clientUpdatedAt, out error))
+        {
+            return BadRequest(error);
+        }
+
+        var merge = FieldMerge.Load(patient.FieldTimestampsJson);
+        if (merge.TryApply("atmung", clientUpdatedAt, DateTime.UtcNow))
+        {
+            audit.LogFieldWrite(User, "patient", id, id, "atmung", patient.Atmung, respiration);
+            patient.Atmung = respiration;
             patient.FieldTimestampsJson = merge.Save();
         }
 
@@ -293,11 +317,16 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
 
     [HttpPost("persons/{id:int}/location")]
     [Authorize(Policy = AuthPolicies.TriageWrite)]
-    public async Task<IActionResult> UpdateLocation(int id, LocationRequest request)
+    public async Task<IActionResult> UpdateLocation(int id, [FromBody] JsonElement body)
     {
         var patient = await db.Patients.FindAsync(id);
         if (patient is null) return NotFound();
         if (!await SceneAccess.CanAccessAsync(User, db, patient.OperationSceneId)) return Forbid();
+
+        if (!TryReadLocation(body, out var request, out var error))
+        {
+            return BadRequest(error);
+        }
 
         var merge = FieldMerge.Load(patient.FieldTimestampsJson);
         if (merge.TryApply("location", request.ClientUpdatedAt, DateTime.UtcNow))
@@ -346,4 +375,219 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
 
         return Ok(history);
     }
+
+    private static bool TryReadTriageUpdate(JsonElement body, out TriageUpdateRequest request, out ErrorResponse error)
+    {
+        request = default;
+        if (body.ValueKind != JsonValueKind.Object)
+        {
+            error = new ErrorResponse("triage update body must be a JSON object.");
+            return false;
+        }
+
+        if (TryFindUnknownProperty(body, TriageUpdateFields, out var unknown))
+        {
+            error = new ErrorResponse($"Unknown triage field: {unknown}.");
+            return false;
+        }
+
+        if (!TryReadClientUpdatedAt(body, out var clientUpdatedAt, out error))
+        {
+            return false;
+        }
+
+        if (!TryReadOptionalString(body, "triageColor", out var triageColor, out error)
+            || !TryReadOptionalBool(body, "respiration", out var respiration, out error)
+            || !TryReadOptionalBool(body, "blutung", out var blutung, out error)
+            || !TryReadOptionalBool(body, "radialispuls", out var radialispuls, out error)
+            || !TryReadOptionalBool(body, "transport", out var transport, out error)
+            || !TryReadOptionalBool(body, "dringend", out var dringend, out error)
+            || !TryReadOptionalBool(body, "kontaminiert", out var kontaminiert, out error))
+        {
+            return false;
+        }
+
+        request = new TriageUpdateRequest(triageColor, respiration, blutung, radialispuls, transport, dringend, kontaminiert, clientUpdatedAt);
+        error = null!;
+        return true;
+    }
+
+    private static bool TryReadLocation(JsonElement body, out LocationRequest request, out ErrorResponse error)
+    {
+        request = default!;
+        if (body.ValueKind != JsonValueKind.Object)
+        {
+            error = new ErrorResponse("location body must be a JSON object.");
+            return false;
+        }
+
+        if (TryFindUnknownProperty(body, LocationFields, out var unknown))
+        {
+            error = new ErrorResponse($"Unknown location field: {unknown}.");
+            return false;
+        }
+
+        if (!TryReadRequiredDouble(body, "lat", -90, 90, out var lat, out error)
+            || !TryReadRequiredDouble(body, "lng", -180, 180, out var lng, out error)
+            || !TryReadOptionalNonNegativeFiniteDouble(body, "accuracyMeters", out var accuracyMeters, out error)
+            || !TryReadOptionalString(body, "indoorLocation", out var indoorLocation, out error)
+            || !TryReadClientUpdatedAt(body, out var clientUpdatedAt, out error))
+        {
+            return false;
+        }
+
+        var source = "gps";
+        if (body.TryGetProperty("source", out var sourceElement) && sourceElement.ValueKind != JsonValueKind.Null)
+        {
+            if (sourceElement.ValueKind != JsonValueKind.String)
+            {
+                error = new ErrorResponse("source must be gps or manual.");
+                return false;
+            }
+
+            source = sourceElement.GetString() ?? "";
+            if (source is not ("gps" or "manual"))
+            {
+                error = new ErrorResponse("source must be gps or manual.");
+                return false;
+            }
+        }
+
+        request = new LocationRequest(lat, lng, source, accuracyMeters, indoorLocation, clientUpdatedAt);
+        error = null!;
+        return true;
+    }
+
+    private static bool TryReadClientUpdatedAt(JsonElement body, out DateTime? clientUpdatedAt, out ErrorResponse error)
+    {
+        clientUpdatedAt = null;
+        if (!body.TryGetProperty("clientUpdatedAt", out var element) || element.ValueKind == JsonValueKind.Null)
+        {
+            error = null!;
+            return true;
+        }
+
+        if (element.ValueKind != JsonValueKind.String || !element.TryGetDateTime(out var parsed))
+        {
+            error = new ErrorResponse("clientUpdatedAt must be a valid timestamp.");
+            return false;
+        }
+
+        if (parsed > DateTime.UtcNow.AddMinutes(5))
+        {
+            error = new ErrorResponse("clientUpdatedAt must not be more than 5 minutes in the future.");
+            return false;
+        }
+
+        clientUpdatedAt = parsed;
+        error = null!;
+        return true;
+    }
+
+    private static bool TryReadOptionalString(JsonElement body, string propertyName, out string? value, out ErrorResponse error)
+    {
+        value = null;
+        if (!body.TryGetProperty(propertyName, out var element) || element.ValueKind == JsonValueKind.Null)
+        {
+            error = null!;
+            return true;
+        }
+
+        if (element.ValueKind != JsonValueKind.String)
+        {
+            error = new ErrorResponse($"{propertyName} must be a string.");
+            return false;
+        }
+
+        value = element.GetString();
+        error = null!;
+        return true;
+    }
+
+    private static bool TryReadOptionalBool(JsonElement body, string propertyName, out bool? value, out ErrorResponse error)
+    {
+        value = null;
+        if (!body.TryGetProperty(propertyName, out var element) || element.ValueKind == JsonValueKind.Null)
+        {
+            error = null!;
+            return true;
+        }
+
+        if (element.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+        {
+            error = new ErrorResponse($"{propertyName} must be a boolean.");
+            return false;
+        }
+
+        value = element.GetBoolean();
+        error = null!;
+        return true;
+    }
+
+    private static bool TryReadRequiredDouble(
+        JsonElement body, string propertyName, double min, double max, out double value, out ErrorResponse error)
+    {
+        value = default;
+        if (!body.TryGetProperty(propertyName, out var element) || element.ValueKind != JsonValueKind.Number || !element.TryGetDouble(out value))
+        {
+            error = new ErrorResponse($"{propertyName} must be a number.");
+            return false;
+        }
+
+        if (double.IsNaN(value) || double.IsInfinity(value) || value < min || value > max)
+        {
+            error = new ErrorResponse($"{propertyName} is out of range.");
+            return false;
+        }
+
+        error = null!;
+        return true;
+    }
+
+    private static bool TryReadOptionalNonNegativeFiniteDouble(
+        JsonElement body, string propertyName, out double? value, out ErrorResponse error)
+    {
+        value = null;
+        if (!body.TryGetProperty(propertyName, out var element) || element.ValueKind == JsonValueKind.Null)
+        {
+            error = null!;
+            return true;
+        }
+
+        if (element.ValueKind != JsonValueKind.Number || !element.TryGetDouble(out var parsed)
+            || double.IsNaN(parsed) || double.IsInfinity(parsed) || parsed < 0)
+        {
+            error = new ErrorResponse($"{propertyName} must be a non-negative finite number.");
+            return false;
+        }
+
+        value = parsed;
+        error = null!;
+        return true;
+    }
+
+    private static bool TryFindUnknownProperty(JsonElement body, HashSet<string> allowedProperties, out string propertyName)
+    {
+        foreach (var property in body.EnumerateObject())
+        {
+            if (!allowedProperties.Contains(property.Name))
+            {
+                propertyName = property.Name;
+                return true;
+            }
+        }
+
+        propertyName = "";
+        return false;
+    }
+
+    private readonly record struct TriageUpdateRequest(
+        string? TriageColor,
+        bool? Respiration,
+        bool? Blutung,
+        bool? Radialispuls,
+        bool? Transport,
+        bool? Dringend,
+        bool? Kontaminiert,
+        DateTime? ClientUpdatedAt);
 }

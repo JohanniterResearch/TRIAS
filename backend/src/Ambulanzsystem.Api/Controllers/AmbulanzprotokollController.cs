@@ -50,6 +50,16 @@ public class AmbulanzprotokollController(AppDbContext db, AuditService audit, Sc
             return BadRequest(new ErrorResponse("status must be draft or finalized."));
         }
 
+        if (request.ClientUpdatedAt is DateTime clientUpdatedAt && clientUpdatedAt > DateTime.UtcNow.AddMinutes(5))
+        {
+            return BadRequest(new ErrorResponse("clientUpdatedAt must not be more than 5 minutes in the future."));
+        }
+
+        if (!AmbulanzprotokollSchemaValidator.TryValidatePartial(request.FormState, out var partialError))
+        {
+            return BadRequest(new ErrorResponse(partialError!));
+        }
+
         var record = await db.AmbulanzprotokollPage1s.FirstOrDefaultAsync(r => r.PatientId == patientId);
         var wasFinalized = record?.Status == "finalized";
 
@@ -79,6 +89,11 @@ public class AmbulanzprotokollController(AppDbContext db, AuditService audit, Sc
             // Rules). A type-mismatched leaf (e.g. a string where a GCS field expects a number)
             // lands here rather than crashing the request.
             return BadRequest(new ErrorResponse("formState contains a value that doesn't match the expected field types."));
+        }
+
+        if (!AmbulanzprotokollSchemaValidator.TryValidateMerged(record.FormStateJson, out var mergedError))
+        {
+            return BadRequest(new ErrorResponse(mergedError!));
         }
 
         var oldStatus = record.Status;
@@ -124,6 +139,7 @@ public class AmbulanzprotokollController(AppDbContext db, AuditService audit, Sc
         var patient = await db.Patients.Include(p => p.OperationScene).FirstOrDefaultAsync(p => p.Id == patientId);
         if (patient is null) return NotFound();
         if (!await SceneAccess.CanAccessAsync(User, db, patient.OperationSceneId)) return Forbid();
+        if (!CanCorrectFinalized(patient)) return Forbid();
 
         var record = await db.AmbulanzprotokollPage1s.FirstOrDefaultAsync(r => r.PatientId == patientId);
         var formStateJson = FormStateMerge.WithDefaults(record?.FormStateJson ?? "{}");
@@ -151,7 +167,7 @@ public class AmbulanzprotokollController(AppDbContext db, AuditService audit, Sc
 
         var metadata = new ProtokollExportMetadata(
             patientId, patient.HumanReadableId, patient.OperationSceneId, patient.OperationScene.Name,
-            eventSceneId, now, watermark, "1");
+            eventSceneId, now, watermark, AmbulanzprotokollSchemaValidator.CanonicalSchemaReference);
 
         var protokoll = new ProtokollRecordResponse(
             patientId, status, JsonDocument.Parse(formStateJson).RootElement, record?.UpdatedAt ?? patient.CreatedAt, record?.FinalizedAt);
