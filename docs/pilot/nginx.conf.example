@@ -1,0 +1,56 @@
+# Copy-ready example for the host TLS reverse proxy. Replace every OWNER_* placeholder
+# before using this on a real host.
+
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    '' close;
+}
+
+upstream ambulanz_backend {
+    server 127.0.0.1:OWNER_SET_APP_HOST_PORT;
+    keepalive 32;
+}
+
+server {
+    listen 80;
+    server_name OWNER_SET_FQDN;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name OWNER_SET_FQDN;
+
+    ssl_certificate OWNER_SET_CERTIFICATE_PATH;
+    ssl_certificate_key OWNER_SET_CERTIFICATE_KEY_PATH;
+
+    client_max_body_size 10m;
+
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Real-IP $remote_addr;
+
+    location = /health {
+        proxy_pass http://ambulanz_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+    }
+
+    location /hubs/scene {
+        proxy_pass http://ambulanz_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_buffering off;
+    }
+
+    location / {
+        proxy_pass http://ambulanz_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+    }
+}

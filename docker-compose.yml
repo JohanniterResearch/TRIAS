@@ -20,6 +20,7 @@ services:
   # `dotnet run` against this same db service instead.
   backend:
     profiles: ["prod"]
+    image: ${BACKEND_IMAGE:-ambulanzsystem-backend:local}
     build:
       context: .
       dockerfile: backend/Dockerfile

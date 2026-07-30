@@ -48,3 +48,20 @@ docker compose -p ambulanz-demo up -d db   # wipes only the demo pgdata; backend
 | Isolated restore | 1.09 s | pass: named smoke scene/patient, 1 export, 3 related audit rows |
 | Internal demo | not-run | Record operator start/end and observations. |
 | Supervised exercise | blocked | Requires G1-G6 and G8 signatures. |
+
+## Production host acceptance
+
+Run these checks on the real TLS host before any supervised exercise:
+
+1. `curl -fsS https://OWNER_SET_FQDN/health` returns HTTP 200 with JSON showing
+   `status=healthy` and `database=healthy`.
+2. `curl -fsSI https://OWNER_SET_FQDN/` returns `X-Content-Type-Options: nosniff` and
+   `X-Frame-Options: DENY`.
+3. `curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -d '{"role":"admin"}' https://OWNER_SET_FQDN/api/dev-login`
+   returns `404`.
+4. The Admin login, forced password change, scene creation, patient creation, and protocol
+   export flow succeeds through the real host origin, not `127.0.0.1`.
+5. Two browsers on the real host origin show live SignalR propagation: change one patient's
+   triage or details in browser A and confirm browser B updates without refresh.
+6. Record the deployed `BACKEND_IMAGE` tag, operator, date, and any deviations next to the
+   rehearsal record above.
