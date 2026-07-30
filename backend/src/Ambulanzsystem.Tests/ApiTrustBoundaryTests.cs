@@ -133,6 +133,10 @@ public class ApiTrustBoundaryTests(WebApplicationFactory<Program> factory) : ICl
         });
         Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
 
+        var missingFormState = await admin.PutAsJsonAsync(
+            $"/api/persons/{patient.id}/ambulanzprotokoll-page1", new { status = "draft" });
+        Assert.Equal(HttpStatusCode.BadRequest, missingFormState.StatusCode);
+
         var export = await admin.GetAsync($"/api/persons/{patient.id}/ambulanzprotokoll-page1/export");
         export.EnsureSuccessStatusCode();
         var body = await export.Content.ReadFromJsonAsync<JsonElement>();

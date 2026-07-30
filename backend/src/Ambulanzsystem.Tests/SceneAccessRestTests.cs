@@ -167,6 +167,8 @@ public class SceneAccessRestTests(WebApplicationFactory<Program> factory) : ICla
             .Content.ReadFromJsonAsync<TeamBearing>())!;
         var teamInB = (await (await admin.PostAsJsonAsync("/api/teams", new { operationSceneId = eventB, name = "Team B" }))
             .Content.ReadFromJsonAsync<TeamBearing>())!;
+        var patientInA = await CreatePatientAsync(admin, eventA);
+        var patientInB = await CreatePatientAsync(admin, eventB);
 
         var qr = await QrSessionClientAsync(admin, eventA);
 
@@ -178,6 +180,14 @@ public class SceneAccessRestTests(WebApplicationFactory<Program> factory) : ICla
 
         var updateOwn = await qr.PutAsJsonAsync($"/api/teams/{teamInA.id}", new { status = "busy" });
         Assert.Equal(HttpStatusCode.OK, updateOwn.StatusCode);
+
+        var assignOwn = await qr.PutAsJsonAsync(
+            $"/api/teams/{teamInA.id}", new { assignedPatientId = patientInA.id });
+        Assert.Equal(HttpStatusCode.OK, assignOwn.StatusCode);
+
+        var assignOtherScene = await qr.PutAsJsonAsync(
+            $"/api/teams/{teamInA.id}", new { assignedPatientId = patientInB.id });
+        Assert.Equal(HttpStatusCode.BadRequest, assignOtherScene.StatusCode);
 
         var updateForbidden = await qr.PutAsJsonAsync($"/api/teams/{teamInB.id}", new { status = "busy" });
         Assert.Equal(HttpStatusCode.Forbidden, updateForbidden.StatusCode);

@@ -104,9 +104,10 @@ public class TeamsController(AppDbContext db, SceneNotifier notifier, AuditServi
             else
             {
                 var patientId = patientEl.GetInt32();
-                if (!await db.Patients.AnyAsync(p => p.Id == patientId))
+                if (!await db.Patients.AnyAsync(p =>
+                        p.Id == patientId && p.OperationSceneId == team.OperationSceneId))
                 {
-                    return BadRequest(new ErrorResponse("assignedPatientId does not exist."));
+                    return BadRequest(new ErrorResponse("assignedPatientId does not exist in the team's scene."));
                 }
                 team.AssignedPatientId = patientId;
             }

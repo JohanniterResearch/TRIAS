@@ -43,8 +43,8 @@ docker compose -p ambulanz-demo up -d db   # wipes only the demo pgdata; backend
 
 | Exercise | Actual | Result |
 |---|---:|---|
-| Production smoke | 26.80 s | pass, 2026-07-30 fresh image build |
-| Backup + isolated restore | 7.47 s | pass, 2026-07-30: named scene/patient, 1 export, 3 audit rows |
+| Production smoke | 29.54 s | post-review pass, 2026-07-30 fresh image build |
+| Backup + isolated restore | 7.75 s | post-review pass, 2026-07-30: named scene/patient, 1 export, 3 audit rows |
 | Real-host TLS/WebSocket/alert/rollback | not-run | Owner host and approvals required. |
 | Internal demo | not-run | Record operator start/end and observations. |
 | Supervised exercise | blocked | Requires G1-G6 and G8 signatures. |

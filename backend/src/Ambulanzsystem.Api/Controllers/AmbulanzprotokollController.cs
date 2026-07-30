@@ -39,6 +39,7 @@ public class AmbulanzprotokollController(AppDbContext db, AuditService audit, Sc
     }
 
     [HttpPut]
+    [RequestSizeLimit(2 * 1024 * 1024)]
     public async Task<IActionResult> Upsert(int patientId, UpsertProtokollRequest request)
     {
         var patient = await db.Patients.FindAsync(patientId);

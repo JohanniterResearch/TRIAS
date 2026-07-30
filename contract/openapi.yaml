@@ -806,8 +806,7 @@ paths:
               properties:
                 status: { type: string, enum: [draft, finalized] }
                 formState:
-                  type: object
-                  description: Must conform to schemas/ambulanzprotokoll-page1.schema.json.
+                  $ref: "#/components/schemas/ProtokollFormState"
                 clientUpdatedAt: { type: string, format: date-time, description: Local edit timestamp for newer-wins comparison; must not be more than five minutes ahead of server UTC. Older timestamps remain valid. }
       responses:
         "200":
@@ -1162,10 +1161,25 @@ components:
         patientId: { type: integer }
         status: { type: string, enum: [draft, finalized] }
         formState:
-          type: object
-          description: Conforms to schemas/ambulanzprotokoll-page1.schema.json.
+          $ref: "#/components/schemas/ProtokollFormState"
         updatedAt: { type: string, format: date-time }
         finalizedAt: { type: [string, "null"], format: date-time }
+
+    ProtokollFormState:
+      type: object
+      additionalProperties: false
+      description: Canonical page-1 state; every branch references the Draft 2020-12 source schema.
+      properties:
+        incident: { $ref: "./schemas/ambulanzprotokoll-page1.schema.json#/properties/incident" }
+        patient: { $ref: "./schemas/ambulanzprotokoll-page1.schema.json#/properties/patient" }
+        assessment_primary: { $ref: "./schemas/ambulanzprotokoll-page1.schema.json#/properties/assessment_primary" }
+        assessment_secondary: { $ref: "./schemas/ambulanzprotokoll-page1.schema.json#/properties/assessment_secondary" }
+        medications_administered: { $ref: "./schemas/ambulanzprotokoll-page1.schema.json#/properties/medications_administered" }
+        vitals: { $ref: "./schemas/ambulanzprotokoll-page1.schema.json#/properties/vitals" }
+        measures: { $ref: "./schemas/ambulanzprotokoll-page1.schema.json#/properties/measures" }
+        history: { $ref: "./schemas/ambulanzprotokoll-page1.schema.json#/properties/history" }
+        disposition: { $ref: "./schemas/ambulanzprotokoll-page1.schema.json#/properties/disposition" }
+        signatures: { $ref: "./schemas/ambulanzprotokoll-page1.schema.json#/properties/signatures" }
 
     ProtokollExport:
       type: object

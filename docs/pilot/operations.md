@@ -136,15 +136,18 @@ docker compose -f docker-compose.yml -f docker-compose.production.yml \
 After the drill, remove only the smoke project:
 
 ```sh
-docker compose -f docker-compose.yml -f docker-compose.production.yml --profile prod down -v
+export SMOKE_PROJECT='OWNER_SET_SMOKE_PROJECT'
+test "$SMOKE_PROJECT" != 'ambulanz-production'
+COMPOSE_PROJECT_NAME="$SMOKE_PROJECT" docker compose \
+  -f docker-compose.yml -f docker-compose.production.yml --profile prod down -v
 ```
 
 ## Timings and owner values
 
 | Exercise | Actual | Evidence |
 |---|---:|---|
-| Production smoke | 26.80 s | Passed 2026-07-30 in fresh `ambulanz-smoke-1938268`, including image build. |
-| Backup + isolated restore verification | 7.47 s | Passed 2026-07-30; named smoke scene/patient, 1 export, and 3 related audit rows matched. |
+| Production smoke | 29.54 s | Passed post-review on 2026-07-30 in fresh `ambulanz-smoke-1969971`, including image build. |
+| Backup + isolated restore verification | 7.75 s | Passed post-review on 2026-07-30; named smoke scene/patient, 1 export, and 3 related audit rows matched. |
 | Real-host TLS/WebSocket/alert/rollback rehearsal | not-run | Requires the owner-supplied host, certificates, alert target, and rollback approvers. |
 | Internal demo | not-run | Owner records start/end. |
 | Supervised exercise | blocked | Requires G1-G6 and G8 signatures. |

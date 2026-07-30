@@ -4,12 +4,13 @@ Allowed status values: `automated/pass`, `manual/pass`, `blocked`, `not-run`.
 
 ## Integrated technical gate — 2026-07-30
 
-- `dotnet test Ambulanzsystem.slnx --no-build`: 62 passed, 0 failed, 0 skipped.
-- `npm run lint && npm run check:generated`: 0 Spectral errors, 83 unchanged
+- `dotnet test Ambulanzsystem.slnx --no-build`: 63 passed, 0 failed, 0 skipped.
+- From `contract/`, `npm run lint && npm run check:generated`: 0 Spectral errors, 83 unchanged
   pre-existing warnings, generated client clean.
-- `npm test && npm run build`: static checks and production frontend build passed.
-- `npm run test:e2e`: 11 passed, including two-browser SignalR state `live`.
-- `npm run test:offline`: 1 passed.
+- From `frontend/`, `npm test && npm run build`: static checks and production frontend
+  build passed.
+- From `frontend/`, `npm run test:e2e`: 11 passed, including two-browser SignalR state `live`.
+- From `frontend/`, `npm run test:offline`: 1 passed.
 - Production Compose config, fresh image build, and `./scripts/pilot-smoke.sh`: passed
   with loopback-only backend/database bindings.
 - `./scripts/backup.sh` and `./scripts/verify-restore.sh`: passed; isolated restore

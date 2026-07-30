@@ -1534,8 +1534,7 @@ export interface paths {
                     "application/json": {
                         /** @enum {string} */
                         status: "draft" | "finalized";
-                        /** @description Must conform to schemas/ambulanzprotokoll-page1.schema.json. */
-                        formState: Record<string, never>;
+                        formState: components["schemas"]["ProtokollFormState"];
                         /**
                          * Format: date-time
                          * @description Local edit timestamp for newer-wins comparison; must not be more than five minutes ahead of server UTC. Older timestamps remain valid.
@@ -1985,12 +1984,24 @@ export interface components {
             patientId: number;
             /** @enum {string} */
             status: "draft" | "finalized";
-            /** @description Conforms to schemas/ambulanzprotokoll-page1.schema.json. */
-            formState: Record<string, never>;
+            formState: components["schemas"]["ProtokollFormState"];
             /** Format: date-time */
             updatedAt: string;
             /** Format: date-time */
             finalizedAt?: string | null;
+        };
+        /** @description Canonical page-1 state; every branch references the Draft 2020-12 source schema. */
+        ProtokollFormState: {
+            incident?: components["schemas"]["incident"];
+            patient?: components["schemas"]["patient"];
+            assessment_primary?: components["schemas"]["assessment_primary"];
+            assessment_secondary?: components["schemas"]["assessment_secondary"];
+            medications_administered?: components["schemas"]["medications_administered"];
+            vitals?: components["schemas"]["vitals"];
+            measures?: components["schemas"]["measures"];
+            history?: components["schemas"]["history"];
+            disposition?: components["schemas"]["disposition"];
+            signatures?: components["schemas"]["signatures"];
         };
         ProtokollExport: {
             metadata: {
@@ -2024,6 +2035,134 @@ export interface components {
             before?: Record<string, never> | null;
             /** @description Field name -> value after write. */
             after?: Record<string, never> | null;
+        };
+        incident: {
+            ambulanzort?: string;
+            /** @description ISO date (visual: T T M M J J) */
+            datum?: string | null;
+            uhrzeit_beginn?: string | null;
+            dnr_san_1?: string;
+            dnr_san_2?: string;
+            dnr_san_3?: string;
+            dnr_na?: string;
+            pls_nummer?: string;
+            funkrufname?: string;
+        };
+        patient: {
+            familienname?: string;
+            vorname?: string;
+            /** @enum {string|null} */
+            geschlecht?: "d" | "m" | "w" | null;
+            vers_nr?: string;
+            geburtsdatum?: string | null;
+            adresse?: string;
+            staat?: string;
+            telefon?: string;
+            arbeitgeber?: string;
+            versicherungstraeger?: string;
+            familienstand?: string;
+        };
+        assessment_primary: {
+            /** @description Array for checkbox-group uniformity; at most one NACA score. */
+            naca?: ("I" | "II" | "III" | "IV" | "V" | "VI" | "VII")[];
+            atemweg?: ("frei" | "gefaehrdet" | "verlegt")[];
+            atmung?: ("Apnoe" | "Schnappatmung" | "Zyanose" | "unauffaellig" | "Dyspnoe" | "Atemgeraeusche" | "andere Atemstoerungen")[];
+            kreislauf?: ("Puls peripher tastbar" | "Tachykardie" | "Bradykardie" | "blass" | "kalt" | "unauffaellig" | "Starke Blutung" | "geroetet" | "schweissig" | "erwaermt")[];
+            bewusstsein?: ("Wach" | "Getruebt" | "Bewusstlos" | "Agitiert")[];
+            angen_notfallzeit?: {
+                zeit?: string | null;
+                gt24h?: boolean;
+                unbekannt?: boolean;
+            };
+        };
+        assessment_secondary: {
+            anamnese_text?: string;
+            /** @description Coordinate-based typed markers — independent of the triage region-toggle body map (OD-05). */
+            bodymap?: {
+                /** @enum {unknown} */
+                view: "front" | "back";
+                /** @enum {unknown} */
+                marker: "wunde" | "fraktur" | "schmerz" | "prellung" | "amputation" | "verbrennung" | "luxation";
+                /** @description Percent of silhouette width. */
+                x: number;
+                /** @description Percent of silhouette height. */
+                y: number;
+            }[];
+        };
+        medications_administered: {
+            medikament?: string;
+            dosis?: string;
+            art?: string;
+            uhrzeit?: string | null;
+        }[];
+        pupilChecks: ("eng" | "mittel" | "weit" | "entrundet" | "prompte Lichtreflexe" | "verlangsamte Lichtreflexe" | "lichtstarr")[];
+        vitals: {
+            pupillen?: {
+                R?: components["schemas"]["pupilChecks"];
+                L?: components["schemas"]["pupilChecks"];
+            };
+            schmerz?: number | null;
+            schmerz_nicht_beurteilbar?: boolean;
+            gcs_augenoeffnen?: number | null;
+            gcs_verbale_reaktion?: number | null;
+            gcs_motorische_reaktion?: number | null;
+            /** @description Auto-computed eyes+verbal+motor when all three present. */
+            gcs_summe?: number | null;
+            keine?: boolean;
+            rr?: string;
+            puls?: string;
+            puls_rhythmus?: ("rhy." | "arrhy.")[];
+            af?: string;
+            temp?: string;
+            bz?: string;
+            etco2?: string;
+            spo2?: string;
+            o2_l_min?: string;
+            o2_beatmung_l_min?: string;
+        };
+        measures: {
+            herz_kreislauf?: {
+                massnahmen?: ("peripherven. Zugang / IO Zugang" | "Herzdruckmassage" | "Defibrillation/Kardiov." | "Schrittmacher extern")[];
+                dnr?: string;
+                anzahl?: string;
+                letzte_joule?: string;
+                freq?: string;
+                mv?: string;
+            };
+            atmung?: {
+                massnahmen?: ("Absaugen" | "oral" | "nasal" | "endotracheal" | "Intubation" | "Wendltubus" | "Guedeltubus" | "Larynxtubus" | "endotracheal (oral)" | "endotracheal (nasal)" | "Beatmung" | "assistiert" | "kontrolliert" | "manuell" | "maschinell")[];
+                dnr?: string;
+                af?: string;
+                amv?: string;
+                peep?: string;
+            };
+            weitere_massnahmen?: {
+                massnahmen?: ("Verband" | "Blutstillung" | "Abbinden" | "Lagerung" | "12-Abl.-EKG" | "Monitoring" | "HF" | "RR" | "SpO2" | "4-Abl.-EKG" | "etCO2" | "Schienung" | "HWS" | "Spineboard" | "Vakuummatratze" | "Extremitaet")[];
+                abbinden_zeit?: string | null;
+                lagerung_art?: string;
+            };
+        };
+        history: {
+            allergien?: string;
+            medikamente?: string;
+            patientengeschichte_vorerkrankungen?: string;
+            letzte_orale_aufnahme?: string;
+            ereignisse_zuvor?: string;
+            risikofaktoren?: string;
+        };
+        disposition: {
+            abschlussart?: ("Uebergabe:" | "Revers (Ruecks.)" | "Belassung" | "Entf. selbstst. o. Revers")[];
+            klinischer_zustand?: ("verbessert" | "gleich" | "verschlechtert")[];
+            uhrzeit_ende?: string | null;
+            org?: string;
+            typ?: string;
+            kennung?: string;
+            angehoerige_in_kenntnis?: ("durch RD" | "durch Polizei" | "durch Pat/andere")[];
+            kontaktdaten?: string;
+        };
+        signatures: {
+            /** @description PNG data URL from the signature pad. Present because the paper form has it; never required (FR-DOC-13). */
+            entlass_san_na?: string | null;
         };
     };
     responses: {

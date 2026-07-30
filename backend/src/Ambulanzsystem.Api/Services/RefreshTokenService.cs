@@ -18,19 +18,10 @@ public class RefreshTokenService(AppDbContext db, IOptions<JwtOptions> options)
 
     public async Task<IssuedRefreshToken> IssueAsync(int userId)
     {
-        var raw = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64));
-        var entity = new RefreshToken
-        {
-            UserId = userId,
-            TokenHash = Hash(raw),
-            ExpiresAt = DateTime.UtcNow.AddDays(_options.RefreshTokenLifetimeDays),
-            IsRevoked = false,
-        };
-
-        db.RefreshTokens.Add(entity);
+        var issued = Create(userId);
+        db.RefreshTokens.Add(issued.Entity);
         await db.SaveChangesAsync();
-
-        return new IssuedRefreshToken(raw, entity);
+        return issued;
     }
 
     // Rotation: the presented token is revoked and a new one issued, whether or not the caller
@@ -38,11 +29,13 @@ public class RefreshTokenService(AppDbContext db, IOptions<JwtOptions> options)
     public async Task<(User User, IssuedRefreshToken NewToken)?> RotateAsync(string rawToken)
     {
         var hash = Hash(rawToken);
+        var now = DateTime.UtcNow;
         var existing = await db.RefreshTokens
+            .AsNoTracking()
             .Include(t => t.User)
             .FirstOrDefaultAsync(t => t.TokenHash == hash);
 
-        if (existing is null || existing.IsRevoked || existing.ExpiresAt < DateTime.UtcNow)
+        if (existing is null || existing.IsRevoked || existing.ExpiresAt < now)
         {
             return null;
         }
@@ -52,9 +45,20 @@ public class RefreshTokenService(AppDbContext db, IOptions<JwtOptions> options)
             return null;
         }
 
-        existing.IsRevoked = true;
-        var issued = await IssueAsync(existing.UserId);
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        var claimed = await db.RefreshTokens
+            .Where(t => t.Id == existing.Id && !t.IsRevoked && t.ExpiresAt >= now)
+            .ExecuteUpdateAsync(update => update.SetProperty(t => t.IsRevoked, true));
+        if (claimed != 1)
+        {
+            await transaction.RollbackAsync();
+            return null;
+        }
 
+        var issued = Create(existing.UserId);
+        db.RefreshTokens.Add(issued.Entity);
+        await db.SaveChangesAsync();
+        await transaction.CommitAsync();
         return (existing.User, issued);
     }
 
@@ -80,5 +84,17 @@ public class RefreshTokenService(AppDbContext db, IOptions<JwtOptions> options)
     {
         var bytes = SHA256.HashData(Convert.FromBase64String(raw));
         return Convert.ToBase64String(bytes);
+    }
+
+    private IssuedRefreshToken Create(int userId)
+    {
+        var raw = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64));
+        return new IssuedRefreshToken(raw, new RefreshToken
+        {
+            UserId = userId,
+            TokenHash = Hash(raw),
+            ExpiresAt = DateTime.UtcNow.AddDays(_options.RefreshTokenLifetimeDays),
+            IsRevoked = false,
+        });
     }
 }

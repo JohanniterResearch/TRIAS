@@ -12,9 +12,23 @@ upstream ambulanz_backend {
 }
 
 server {
+    listen 80 default_server;
+    server_name _;
+    return 444;
+}
+
+server {
     listen 80;
     server_name OWNER_SET_FQDN;
-    return 301 https://$host$request_uri;
+    return 301 https://OWNER_SET_FQDN$request_uri;
+}
+
+server {
+    listen 443 ssl default_server;
+    server_name _;
+    ssl_certificate OWNER_SET_CERTIFICATE_PATH;
+    ssl_certificate_key OWNER_SET_CERTIFICATE_KEY_PATH;
+    return 444;
 }
 
 server {
@@ -24,7 +38,7 @@ server {
     ssl_certificate OWNER_SET_CERTIFICATE_PATH;
     ssl_certificate_key OWNER_SET_CERTIFICATE_KEY_PATH;
 
-    client_max_body_size 10m;
+    client_max_body_size 2m;
 
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-Host $host;

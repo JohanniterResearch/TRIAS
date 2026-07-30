@@ -9,8 +9,16 @@ public static class AmbulanzprotokollSchemaValidator
 
     private static readonly Lazy<JsonSchema> Schema = new(LoadSchema);
 
-    public static bool TryValidatePartial(JsonElement formState, out string? error) =>
-        TryValidateJson(formState.GetRawText(), out error);
+    public static bool TryValidatePartial(JsonElement formState, out string? error)
+    {
+        if (formState.ValueKind != JsonValueKind.Object)
+        {
+            error = "formState must be a JSON object.";
+            return false;
+        }
+
+        return TryValidateJson(formState.GetRawText(), out error);
+    }
 
     public static bool TryValidateMerged(string formStateJson, out string? error) =>
         TryValidateJson(formStateJson, out error);

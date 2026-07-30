@@ -137,6 +137,33 @@ public class AuthFlowTests(WebApplicationFactory<Program> factory) : IClassFixtu
         Assert.Equal(HttpStatusCode.Forbidden, (await responder.GetAsync("/api/users")).StatusCode);
     }
 
+    [Fact]
+    public async Task RefreshToken_ConcurrentReplay_AllowsOnlyOneSuccessor()
+    {
+        var admin = Client();
+        admin.DefaultRequestHeaders.Authorization = new("Bearer", await AdminLoginAsync(admin));
+        var username = $"refresh-race-{Guid.NewGuid():N}";
+        (await admin.PostAsJsonAsync("/api/users", new
+        {
+            username,
+            password = "somePassword1",
+            role = "responder",
+        })).EnsureSuccessStatusCode();
+
+        var login = await Client().PostAsJsonAsync(
+            "/api/user-login", new { username, password = "somePassword1" });
+        login.EnsureSuccessStatusCode();
+        var refreshToken = (await login.Content.ReadFromJsonAsync<TokenBearing>())!.refreshToken!;
+
+        var rotations = await Task.WhenAll(
+            Client().PostAsJsonAsync("/api/refresh-token", new { refreshToken }),
+            Client().PostAsJsonAsync("/api/refresh-token", new { refreshToken }));
+
+        Assert.Equal(
+            [HttpStatusCode.OK, HttpStatusCode.Unauthorized],
+            rotations.Select(response => response.StatusCode).Order().ToArray());
+    }
+
     private static async Task<int> ReadAuditCountAsync(HttpClient client)
     {
         var response = await client.GetFromJsonAsync<JsonElement>("/api/audit?action=read&entityType=user");
