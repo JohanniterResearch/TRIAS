@@ -305,7 +305,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Logged in (real token, dev environment only). */
+                /** @description Logged in with a development-bypass token. It is intentionally non-refreshable and requiresPasswordChange is always false. */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -315,10 +315,16 @@ export interface paths {
                             /** @constant */
                             status: "ok";
                             token: string;
+                            /** @description Username of the real seeded account represented by the token. */
+                            username: string;
+                            /** @constant */
+                            requiresPasswordChange: false;
+                            /** @description Optional for compatibility; omitted for development-bypass sessions. */
                             refreshToken?: string;
                         };
                     };
                 };
+                400: components["responses"]["BadRequest"];
                 /** @description Not available (any non-dev configuration). */
                 404: {
                     headers: {
@@ -1238,7 +1244,7 @@ export interface paths {
                         kontaminiert?: boolean;
                         /**
                          * Format: date-time
-                         * @description Client-side write timestamp for offline replay merge.
+                         * @description Client-side write timestamp for offline replay merge; must not be more than five minutes ahead of server UTC. Older timestamps remain valid.
                          */
                         clientUpdatedAt?: string;
                     };
@@ -1288,7 +1294,10 @@ export interface paths {
                 content: {
                     "application/json": {
                         respiration: boolean;
-                        /** Format: date-time */
+                        /**
+                         * Format: date-time
+                         * @description Must not be more than five minutes ahead of server UTC. Older timestamps remain valid.
+                         */
                         clientUpdatedAt?: string;
                     };
                 };
@@ -1303,6 +1312,7 @@ export interface paths {
                         "application/json": components["schemas"]["Patient"];
                     };
                 };
+                400: components["responses"]["BadRequest"];
                 401: components["responses"]["Unauthorized"];
                 404: components["responses"]["NotFound"];
             };
@@ -1335,20 +1345,23 @@ export interface paths {
             requestBody: {
                 content: {
                     "application/json": {
+                        /** @description WGS84 latitude, inclusive range -90 through 90. */
                         lat: number;
+                        /** @description WGS84 longitude, inclusive range -180 through 180. */
                         lng: number;
                         /**
+                         * @description Only device GPS or explicit manual correction is accepted.
                          * @default gps
                          * @enum {string}
                          */
                         source?: "gps" | "manual";
-                        /** @description Reported GPS accuracy; UI flags >10m as unreliable (FR-LOC-07). */
+                        /** @description Finite, non-negative reported GPS accuracy; UI flags >10m as unreliable (FR-LOC-07). */
                         accuracyMeters?: number;
                         /** @description Optional free text: tent/sector/room/floor/treatment bay (FR-LOC-08). */
                         indoorLocation?: string;
                         /**
                          * Format: date-time
-                         * @description Client-side write timestamp for offline replay merge (NFR-SAFE-08/09)
+                         * @description Client-side write timestamp for offline replay merge (NFR-SAFE-08/09); must not be more than five minutes ahead of server UTC. Older timestamps remain valid.
                          */
                         clientUpdatedAt?: string;
                     };
@@ -1364,6 +1377,7 @@ export interface paths {
                         "application/json": components["schemas"]["Patient"];
                     };
                 };
+                400: components["responses"]["BadRequest"];
                 401: components["responses"]["Unauthorized"];
                 404: components["responses"]["NotFound"];
             };
@@ -1524,7 +1538,7 @@ export interface paths {
                         formState: Record<string, never>;
                         /**
                          * Format: date-time
-                         * @description Local edit timestamp for newer-wins comparison.
+                         * @description Local edit timestamp for newer-wins comparison; must not be more than five minutes ahead of server UTC. Older timestamps remain valid.
                          */
                         clientUpdatedAt?: string;
                     };
@@ -1567,7 +1581,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** JSON export (V1 export format, FR-DOC-09). Wraps formState with patient/event metadata, generation timestamp, and an actor watermark (NFR-SEC-10). The export is persisted server-side (long-term archive, FR-DOC-14) and the action is audit-logged. Policy TriageWrite; responders may export patients they recorded. */
+        /** JSON export (V1 export format, FR-DOC-09). Wraps formState with patient/event metadata, generation timestamp, and an actor watermark (NFR-SEC-10). The export is persisted server-side (long-term archive, FR-DOC-14) and the action is audit-logged. Admin and Leitstelle may export authorized patients; a named responder may export only a patient they own. Anonymous QR sessions and cross-owner responders receive 403, with no archive or success audit created. */
         get: {
             parameters: {
                 query?: never;
@@ -1589,6 +1603,7 @@ export interface paths {
                     };
                 };
                 401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
                 404: components["responses"]["NotFound"];
             };
         };

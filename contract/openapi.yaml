@@ -194,21 +194,26 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               required: [role]
               properties:
                 role: { type: string, enum: [admin, user] }
       responses:
         "200":
-          description: Logged in (real token, dev environment only).
+          description: Logged in with a development-bypass token. It is intentionally non-refreshable and requiresPasswordChange is always false.
           content:
             application/json:
               schema:
                 type: object
-                required: [status, token]
+                additionalProperties: false
+                required: [status, token, username, requiresPasswordChange]
                 properties:
                   status: { type: string, const: ok }
                   token: { type: string }
-                  refreshToken: { type: string }
+                  username: { type: string, description: Username of the real seeded account represented by the token. }
+                  requiresPasswordChange: { type: boolean, const: false }
+                  refreshToken: { type: string, description: Optional for compatibility; omitted for development-bypass sessions. }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "404": { description: Not available (any non-dev configuration). }
 
   # ---------------------------------------------------------------- users
@@ -532,6 +537,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 status:
                   type: [string, "null"]
@@ -648,6 +654,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
                 triageColor: { $ref: "#/components/schemas/TriageColor" }
                 respiration: { type: boolean }
@@ -656,7 +663,7 @@ paths:
                 transport: { type: boolean }
                 dringend: { type: boolean }
                 kontaminiert: { type: boolean }
-                clientUpdatedAt: { type: string, format: date-time, description: Client-side write timestamp for offline replay merge. }
+                clientUpdatedAt: { type: string, format: date-time, description: Client-side write timestamp for offline replay merge; must not be more than five minutes ahead of server UTC. Older timestamps remain valid. }
       responses:
         "200":
           description: Updated patient.
@@ -678,16 +685,18 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               required: [respiration]
               properties:
                 respiration: { type: boolean }
-                clientUpdatedAt: { type: string, format: date-time }
+                clientUpdatedAt: { type: string, format: date-time, description: Must not be more than five minutes ahead of server UTC. Older timestamps remain valid. }
       responses:
         "200":
           description: Updated patient.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Patient" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 
@@ -702,20 +711,22 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               required: [lat, lng]
               properties:
-                lat: { type: number, minimum: -90, maximum: 90 }
-                lng: { type: number, minimum: -180, maximum: 180 }
-                source: { type: string, enum: [gps, manual], default: gps }
-                accuracyMeters: { type: number, description: Reported GPS accuracy; UI flags >10m as unreliable (FR-LOC-07). }
+                lat: { type: number, minimum: -90, maximum: 90, description: "WGS84 latitude, inclusive range -90 through 90." }
+                lng: { type: number, minimum: -180, maximum: 180, description: "WGS84 longitude, inclusive range -180 through 180." }
+                source: { type: string, enum: [gps, manual], default: gps, description: Only device GPS or explicit manual correction is accepted. }
+                accuracyMeters: { type: number, minimum: 0, description: "Finite, non-negative reported GPS accuracy; UI flags >10m as unreliable (FR-LOC-07)." }
                 indoorLocation: { type: string, description: "Optional free text: tent/sector/room/floor/treatment bay (FR-LOC-08)." }
-                clientUpdatedAt: { type: string, format: date-time, description: Client-side write timestamp for offline replay merge (NFR-SAFE-08/09), consistent with update-triage-color. }
+                clientUpdatedAt: { type: string, format: date-time, description: Client-side write timestamp for offline replay merge (NFR-SAFE-08/09); must not be more than five minutes ahead of server UTC. Older timestamps remain valid. }
       responses:
         "200":
           description: Updated patient.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Patient" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 
@@ -790,13 +801,14 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               required: [status, formState]
               properties:
                 status: { type: string, enum: [draft, finalized] }
                 formState:
                   type: object
                   description: Must conform to schemas/ambulanzprotokoll-page1.schema.json.
-                clientUpdatedAt: { type: string, format: date-time, description: Local edit timestamp for newer-wins comparison. }
+                clientUpdatedAt: { type: string, format: date-time, description: Local edit timestamp for newer-wins comparison; must not be more than five minutes ahead of server UTC. Older timestamps remain valid. }
       responses:
         "200":
           description: Saved record (merged server state) plus any finalize warnings.
@@ -821,8 +833,10 @@ paths:
         JSON export (V1 export format, FR-DOC-09). Wraps formState with
         patient/event metadata, generation timestamp, and an actor watermark
         (NFR-SEC-10). The export is persisted server-side (long-term archive,
-        FR-DOC-14) and the action is audit-logged. Policy TriageWrite; responders
-        may export patients they recorded.
+        FR-DOC-14) and the action is audit-logged. Admin and Leitstelle may export
+        authorized patients; a named responder may export only a patient they own.
+        Anonymous QR sessions and cross-owner responders receive 403, with no archive
+        or success audit created.
       parameters: [{ $ref: "#/components/parameters/patientIdPath" }]
       responses:
         "200":
@@ -831,6 +845,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ProtokollExport" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
   # -------------------------------------------------------- body parts
@@ -860,6 +875,7 @@ paths:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               required: [idpatient, bodyPartId, isClicked]
               properties:
                 idpatient: { type: integer }
