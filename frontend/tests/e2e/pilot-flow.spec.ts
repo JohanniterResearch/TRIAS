@@ -2,7 +2,16 @@ import { expect, Page, test } from '@playwright/test';
 
 test.describe.configure({ mode: 'serial' });
 
+let loginPartition = 10;
+
+async function isolateLoginRateLimit(page: Page): Promise<void> {
+  await page.context().setExtraHTTPHeaders({
+    'X-Forwarded-For': `127.0.0.${loginPartition++}`,
+  });
+}
+
 test('persisted forced-password sessions cannot enter protected routes', async ({ page }) => {
+  await isolateLoginRateLimit(page);
   await page.goto('/admin/login');
   await page.getByLabel('Benutzername').fill('admin');
   await page.getByLabel('Passwort').fill('dev-admin-password');
@@ -33,20 +42,23 @@ test('temporary validation outage preserves the local workspace', async ({ page 
 });
 
 async function loginResponder(page: Page): Promise<void> {
+  await isolateLoginRateLimit(page);
   await page.goto('/login');
   await page.getByRole('button', { name: 'DEV Responder' }).click();
   await expect(page).toHaveURL(/\/role-selection$/);
 }
 
-async function loginRealResponder(page: Page): Promise<void> {
+async function loginRealResponder(page: Page, username: string, password: string): Promise<void> {
+  await isolateLoginRateLimit(page);
   await page.goto('/login');
-  await page.getByLabel('Benutzername').fill('responder-demo');
-  await page.getByLabel('Passwort').fill('responder-demo');
+  await page.getByLabel('Benutzername').fill(username);
+  await page.getByLabel('Passwort').fill(password);
   await page.getByRole('button', { name: 'Mit Passwort einloggen' }).click();
   await expect(page).toHaveURL(/\/role-selection$/);
 }
 
 async function loginDevAdmin(page: Page): Promise<string> {
+  await isolateLoginRateLimit(page);
   await page.goto('/admin/login');
   await page.getByRole('button', { name: 'DEV Admin' }).click();
   await expect(page).toHaveURL(/\/admin$/);
@@ -193,8 +205,20 @@ test('situation room refetches the full scene snapshot after reconnect', async (
   await command.close();
 });
 
-test('real responder refresh and self-cancel revoke the live session', async ({ page }) => {
-  await loginRealResponder(page);
+test('real responder refresh and self-cancel revoke the live session', async ({ browser, page }) => {
+  const username = `self-cancel-${Date.now()}`;
+  const password = 'SelfCancel123!';
+  const admin = await browser.newContext();
+  const adminPage = await admin.newPage();
+  const adminToken = await loginDevAdmin(adminPage);
+  const create = await adminPage.request.post('http://127.0.0.1:5042/api/users', {
+    headers: { Authorization: `Bearer ${adminToken}` },
+    data: { username, password, role: 'responder' },
+  });
+  expect(create.status()).toBe(201);
+  await admin.close();
+
+  await loginRealResponder(page, username, password);
   const session = await page.evaluate(() => JSON.parse(localStorage.getItem('ambulanzsystem.auth.v1')!).responder);
   const refresh = await page.request.post('http://127.0.0.1:5042/api/refresh-token', {
     data: { refreshToken: session.refreshToken },
@@ -228,6 +252,7 @@ test('generated responder QR logs in and patient QR scanning stays idempotent', 
 
   const responder = await browser.newContext();
   const page = await responder.newPage();
+  await isolateLoginRateLimit(page);
   await page.goto('/login');
   await page.getByLabel('QR Code', { exact: true }).fill(loginQr.qrToken);
   await page.getByRole('button', { name: 'Einloggen', exact: true }).click();
@@ -264,6 +289,7 @@ test('Admin completes the forced password change', async ({ browser }) => {
 
   const forced = await browser.newContext();
   const forcedPage = await forced.newPage();
+  await isolateLoginRateLimit(forcedPage);
   await forcedPage.goto('/admin/login');
   await forcedPage.getByLabel('Benutzername').fill('admin');
   await forcedPage.getByLabel('Passwort').fill('dev-admin-password');

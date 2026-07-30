@@ -177,11 +177,11 @@ export class OfflineQueueService {
   }
 
   private async reconcilePatientIds(provisionalId: number, realId: number, patient?: Patient): Promise<void> {
+    await this.protocolDrafts.rekey(provisionalId, realId);
     if (patient) {
       this.responderState.replacePatient(provisionalId, patient);
     }
     this.triageDrafts.rekey(provisionalId, realId);
-    await this.protocolDrafts.rekey(provisionalId, realId);
   }
 
   private async realPatientId(patientId: number): Promise<number> {
