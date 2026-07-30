@@ -143,9 +143,9 @@ docker compose -f docker-compose.yml -f docker-compose.production.yml --profile 
 
 | Exercise | Actual | Evidence |
 |---|---:|---|
-| Production smoke | 18.80 s | Passed 2026-07-29 in `ambulanz-smoke-2` (cached image build). |
-| Backup | 1.64 s | PostgreSQL custom dump passed 2026-07-29. |
-| Isolated restore verification | 1.09 s | Named smoke scene/patient, 1 export, and 3 related audit rows matched in the final review. |
+| Production smoke | 26.80 s | Passed 2026-07-30 in fresh `ambulanz-smoke-1938268`, including image build. |
+| Backup + isolated restore verification | 7.47 s | Passed 2026-07-30; named smoke scene/patient, 1 export, and 3 related audit rows matched. |
+| Real-host TLS/WebSocket/alert/rollback rehearsal | not-run | Requires the owner-supplied host, certificates, alert target, and rollback approvers. |
 | Internal demo | not-run | Owner records start/end. |
 | Supervised exercise | blocked | Requires G1-G6 and G8 signatures. |
 

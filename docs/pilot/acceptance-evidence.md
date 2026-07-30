@@ -2,6 +2,19 @@
 
 Allowed status values: `automated/pass`, `manual/pass`, `blocked`, `not-run`.
 
+## Integrated technical gate — 2026-07-30
+
+- `dotnet test Ambulanzsystem.slnx --no-build`: 62 passed, 0 failed, 0 skipped.
+- `npm run lint && npm run check:generated`: 0 Spectral errors, 83 unchanged
+  pre-existing warnings, generated client clean.
+- `npm test && npm run build`: static checks and production frontend build passed.
+- `npm run test:e2e`: 11 passed, including two-browser SignalR state `live`.
+- `npm run test:offline`: 1 passed.
+- Production Compose config, fresh image build, and `./scripts/pilot-smoke.sh`: passed
+  with loopback-only backend/database bindings.
+- `./scripts/backup.sh` and `./scripts/verify-restore.sh`: passed; isolated restore
+  matched one smoke scene, one patient, one export, and three audit rows.
+
 ## Functional acceptance
 
 | Criterion | Status | Evidence |
@@ -17,20 +30,20 @@ Allowed status values: `automated/pass`, `manual/pass`, `blocked`, `not-run`.
 | Responder can manually create a patient without QR. | automated/pass | Real-backend and offline intake stories. |
 | A wrongly attached patient QR can be reassigned. | automated/pass | Generated patient QR replacement assertion. |
 | First scan creates exactly one patient. | automated/pass | Repeated scan returns the original patient ID. |
-| Concurrent scans of the same patient QR create no duplicate patient. | not-run | Sequential duplicate proof passes; concurrent backend proof belongs to Stream A. |
+| Concurrent scans of the same patient QR create no duplicate patient. | automated/pass | Full backend suite includes the concurrent patient-QR regression. |
 | Responder can complete triage. | automated/pass | Real-backend triage story. |
-| Triage correction is possible and audit-logged. | blocked | Audit detail is owned by Stream A and awaits integration. |
+| Triage correction is possible and audit-logged. | automated/pass | Full backend suite covers triage correction history and single-write audit behavior. |
 | Responder can mark body parts. | automated/pass | Real-backend body-region toggle story. |
 | Situation room shows patients for the selected operation scene. | automated/pass | Two-browser realtime story. |
 | Situation room shows teams with optional status. | not-run | UI fields exist; real team edit was not exercised. |
 | Situation room rows open the correct patient Ambulanzprotokoll. | automated/pass | Click and Enter assertions in forced-change/navigation story. |
-| Patient A and patient B have isolated Ambulanzprotokoll records. | not-run | Backend integration suite not run in this stream. |
+| Patient A and patient B have isolated Ambulanzprotokoll records. | automated/pass | Full backend suite passed the page-1 isolation regression. |
 | Refresh restores the current Ambulanzprotokoll draft. | automated/pass | Offline identity/draft restart story. |
-| Offline edits survive and sync after reconnect. | not-run | Triage replay and draft rebinding pass separately; end-to-end server-state replay evidence is still required. |
+| Offline edits survive and sync after reconnect. | automated/pass | Real-backend Playwright covers offline triage replay, server state, restart, and protocol-draft rebinding. |
 | Offline patient creation syncs after reconnect. | automated/pass | Provisional ID becomes a positive server ID. |
 | Finalization succeeds with partial data. | automated/pass | Real-backend protocol story. |
-| Leitstelle/Admin can correct finalized forms. | blocked | Scene/ownership authorization is owned by Stream A. |
-| JSON export matches the default-state schema. | not-run | Contract/static checks pass; export content comparison not run. |
+| Leitstelle/Admin can correct finalized forms. | automated/pass | Full backend authorization/correction suite passed. |
+| JSON export matches the default-state schema. | automated/pass | Full backend suite validates default-shaped export and canonical schema reference. |
 | Print preview preserves page-1 section placement and readability. | not-run | Automated A4/layout assertions pass; print readability still requires a manual check. |
 
 ## Safety acceptance
@@ -42,21 +55,21 @@ Allowed status values: `automated/pass`, `manual/pass`, `blocked`, `not-run`.
 | Checkbox order matches the paper-oriented spec. | automated/pass | `npm run check:protocol`. |
 | Body map, GCS, measures, AMPLE, and disposition remain on the same page. | automated/pass | `npm run check:protocol` and production build. |
 | Draft mode never blocks emergency documentation due to missing fields. | automated/pass | Partial finalization story. |
-| Invalid external input is rejected at trust boundaries. | blocked | Stream A validation tests await integration. |
+| Invalid external input is rejected at trust boundaries. | automated/pass | API trust-boundary suite rejects unknown/malformed triage, location, timestamp, and protocol values without side effects. |
 | Production rejects insecure default bootstrap configuration. | automated/pass | Required-variable Compose interpolation and production startup validation passed. |
 
 ## Test acceptance
 
 | Criterion | Status | Evidence |
 |---|---|---|
-| Unauthorized API access returns unauthorized. | blocked | Revoked QR currently returns 200 on baseline; Stream A must make it 401. |
-| Admin-only endpoints reject responder sessions. | not-run | Backend integration suite not run in this stream. |
-| Page-1 first GET returns default draft for existing patient without form. | not-run | Backend integration suite not run in this stream. |
-| Page-1 PUT/GET roundtrip preserves nested JSON. | not-run | Backend integration suite not run in this stream. |
-| Page-1 records are isolated per patient. | not-run | Backend integration suite not run in this stream. |
+| Unauthorized API access returns unauthorized. | automated/pass | Full backend suite proves revoked QR and user sessions fail on the next request. |
+| Admin-only endpoints reject responder sessions. | automated/pass | Full backend authorization suite passed. |
+| Page-1 first GET returns default draft for existing patient without form. | automated/pass | Full backend page-1 acceptance suite passed. |
+| Page-1 PUT/GET roundtrip preserves nested JSON. | automated/pass | Recursive page-1 roundtrip test passed. |
+| Page-1 records are isolated per patient. | automated/pass | Full backend page-1 isolation test passed. |
 | Finalize with partial form succeeds. | automated/pass | Real-backend protocol story. |
 | Every page-1 bind path exists in the default state. | automated/pass | `npm run check:protocol`. |
-| Every page-1 bind path survives backend roundtrip unchanged. | not-run | Backend integration suite not run in this stream. |
+| Every page-1 bind path survives backend roundtrip unchanged. | automated/pass | Recursive canonical-leaf roundtrip test passed. |
 | Existing triage/body workflows continue to work. | automated/pass | Real-backend triage/body Playwright story. |
 | Situation room row click and keyboard activation open page 1. | automated/pass | Click and Enter assertions. |
 | Offline/local draft selection chooses newer local or server record by timestamp. | automated/pass | Restart-safe provisional-to-real draft story. |
@@ -68,7 +81,7 @@ Allowed status values: `automated/pass`, `manual/pass`, `blocked`, `not-run`.
 | Admin forced password change completes and the new password works. | automated/pass | Focused Playwright story passed. |
 | Refresh succeeds for a real responder credential. | automated/pass | Refresh endpoint assertion passed. |
 | Self-cancel revokes the live responder token. | automated/pass | Post-cancel validation returns 401. |
-| Admin revocation immediately invalidates a QR session. | blocked | Regression assertion receives 200 on baseline; requires Stream A live QR revalidation. |
+| Admin revocation immediately invalidates a QR session. | automated/pass | Backend session-security suite and Playwright QR story both return 401 after revocation. |
 | Marker activation opens the correct protocol and Back restores scene context. | automated/pass | Focused Leaflet/navigation story passed. |
 | Application restart retains the rebound protocol draft. | automated/pass | New page in the same browser context restores the real-ID draft. |
 | Situation-room reconnect performs a full snapshot refetch. | automated/pass | The command browser disconnects while a patient is created, then receives that missed patient from the rejoined scene snapshot. |
