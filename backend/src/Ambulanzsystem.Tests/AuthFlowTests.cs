@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Xunit;
 
@@ -96,5 +97,49 @@ public class AuthFlowTests(WebApplicationFactory<Program> factory) : IClassFixtu
 
         var res = await responder.PostAsJsonAsync("/api/users", new { username = "irrelevant", password = "x", role = "responder" });
         Assert.Equal(HttpStatusCode.Forbidden, res.StatusCode);
+    }
+
+    [Fact]
+    public async Task ListUsers_IsAdminOnly_SortedDto_AndAuditedOnce()
+    {
+        var admin = Client();
+        admin.DefaultRequestHeaders.Authorization = new("Bearer", await AdminLoginAsync(admin));
+
+        var suffix = Guid.NewGuid().ToString("N");
+        foreach (var username in new[] { $"z-{suffix}", $"a-{suffix}" })
+        {
+            (await admin.PostAsJsonAsync("/api/users", new
+            {
+                username,
+                password = "somePassword1",
+                role = "responder",
+            })).EnsureSuccessStatusCode();
+        }
+
+        var auditBefore = await ReadAuditCountAsync(admin);
+        var response = await admin.GetAsync("/api/users");
+        response.EnsureSuccessStatusCode();
+        var users = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var listed = users.EnumerateArray().ToArray();
+
+        Assert.Equal(listed.OrderBy(user => user.GetProperty("username").GetString()).Select(user => user.GetProperty("username").GetString()),
+            listed.Select(user => user.GetProperty("username").GetString()));
+        Assert.All(listed, user =>
+        {
+            Assert.False(user.TryGetProperty("passwordHash", out _));
+            Assert.True(user.TryGetProperty("requiresPasswordChange", out _));
+        });
+        Assert.Equal(auditBefore + 1, await ReadAuditCountAsync(admin));
+
+        var responder = Client();
+        var responderToken = await TestAuth.LoginAsync(responder, "/api/user-login", $"a-{suffix}", "somePassword1");
+        responder.DefaultRequestHeaders.Authorization = new("Bearer", responderToken);
+        Assert.Equal(HttpStatusCode.Forbidden, (await responder.GetAsync("/api/users")).StatusCode);
+    }
+
+    private static async Task<int> ReadAuditCountAsync(HttpClient client)
+    {
+        var response = await client.GetFromJsonAsync<JsonElement>("/api/audit?action=read&entityType=user");
+        return response.GetProperty("total").GetInt32();
     }
 }

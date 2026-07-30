@@ -14,6 +14,15 @@ namespace Ambulanzsystem.Api.Controllers;
 [Authorize]
 public class UsersController(AppDbContext db, RefreshTokenService refreshTokens, AuditService audit) : ControllerBase
 {
+    [HttpGet]
+    [Authorize(Policy = AuthPolicies.AdminOnly)]
+    [AuditRead("user")]
+    public async Task<IActionResult> List()
+    {
+        var users = await db.Users.AsNoTracking().OrderBy(u => u.Username).ToListAsync();
+        return Ok(users.Select(UserResponse.From));
+    }
+
     [HttpPost]
     [Authorize(Policy = AuthPolicies.AdminOnly)]
     public async Task<IActionResult> Create(CreateUserRequest request)

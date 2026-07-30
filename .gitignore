@@ -7,6 +7,11 @@ obj/
 .env
 .codex
 .agents
+/.claude-flow/
+/.claude/
+/.swarm/
+/backend/.claude-flow/
+/ruvector.db
 
 # ignore /docs contents (not the dir itself, or the pilot negation below can never match)
 /docs/*
