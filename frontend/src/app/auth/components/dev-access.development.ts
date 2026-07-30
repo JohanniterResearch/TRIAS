@@ -30,10 +30,20 @@ export class DevAccess {
     this.api.devLogin(this.role()).subscribe({
       next: (result) => {
         if (this.role() === 'admin') {
-          this.auth.setAdminSession({ token: result.token, refreshToken: result.refreshToken, tokenType: 'admin', username: 'DEV' });
+          this.auth.setAdminSession({
+            token: result.token,
+            tokenType: 'admin',
+            username: result.username,
+            requiresPasswordChange: result.requiresPasswordChange,
+          });
           this.router.navigateByUrl('/admin');
         } else {
-          this.auth.setResponderSession({ token: result.token, refreshToken: result.refreshToken, tokenType: 'user', username: 'DEV' });
+          this.auth.setResponderSession({
+            token: result.token,
+            tokenType: 'user',
+            username: result.username,
+            requiresPasswordChange: result.requiresPasswordChange,
+          });
           this.router.navigateByUrl('/role-selection');
         }
       },

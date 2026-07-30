@@ -61,7 +61,7 @@ public static class SecurityStampValidation
             return;
         }
 
-        if (user.RequiresPasswordChange)
+        if (user.RequiresPasswordChange && !DevPasswordChangeBypassAllowed(context))
         {
             // Live-checked claim, not baked into the JWT: it clears itself on the very next request
             // after the user completes the change, without needing a fresh token. AuthPolicies uses
@@ -70,5 +70,22 @@ public static class SecurityStampValidation
             (context.Principal!.Identity as ClaimsIdentity)?.AddClaim(
                 new Claim(TokenTypes.RequiresPasswordChangeClaimType, "true"));
         }
+    }
+
+    private static bool DevPasswordChangeBypassAllowed(TokenValidatedContext context)
+    {
+        if (!context.Principal!.HasClaim(TokenTypes.DevPasswordChangeBypassClaimType, "true"))
+        {
+            return false;
+        }
+
+        var env = context.HttpContext.RequestServices.GetRequiredService<IHostEnvironment>();
+        if (!env.IsDevelopment())
+        {
+            return false;
+        }
+
+        var config = context.HttpContext.RequestServices.GetRequiredService<IConfiguration>();
+        return config.GetValue<bool>("Features:EnableDevLogin");
     }
 }

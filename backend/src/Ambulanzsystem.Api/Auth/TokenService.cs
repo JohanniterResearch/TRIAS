@@ -16,7 +16,7 @@ public class TokenService(IOptions<JwtOptions> options)
     // Admin/Leitstelle/User tokens carry a security_stamp claim, re-checked against the DB on
     // every request (SecurityStampValidation) so a password change or forced logout invalidates
     // every live token instantly, without a blocklist.
-    public IssuedToken IssueUserToken(User user)
+    public IssuedToken IssueUserToken(User user, bool devPasswordChangeBypass = false)
     {
         var type = user.Role switch
         {
@@ -33,6 +33,11 @@ public class TokenService(IOptions<JwtOptions> options)
             new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
             new(TokenTypes.SecurityStampClaimType, user.SecurityStamp),
         };
+
+        if (devPasswordChangeBypass)
+        {
+            claims.Add(new Claim(TokenTypes.DevPasswordChangeBypassClaimType, "true"));
+        }
 
         if (user.EventSceneId is int sceneId)
         {

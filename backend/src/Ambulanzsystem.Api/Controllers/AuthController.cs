@@ -144,6 +144,11 @@ public class AuthController(
             return NotFound();
         }
 
+        if (request.role is not ("admin" or "user"))
+        {
+            return BadRequest(new ErrorResponse("role must be admin or user."));
+        }
+
         var wantedRole = request.role == "admin" ? Role.Admin : Role.Responder;
         var user = await db.Users.Where(u => u.Role == wantedRole && u.RevokedAt == null)
             .OrderBy(u => u.Id)
@@ -156,12 +161,11 @@ public class AuthController(
 
         await TouchLoginTimestamps(user);
 
-        var issued = tokens.IssueUserToken(user);
-        var refresh = await refreshTokens.IssueAsync(user.Id);
+        var issued = tokens.IssueUserToken(user, devPasswordChangeBypass: true);
         audit.LogLogin(user.Id, RoleClaim(user.Role), "user", user.Id);
         await db.SaveChangesAsync();
 
-        return Ok(new DevLoginResponse("ok", issued.Token, refresh.RawToken));
+        return Ok(new DevLoginResponse("ok", issued.Token, user.Username, false));
     }
 
     private async Task TouchLoginTimestamps(User user)

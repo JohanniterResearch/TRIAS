@@ -2,7 +2,10 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Ambulanzsystem.Api.Data;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace Ambulanzsystem.Tests;
@@ -15,6 +18,7 @@ public class SessionSecurityGapTests(WebApplicationFactory<Program> factory) : I
     private record SceneBearing(int id);
     private record QrCode(int id, string qrToken);
     private record AdminLoginBody(string? token, bool requiresPasswordChange);
+    private record DevLoginBody(string? token, string? username, bool requiresPasswordChange);
 
     // Login endpoints share one fixed-window rate limit bucket (NFR-SEC-05); cache the admin token
     // per WebApplicationFactory instance, same convention as SceneAccessRestTests, so this class's
@@ -51,6 +55,20 @@ public class SessionSecurityGapTests(WebApplicationFactory<Program> factory) : I
         var token = (await login.Content.ReadFromJsonAsync<TokenBearing>())!.token!;
         client.DefaultRequestHeaders.Authorization = new("Bearer", token);
         return (client, codes[0].id);
+    }
+
+    private async Task<string> SetFirstDevAdminPasswordGateAsync(bool required)
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var admin = await db.Users
+            .Where(u => u.Role == Ambulanzsystem.Api.Domain.Role.Admin && u.RevokedAt == null)
+            .OrderBy(u => u.Id)
+            .FirstAsync();
+        admin.PasswordHash = BCrypt.Net.BCrypt.HashPassword("dev-admin-password");
+        admin.RequiresPasswordChange = required;
+        await db.SaveChangesAsync();
+        return admin.Username;
     }
 
     [Fact]
@@ -153,6 +171,46 @@ public class SessionSecurityGapTests(WebApplicationFactory<Program> factory) : I
         create.EnsureSuccessStatusCode();
         var body = await create.Content.ReadFromJsonAsync<JsonElement>();
         Assert.False(body.GetProperty("requiresPasswordChange").GetBoolean());
+    }
+
+    [Fact]
+    public async Task DevLogin_BypassesForcedChangeWithoutMintingRefreshToken_AndRealLoginStillRequiresIt()
+    {
+        var username = await SetFirstDevAdminPasswordGateAsync(true);
+        try
+        {
+            var client = factory.CreateClient();
+
+            var devLogin = await client.PostAsJsonAsync("/api/dev-login", new { role = "admin" });
+            devLogin.EnsureSuccessStatusCode();
+            var devJson = await devLogin.Content.ReadFromJsonAsync<JsonElement>();
+            var devBody = devJson.Deserialize<DevLoginBody>();
+            Assert.Equal(username, devBody!.username);
+            Assert.False(devBody.requiresPasswordChange);
+            Assert.False(devJson.TryGetProperty("refreshToken", out _));
+
+            client.DefaultRequestHeaders.Authorization = new("Bearer", devBody.token);
+            Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/operation-scenes")).StatusCode);
+
+            var realLogin = await factory.CreateClient().PostAsJsonAsync("/api/admin-login", new
+            {
+                username,
+                password = "dev-admin-password",
+            });
+            realLogin.EnsureSuccessStatusCode();
+            Assert.True((await realLogin.Content.ReadFromJsonAsync<AdminLoginBody>())!.requiresPasswordChange);
+        }
+        finally
+        {
+            await SetFirstDevAdminPasswordGateAsync(false);
+        }
+    }
+
+    [Fact]
+    public async Task DevLogin_RejectsUnknownRole()
+    {
+        var response = await factory.CreateClient().PostAsJsonAsync("/api/dev-login", new { role = "leitstelle" });
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     [Fact]

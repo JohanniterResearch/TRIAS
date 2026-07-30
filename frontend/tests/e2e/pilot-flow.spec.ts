@@ -53,6 +53,14 @@ async function loginDevAdmin(page: Page): Promise<string> {
   return await activeToken(page);
 }
 
+async function openSituationRoomAsDevAdmin(page: Page, sceneId: number): Promise<void> {
+  await loginDevAdmin(page);
+  await page.goto('/situation-room');
+  await page.getByLabel('Szene ID').fill(String(sceneId));
+  await page.getByRole('button', { name: 'Öffnen' }).click();
+  await expect(page.getByText('live', { exact: true })).toBeVisible();
+}
+
 async function activeToken(page: Page): Promise<string> {
   return await page.evaluate(() => {
     const state = JSON.parse(localStorage.getItem('ambulanzsystem.auth.v1') ?? '{}');
@@ -150,12 +158,7 @@ test('situation room receives a triage update from another browser', async ({ br
 
   const command = await browser.newContext();
   const commandPage = await command.newPage();
-  await commandPage.goto('/admin/login');
-  await commandPage.getByRole('button', { name: 'DEV Admin' }).click();
-  await expect(commandPage).toHaveURL(/\/admin$/);
-  await commandPage.goto('/situation-room');
-  await commandPage.getByLabel('Szene ID').fill(String(sceneId));
-  await commandPage.getByRole('button', { name: 'Öffnen' }).click();
+  await openSituationRoomAsDevAdmin(commandPage, sceneId);
   const row = commandPage.locator('tbody tr').filter({ hasText: patient.label });
   await expect(row).toBeVisible();
 
@@ -170,13 +173,7 @@ test('situation room receives a triage update from another browser', async ({ br
 test('situation room refetches the full scene snapshot after reconnect', async ({ browser }) => {
   const command = await browser.newContext();
   const commandPage = await command.newPage();
-  await commandPage.goto('/admin/login');
-  await commandPage.getByRole('button', { name: 'DEV Admin' }).click();
-  await expect(commandPage).toHaveURL(/\/admin$/);
-  await commandPage.goto('/situation-room');
-  await commandPage.getByLabel('Szene ID').fill('1');
-  await commandPage.getByRole('button', { name: 'Öffnen' }).click();
-  await expect(commandPage.getByText('live', { exact: true })).toBeVisible();
+  await openSituationRoomAsDevAdmin(commandPage, 1);
   await command.setOffline(true);
 
   const responder = await browser.newContext();

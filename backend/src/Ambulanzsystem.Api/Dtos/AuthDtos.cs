@@ -20,7 +20,7 @@ public record RefreshTokenResponse(string token, string refreshToken);
 public record ValidateTokenResponse(bool isValid, string role);
 
 public record DevLoginRequest(string role);
-public record DevLoginResponse(string status, string token, string? refreshToken);
+public record DevLoginResponse(string status, string token, string username, bool requiresPasswordChange);
 
 public record ErrorResponse(string message)
 {
