@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using Ambulanzsystem.Api.Domain;
 
 namespace Ambulanzsystem.Api.Dtos;
@@ -36,7 +37,10 @@ public record PatientResponse(
 public record VerifyQrCodeRequest(string qr_code, int OperationSceneId);
 public record VerifyQrResult(PatientResponse Patient, bool Created);
 
-public record ManualPatientRequest(int OperationSceneId, string? Name, Guid? ClientGeneratedId);
+public record ManualPatientRequest(
+    int OperationSceneId,
+    [MaxLength(ExternalStringLimits.Name)] string? Name,
+    Guid? ClientGeneratedId);
 
 public record ReassignQrCodeRequest(string qr_code);
 

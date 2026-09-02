@@ -1,5 +1,16 @@
 import { DatePipe, DecimalPipe } from '@angular/common';
-import { AfterViewInit, Component, ElementRef, OnDestroy, computed, inject, signal, viewChild } from '@angular/core';
+import {
+  AfterViewInit,
+  Component,
+  DestroyRef,
+  ElementRef,
+  OnDestroy,
+  computed,
+  inject,
+  signal,
+  viewChild,
+} from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import * as L from 'leaflet';
@@ -28,14 +39,14 @@ type TriageColor = components['schemas']['TriageColor'];
         <form [formGroup]="sceneForm" (ngSubmit)="setScene()" class="scene-select">
           <label>
             Szene ID
-            <input formControlName="sceneId" type="number">
+            <input formControlName="sceneId" type="number" />
           </label>
           <button type="submit" [disabled]="sceneForm.invalid">Öffnen</button>
         </form>
       </header>
 
       @if (error()) {
-        <p class="form-error">{{ error() }}</p>
+        <p class="form-error" role="alert" aria-live="assertive">{{ error() }}</p>
       }
 
       <div class="triage-counts">
@@ -53,7 +64,7 @@ type TriageColor = components['schemas']['TriageColor'];
             <button type="button" (click)="toggleHistory()">
               {{ showHistory() ? 'Aktuelle Triage' : 'Triage-Historie' }}
             </button>
-            <span>{{ realtimeState() }}</span>
+            <span role="status" aria-live="polite">{{ realtimeState() }}</span>
           </div>
 
           <table class="patient-table">
@@ -73,7 +84,11 @@ type TriageColor = components['schemas']['TriageColor'];
             </thead>
             <tbody>
               @for (patient of patients(); track patient.id) {
-                <tr tabindex="0" (click)="openProtocol(patient)" (keydown.enter)="openProtocol(patient)">
+                <tr
+                  tabindex="0"
+                  (click)="openProtocol(patient)"
+                  (keydown.enter)="openProtocol(patient)"
+                >
                   <td>{{ patient.humanReadableId || patient.id }}</td>
                   <td>{{ bool(patient.atmung) }}</td>
                   <td>{{ bool(patient.blutung) }}</td>
@@ -81,7 +96,10 @@ type TriageColor = components['schemas']['TriageColor'];
                   <td>{{ bool(patient.transport) }}</td>
                   <td>{{ bool(patient.dringend) }}</td>
                   <td>{{ patient.name || '-' }}</td>
-                  <td>{{ patient.longitudePatient | number: '1.4-4' }} / {{ patient.latitudePatient | number: '1.4-4' }}</td>
+                  <td>
+                    {{ patient.longitudePatient | number: '1.4-4' }} /
+                    {{ patient.latitudePatient | number: '1.4-4' }}
+                  </td>
                   <td>{{ patient.createdAt | date: 'short' }}</td>
                   <td>{{ patient.updatedAt | date: 'short' }}</td>
                 </tr>
@@ -100,7 +118,10 @@ type TriageColor = components['schemas']['TriageColor'];
                 <button type="button" (click)="loadHistory(patient.id)">Historie laden</button>
                 <ul>
                   @for (entry of history(); track entry.timestamp + entry.field) {
-                    <li>{{ entry.timestamp }} · {{ entry.field }}: {{ entry.before || '-' }} → {{ entry.after || '-' }}</li>
+                    <li>
+                      {{ entry.timestamp }} · {{ entry.field }}: {{ entry.before || '-' }} →
+                      {{ entry.after || '-' }}
+                    </li>
                   }
                 </ul>
               }
@@ -113,7 +134,7 @@ type TriageColor = components['schemas']['TriageColor'];
           <form [formGroup]="teamForm" (ngSubmit)="createTeam()" class="auth-form">
             <label>
               Name / Funkruf
-              <input formControlName="name">
+              <input formControlName="name" />
             </label>
             <button type="submit" [disabled]="teamForm.invalid">Team anlegen</button>
           </form>
@@ -121,7 +142,10 @@ type TriageColor = components['schemas']['TriageColor'];
           @for (team of teams(); track team.id) {
             <article>
               <strong>{{ team.name }}</strong>
-              <select [value]="team.status || ''" (change)="updateTeam(team, { status: $any($event.target).value || null })">
+              <select
+                [value]="team.status || ''"
+                (change)="updateTeam(team, { status: $any($event.target).value || null })"
+              >
                 <option value="">Status offen</option>
                 <option value="free">frei</option>
                 <option value="busy">beschäftigt</option>
@@ -129,15 +153,29 @@ type TriageColor = components['schemas']['TriageColor'];
               </select>
               <label>
                 Patient ID
-                <input type="number" [value]="team.assignedPatientId ?? ''" (change)="updateTeam(team, { assignedPatientId: numberOrNull($any($event.target).value) })">
+                <input
+                  type="number"
+                  [value]="team.assignedPatientId ?? ''"
+                  (change)="
+                    updateTeam(team, { assignedPatientId: numberOrNull($any($event.target).value) })
+                  "
+                />
               </label>
               <label>
                 Einsatzort
-                <input [value]="team.assignedLocation ?? ''" (change)="updateTeam(team, { assignedLocation: $any($event.target).value || null })">
+                <input
+                  [value]="team.assignedLocation ?? ''"
+                  (change)="
+                    updateTeam(team, { assignedLocation: $any($event.target).value || null })
+                  "
+                />
               </label>
               <label>
                 Kontakt
-                <input [value]="team.contactInfo ?? ''" (change)="updateTeam(team, { contactInfo: $any($event.target).value || null })">
+                <input
+                  [value]="team.contactInfo ?? ''"
+                  (change)="updateTeam(team, { contactInfo: $any($event.target).value || null })"
+                />
               </label>
             </article>
           }
@@ -178,13 +216,17 @@ export class SituationRoomPage implements AfterViewInit, OnDestroy {
   });
 
   protected readonly sceneForm = inject(FormBuilder).nonNullable.group({
-    sceneId: [Number(history.state.sceneId) || inject(ResponderStateStore).scene()?.id || null, Validators.required],
+    sceneId: [
+      Number(history.state.sceneId) || inject(ResponderStateStore).scene()?.id || null,
+      Validators.required,
+    ],
   });
   protected readonly teamForm = inject(FormBuilder).nonNullable.group({
     name: ['', Validators.required],
   });
 
   private readonly api = inject(ApiClient);
+  private readonly destroyRef = inject(DestroyRef);
   private readonly router = inject(Router);
   private readonly realtime = inject(SceneRealtimeService);
   private readonly responderState = inject(ResponderStateStore);
@@ -193,6 +235,10 @@ export class SituationRoomPage implements AfterViewInit, OnDestroy {
   private markers = L.layerGroup();
   private realtimeSub: Subscription | null = null;
   private pollingSub: Subscription | null = null;
+  private refreshSub: Subscription | null = null;
+  private sceneGeneration = 0;
+  private refreshGeneration = 0;
+  private realtimeRevision = 0;
 
   ngAfterViewInit(): void {
     this.initMap();
@@ -206,8 +252,7 @@ export class SituationRoomPage implements AfterViewInit, OnDestroy {
     if (sceneId) {
       this.realtime.disconnect(sceneId);
     }
-    this.realtimeSub?.unsubscribe();
-    this.pollingSub?.unsubscribe();
+    this.refreshSub?.unsubscribe();
     this.map?.remove();
   }
 
@@ -220,18 +265,39 @@ export class SituationRoomPage implements AfterViewInit, OnDestroy {
     if (!sceneId) {
       return;
     }
+    const sceneGeneration = this.sceneGeneration;
+    const refreshGeneration = ++this.refreshGeneration;
+    const realtimeRevision = this.realtimeRevision;
+    this.refreshSub?.unsubscribe();
+    this.refreshSub = new Subscription();
     this.error.set('');
-    this.api.listPatients(sceneId).subscribe({
-      next: (patients) => {
-        this.patients.set(patients);
-        this.renderMarkers();
-      },
-      error: () => this.error.set('Patienten konnten nicht geladen werden.'),
-    });
-    this.api.listTeams(sceneId).subscribe({
-      next: (teams) => this.teams.set(teams),
-      error: () => undefined,
-    });
+    this.refreshSub.add(
+      this.api
+        .listPatients(sceneId)
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe({
+          next: (patients) => {
+            if (!this.isCurrent(sceneId, sceneGeneration, refreshGeneration, realtimeRevision))
+              return;
+            this.patients.set(patients);
+            this.renderMarkers();
+          },
+          error: () =>
+            this.isCurrent(sceneId, sceneGeneration, refreshGeneration, realtimeRevision) &&
+            this.error.set('Patienten konnten nicht geladen werden.'),
+        }),
+    );
+    this.refreshSub.add(
+      this.api
+        .listTeams(sceneId)
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe({
+          next: (teams) =>
+            this.isCurrent(sceneId, sceneGeneration, refreshGeneration, realtimeRevision) &&
+            this.teams.set(teams),
+          error: () => undefined,
+        }),
+    );
   }
 
   protected openProtocol(patient: Patient): void {
@@ -251,10 +317,20 @@ export class SituationRoomPage implements AfterViewInit, OnDestroy {
   }
 
   protected loadHistory(patientId: number): void {
-    this.api.getTriageHistory(patientId).subscribe({
-      next: (history) => this.history.set(history),
-      error: () => this.error.set('Triage-Historie konnte nicht geladen werden.'),
-    });
+    const sceneGeneration = this.sceneGeneration;
+    this.api
+      .getTriageHistory(patientId)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (history) => {
+          if (sceneGeneration === this.sceneGeneration && this.selectedPatient()?.id === patientId)
+            this.history.set(history);
+        },
+        error: () =>
+          sceneGeneration === this.sceneGeneration &&
+          this.selectedPatient()?.id === patientId &&
+          this.error.set('Triage-Historie konnte nicht geladen werden.'),
+      });
   }
 
   protected createTeam(): void {
@@ -262,23 +338,44 @@ export class SituationRoomPage implements AfterViewInit, OnDestroy {
     if (!sceneId) {
       return;
     }
-    this.api.createTeam({ operationSceneId: sceneId, name: this.teamForm.controls.name.value }).subscribe({
-      next: (team) => {
-        this.upsertTeam(team);
-        this.teamForm.reset({ name: '' });
-      },
-      error: () => this.error.set('Team konnte nicht angelegt werden.'),
-    });
+    const generation = this.sceneGeneration;
+    this.api
+      .createTeam({ operationSceneId: sceneId, name: this.teamForm.controls.name.value })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (team) => {
+          if (generation !== this.sceneGeneration || this.sceneId() !== sceneId) return;
+          this.upsertTeam(team);
+          this.teamForm.reset({ name: '' });
+        },
+        error: () =>
+          generation === this.sceneGeneration &&
+          this.sceneId() === sceneId &&
+          this.error.set('Team konnte nicht angelegt werden.'),
+      });
   }
 
   protected updateTeam(
     team: Team,
-    update: Partial<Pick<Team, 'status' | 'assignedPatientId' | 'assignedLocation' | 'contactInfo'>>,
+    update: Partial<
+      Pick<Team, 'status' | 'assignedPatientId' | 'assignedLocation' | 'contactInfo'>
+    >,
   ): void {
-    this.api.updateTeam(team.id, update).subscribe({
-      next: (updated) => this.upsertTeam(updated),
-      error: () => this.error.set('Team konnte nicht aktualisiert werden.'),
-    });
+    const sceneId = this.sceneId();
+    const generation = this.sceneGeneration;
+    this.api
+      .updateTeam(team.id, update)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (updated) => {
+          if (generation === this.sceneGeneration && this.sceneId() === sceneId)
+            this.upsertTeam(updated);
+        },
+        error: () =>
+          generation === this.sceneGeneration &&
+          this.sceneId() === sceneId &&
+          this.error.set('Team konnte nicht aktualisiert werden.'),
+      });
   }
 
   protected numberOrNull(value: string): number | null {
@@ -290,7 +387,7 @@ export class SituationRoomPage implements AfterViewInit, OnDestroy {
   }
 
   protected triageLabel(value?: TriageColor | null): string {
-    return value === 'gruen' ? 'grün' : value ?? '-';
+    return value === 'gruen' ? 'grün' : (value ?? '-');
   }
 
   private connect(): void {
@@ -299,42 +396,99 @@ export class SituationRoomPage implements AfterViewInit, OnDestroy {
       this.error.set('Bitte Szene ID wählen.');
       return;
     }
+    ++this.sceneGeneration;
+    this.refreshGeneration = 0;
+    this.realtimeRevision = 0;
     this.realtimeSub?.unsubscribe();
     this.pollingSub?.unsubscribe();
+    this.refreshSub?.unsubscribe();
+    this.patients.set([]);
+    this.teams.set([]);
+    this.history.set([]);
+    this.selectedPatient.set(null);
     this.refresh();
-    this.realtimeSub = this.realtime.connect(sceneId).subscribe((event) => {
-      if (event.type === 'state') {
-        this.realtimeState.set(event.payload === 'connected' ? 'live' : 'polling');
-        if (event.payload === 'polling') {
-          this.startPolling(sceneId);
+    const generation = this.sceneGeneration;
+    this.realtimeSub = this.realtime
+      .connect(sceneId)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((event) => {
+        if (generation !== this.sceneGeneration || this.sceneId() !== sceneId) return;
+        if (event.type === 'state') {
+          this.realtimeState.set(event.payload === 'connected' ? 'live' : 'polling');
+          if (event.payload === 'polling') {
+            this.startPolling(sceneId);
+          } else {
+            this.pollingSub?.unsubscribe();
+          }
         }
-      }
-      if (event.type === 'snapshot') {
-        this.patients.set(event.payload.patients);
-        this.teams.set(event.payload.teams);
-        this.renderMarkers();
-      }
-      if (event.type === 'patient') {
-        this.upsertPatient(event.payload.patient);
-      }
-      if (event.type === 'team') {
-        this.upsertTeam(event.payload.team);
-      }
-    });
+        if (event.type === 'snapshot') {
+          ++this.realtimeRevision;
+          this.patients.set(event.payload.patients);
+          this.teams.set(event.payload.teams);
+          this.renderMarkers();
+        }
+        if (event.type === 'patient') {
+          ++this.realtimeRevision;
+          this.upsertPatient(event.payload.patient);
+        }
+        if (event.type === 'team') {
+          ++this.realtimeRevision;
+          this.upsertTeam(event.payload.team);
+        }
+        if (event.type === 'patient-list') {
+          ++this.realtimeRevision;
+          const ids = new Set(event.payload.patientIds);
+          const hasMissingPatients = event.payload.patientIds.some(
+            (id) => !this.patients().some((patient) => patient.id === id),
+          );
+          this.patients.update((patients) => patients.filter((patient) => ids.has(patient.id)));
+          const selected = this.selectedPatient();
+          if (selected && !ids.has(selected.id)) {
+            this.selectedPatient.set(null);
+            this.history.set([]);
+            if (this.responderState.patient()?.id === selected.id)
+              this.responderState.clearPatient();
+          }
+          this.renderMarkers();
+          if (hasMissingPatients) this.refresh();
+        }
+      });
   }
 
   private startPolling(sceneId: number): void {
-    this.pollingSub = interval(10000).pipe(switchMap(() => this.api.listPatients(sceneId))).subscribe({
-      next: (patients) => {
-        this.patients.set(patients);
-        this.renderMarkers();
-      },
-      error: () => this.error.set('Live-Verbindung und Aktualisierung sind unterbrochen.'),
-    });
+    const generation = this.sceneGeneration;
+    this.pollingSub?.unsubscribe();
+    this.pollingSub = interval(10000)
+      .pipe(
+        switchMap(() => this.api.listPatients(sceneId)),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe({
+        next: (patients) => {
+          if (generation !== this.sceneGeneration || this.sceneId() !== sceneId) return;
+          this.patients.set(patients);
+          this.renderMarkers();
+        },
+        error: () => this.error.set('Live-Verbindung und Aktualisierung sind unterbrochen.'),
+      });
   }
 
   private sceneId(): number | null {
     return this.sceneForm.controls.sceneId.value;
+  }
+
+  private isCurrent(
+    sceneId: number,
+    sceneGeneration: number,
+    refreshGeneration: number,
+    realtimeRevision: number,
+  ): boolean {
+    return (
+      this.sceneId() === sceneId &&
+      this.sceneGeneration === sceneGeneration &&
+      this.refreshGeneration === refreshGeneration &&
+      this.realtimeRevision === realtimeRevision
+    );
   }
 
   private initMap(): void {
@@ -351,7 +505,9 @@ export class SituationRoomPage implements AfterViewInit, OnDestroy {
 
   private renderMarkers(): void {
     this.markers.clearLayers();
-    const points = this.patients().filter((patient) => patient.latitudePatient != null && patient.longitudePatient != null);
+    const points = this.patients().filter(
+      (patient) => patient.latitudePatient != null && patient.longitudePatient != null,
+    );
     for (const patient of points) {
       const label = `${patient.humanReadableId || patient.id} · ${this.triageLabel(patient.triagefarbe)}`;
       L.circleMarker([patient.latitudePatient!, patient.longitudePatient!], {
@@ -367,20 +523,36 @@ export class SituationRoomPage implements AfterViewInit, OnDestroy {
         .addTo(this.markers);
     }
     if (points.length && this.map) {
-      this.map.fitBounds(points.map((patient) => [patient.latitudePatient!, patient.longitudePatient!] as L.LatLngTuple), { maxZoom: 16 });
+      this.map.fitBounds(
+        points.map(
+          (patient) => [patient.latitudePatient!, patient.longitudePatient!] as L.LatLngTuple,
+        ),
+        { maxZoom: 16 },
+      );
     }
   }
 
   private upsertPatient(patient: Patient): void {
-    this.patients.update((patients) => [...patients.filter((item) => item.id !== patient.id), patient].sort((a, b) => a.id - b.id));
+    this.patients.update((patients) =>
+      [...patients.filter((item) => item.id !== patient.id), patient].sort((a, b) => a.id - b.id),
+    );
     this.renderMarkers();
   }
 
   private upsertTeam(team: Team): void {
-    this.teams.update((teams) => [...teams.filter((item) => item.id !== team.id), team].sort((a, b) => a.id - b.id));
+    this.teams.update((teams) =>
+      [...teams.filter((item) => item.id !== team.id), team].sort((a, b) => a.id - b.id),
+    );
   }
 }
 
 function triageColor(value?: TriageColor | null): string {
-  return ({ rot: '#b3261e', gelb: '#b77900', gruen: '#188038', schwarz: '#1f2933' } as Record<string, string>)[value ?? ''] ?? '#52606d';
+  return (
+    (
+      { rot: '#b3261e', gelb: '#b77900', gruen: '#188038', schwarz: '#1f2933' } as Record<
+        string,
+        string
+      >
+    )[value ?? ''] ?? '#52606d'
+  );
 }

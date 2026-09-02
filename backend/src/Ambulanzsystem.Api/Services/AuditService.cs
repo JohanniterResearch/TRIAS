@@ -11,6 +11,9 @@ namespace Ambulanzsystem.Api.Services;
 // since each carries different before/after semantics.
 public class AuditService(AppDbContext db)
 {
+    public void LogRead(ClaimsPrincipal actor, string entityType, int? entityId, int? patientId = null) =>
+        LogEvent(actor.SubjectId(), actor.TokenType() ?? "unknown", "read", entityType, entityId, patientId, null, null, null);
+
     // Does not call SaveChangesAsync — batched into the caller's own save so the entity write and
     // its audit row commit as one transaction. BeforeJson/AfterJson are the raw scalar value
     // (kept as-is: existing consumers like PersonsController.TriageHistory pass these straight

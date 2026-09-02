@@ -1,3 +1,5 @@
+using Ambulanzsystem.Api.Auth;
+
 namespace Ambulanzsystem.Api.Config;
 
 // NFR-OPS-04: startup shall fail on missing production secrets. Called before the app starts
@@ -22,14 +24,19 @@ public static class StartupValidation
 
         if (env.IsProduction())
         {
-            if (string.IsNullOrWhiteSpace(config["Bootstrap:AdminPassword"]))
+            if (!PasswordPolicy.IsValid(config["Bootstrap:AdminPassword"]))
             {
-                errors.Add("Bootstrap:AdminPassword is required in production.");
+                errors.Add($"Bootstrap:AdminPassword is required in production and must be at least {PasswordPolicy.MinimumLength} characters.");
             }
 
             if (string.IsNullOrWhiteSpace(config["PLS_ALLOWED_ORIGINS"]))
             {
                 errors.Add("PLS_ALLOWED_ORIGINS is required in production.");
+            }
+
+            if (string.IsNullOrWhiteSpace(config["BACKUP_EXPECTED_DEPLOYMENT_ID"]))
+            {
+                errors.Add("BACKUP_EXPECTED_DEPLOYMENT_ID is required in production.");
             }
 
             if (config.GetValue<bool>("Features:EnableDevLogin"))

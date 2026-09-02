@@ -21,8 +21,8 @@ public class RealtimePublisher
     public int PendingCount => _channel.Reader.CanCount ? _channel.Reader.Count : 0;
     public long DroppedCount => Interlocked.Read(ref _dropped);
 
-    // Flipped false only if RealtimeDispatcher's loop itself crashes (not a single failed send,
-    // which it already catches and logs per-message) — surfaced via /health and /api/metrics.
+    // Tracks the latest dispatch attempt as well as a crashed dispatcher loop. A subsequent
+    // successful send recovers the flag; until then /health must not claim realtime is healthy.
     public bool DispatcherHealthy { get; set; } = true;
 
     public ChannelReader<QueuedMessage> Reader => _channel.Reader;

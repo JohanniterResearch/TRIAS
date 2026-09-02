@@ -4,10 +4,11 @@ This project was generated using [Angular CLI](https://github.com/angular/angula
 
 ## Development server
 
-To start a local development server, run:
+Install the locked dependencies and start the configured development server:
 
 ```bash
-ng serve
+npm ci
+npm start
 ```
 
 Once the server is running, open your browser and navigate to `http://localhost:4200/`. The application will automatically reload whenever you modify any of the source files.
@@ -28,10 +29,10 @@ ng generate --help
 
 ## Building
 
-To build the project run:
+To build the production bundle, run:
 
 ```bash
-ng build
+npm run build
 ```
 
 This will compile your project and store the build artifacts in the `dist/` directory. By default, the production build optimizes your application for performance and speed.
@@ -41,7 +42,7 @@ This will compile your project and store the build artifacts in the `dist/` dire
 To execute unit tests with the [Vitest](https://vitest.dev/) test runner, use the following command:
 
 ```bash
-ng test
+npm test
 ```
 
 ## Running end-to-end tests
@@ -49,10 +50,12 @@ ng test
 For end-to-end (e2e) testing, run:
 
 ```bash
-ng e2e
+npm run test:e2e
 ```
 
-Angular CLI does not come with an end-to-end testing framework by default. You can choose one that suits your needs.
+The repository uses its configured Vitest/static checks for `npm test` and Playwright for
+end-to-end tests. The development server is `http://localhost:4200` and proxies `/api` and
+`/hubs` to the backend at `http://localhost:5042`.
 
 ## Additional Resources
 

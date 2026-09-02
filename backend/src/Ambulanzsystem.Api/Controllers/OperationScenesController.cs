@@ -23,23 +23,18 @@ public class OperationScenesController(AppDbContext db, AuditService audit) : Co
             return BadRequest(new ErrorResponse("name is required."));
         }
 
-        if (request.OrganisationId is int orgId && !await db.Organisations.AnyAsync(o => o.Id == orgId))
-        {
-            return BadRequest(new ErrorResponse("organisationId does not exist."));
-        }
-
-        OperationScene scene;
         var isCreate = request.Id is null;
+        OperationScene scene;
 
         if (isCreate)
         {
             scene = new OperationScene();
-            db.OperationScenes.Add(scene);
         }
         else
         {
             var existing = await db.OperationScenes.FindAsync(request.Id!.Value);
             if (existing is null) return NotFound();
+            if (!SceneAccess.CanAdminister(User, existing)) return Forbid();
             scene = existing;
         }
 
@@ -56,6 +51,8 @@ public class OperationScenesController(AppDbContext db, AuditService audit) : Co
                 return BadRequest(new ErrorResponse("parentSceneId does not exist."));
             }
 
+            if (!SceneAccess.CanAdminister(User, parent)) return Forbid();
+
             // Only one level of nesting: the parent must itself be top-level.
             if (parent.ParentSceneId is not null)
             {
@@ -69,6 +66,19 @@ public class OperationScenesController(AppDbContext db, AuditService audit) : Co
                 return BadRequest(new ErrorResponse("This scene already has sub-sites and cannot become a sub-site itself."));
             }
         }
+
+        if (!SceneAccess.IsGlobalAdministrator(User) &&
+            (request.ParentSceneId is null && (isCreate || scene.ParentSceneId is not null)))
+        {
+            return Forbid();
+        }
+
+        if (request.OrganisationId is int orgId && !await db.Organisations.AnyAsync(o => o.Id == orgId))
+        {
+            return BadRequest(new ErrorResponse("organisationId does not exist."));
+        }
+
+        if (isCreate) db.OperationScenes.Add(scene);
 
         var newActive = request.Active ?? (isCreate ? true : scene.Active);
         var changes = new Dictionary<string, (object? Before, object? After)>();

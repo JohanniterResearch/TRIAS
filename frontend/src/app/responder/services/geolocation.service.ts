@@ -15,11 +15,12 @@ export class GeolocationService {
 
     return new Promise((resolve) => {
       navigator.geolocation.getCurrentPosition(
-        (position) => resolve({
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-          accuracyMeters: position.coords.accuracy,
-        }),
+        (position) =>
+          resolve({
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+            accuracyMeters: position.coords.accuracy,
+          }),
         () => resolve(null),
         { enableHighAccuracy: true, maximumAge: 30000, timeout: 5000 },
       );

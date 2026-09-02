@@ -15,7 +15,9 @@ const storeName = 'page1-drafts';
 @Injectable({ providedIn: 'root' })
 export class ProtokollDraftStore {
   async get(patientId: number): Promise<ProtokollDraftRecord | null> {
-    return this.withStore('readonly', (store) => request<ProtokollDraftRecord | undefined>(store.get(patientId))).then((record) => record ?? null);
+    return this.withStore('readonly', (store) =>
+      request<ProtokollDraftRecord | undefined>(store.get(patientId)),
+    ).then((record) => record ?? null);
   }
 
   async put(record: ProtokollDraftRecord): Promise<void> {
@@ -29,9 +31,10 @@ export class ProtokollDraftStore {
         return;
       }
       const real = await request<ProtokollDraftRecord | undefined>(store.get(realId));
-      const newer = !real || Date.parse(provisional.updatedAt) >= Date.parse(real.updatedAt)
-        ? provisional
-        : real;
+      const newer =
+        !real || Date.parse(provisional.updatedAt) >= Date.parse(real.updatedAt)
+          ? provisional
+          : real;
       await request(store.put({ ...newer, patientId: realId }));
       await request(store.delete(provisionalId));
     });
@@ -41,7 +44,10 @@ export class ProtokollDraftStore {
     await this.withStore('readwrite', (store) => request(store.clear()));
   }
 
-  private async withStore<T>(mode: IDBTransactionMode, work: (store: IDBObjectStore) => Promise<T>): Promise<T> {
+  private async withStore<T>(
+    mode: IDBTransactionMode,
+    work: (store: IDBObjectStore) => Promise<T>,
+  ): Promise<T> {
     const db = await this.open();
     try {
       return await work(db.transaction(storeName, mode).objectStore(storeName));
@@ -53,7 +59,8 @@ export class ProtokollDraftStore {
   private open(): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
       const openRequest = indexedDB.open(dbName, 1);
-      openRequest.onupgradeneeded = () => openRequest.result.createObjectStore(storeName, { keyPath: 'patientId' });
+      openRequest.onupgradeneeded = () =>
+        openRequest.result.createObjectStore(storeName, { keyPath: 'patientId' });
       openRequest.onsuccess = () => resolve(openRequest.result);
       openRequest.onerror = () => reject(openRequest.error);
     });

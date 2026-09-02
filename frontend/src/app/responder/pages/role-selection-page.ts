@@ -18,7 +18,10 @@ type OperationScene = components['schemas']['OperationScene'];
       <h1>Szene auswählen</h1>
 
       @if (error()) {
-        <p class="form-error">{{ error() }}</p>
+        <p class="form-error" role="alert" aria-live="assertive">{{ error() }}</p>
+      }
+      @if (busy()) {
+        <p class="status-message" role="status" aria-live="polite">Szenen werden geladen.</p>
       }
 
       <button type="button" (click)="loadScenes()" [disabled]="busy()">Szenen laden</button>

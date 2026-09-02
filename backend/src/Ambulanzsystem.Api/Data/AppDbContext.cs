@@ -37,6 +37,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         b.Entity<OperationScene>(e =>
         {
             e.Property(x => x.Name).HasMaxLength(255).IsRequired();
+            e.Property(x => x.Description).HasMaxLength(2000);
             e.HasOne(x => x.Organisation).WithMany().HasForeignKey(x => x.OrganisationId).OnDelete(DeleteBehavior.SetNull);
             // D6: self-reference, one level of nesting enforced in the application layer (B3), not here.
             e.HasOne(x => x.ParentScene).WithMany(x => x.SubSites).HasForeignKey(x => x.ParentSceneId).OnDelete(DeleteBehavior.Restrict);
@@ -44,15 +45,25 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         b.Entity<Team>(e =>
         {
-            e.Property(x => x.Name).IsRequired();
+            e.Property(x => x.Name).HasMaxLength(255).IsRequired();
+            e.Property(x => x.Status).HasMaxLength(32);
+            e.Property(x => x.AssignedLocation).HasMaxLength(255);
+            e.Property(x => x.ContactInfo).HasMaxLength(255);
             e.HasOne(x => x.OperationScene).WithMany(x => x.Teams).HasForeignKey(x => x.OperationSceneId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.AssignedPatient).WithMany().HasForeignKey(x => x.AssignedPatientId).OnDelete(DeleteBehavior.SetNull);
         });
 
         b.Entity<Patient>(e =>
         {
+            e.Property(x => x.HumanReadableId).HasMaxLength(64);
+            e.Property(x => x.Name).HasMaxLength(255);
             e.Property(x => x.Triagefarbe).HasMaxLength(16);
-            e.Property(x => x.FieldTimestampsJson).HasColumnType("jsonb").HasColumnName("field_timestamps");
+            e.Property(x => x.LocationSource).HasMaxLength(255);
+            e.Property(x => x.IndoorLocation).HasMaxLength(255);
+            e.Property(x => x.FieldTimestampsJson)
+                .HasColumnType("jsonb")
+                .HasColumnName("field_timestamps")
+                .HasDefaultValue("{}");
             e.ToTable(t => t.HasCheckConstraint(
                 "ck_patients_triagefarbe",
                 "triagefarbe IN ('rot','gelb','gruen','schwarz')")); // D5: ASCII canonical, 'blau' invalid in V1
@@ -95,7 +106,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         b.Entity<AmbulanzprotokollPage1>(e =>
         {
             e.Property(x => x.FormStateJson).HasColumnType("jsonb").HasColumnName("form_state");
-            e.Property(x => x.FieldTimestampsJson).HasColumnType("jsonb").HasColumnName("field_timestamps");
+            e.Property(x => x.FieldTimestampsJson)
+                .HasColumnType("jsonb")
+                .HasColumnName("field_timestamps")
+                .HasDefaultValue("{}");
             e.Property(x => x.Status).HasMaxLength(32);
             e.HasIndex(x => x.PatientId).IsUnique();
             e.HasOne(x => x.Patient).WithOne(x => x.AmbulanzprotokollPage1).HasForeignKey<AmbulanzprotokollPage1>(x => x.PatientId).OnDelete(DeleteBehavior.Cascade);
@@ -119,6 +133,16 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasIndex(x => x.PatientId);
             e.HasIndex(x => x.Timestamp);
             // Append-only (D7): no delete/update path is ever wired up in application code.
+        });
+
+        b.SharedTypeEntity<Dictionary<string, string>>("OperationalMetadata", e =>
+        {
+            e.IndexerProperty<string>("Key").HasColumnName("key");
+            e.IndexerProperty<string>("Value").HasColumnName("value").IsRequired();
+            e.HasKey("Key");
+            e.ToTable("operational_metadata", t => t.HasCheckConstraint(
+                "ck_operational_metadata_deployment_id",
+                "\"key\" = 'deployment_id'"));
         });
     }
 

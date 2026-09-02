@@ -16,19 +16,18 @@ public class RefreshTokenService(AppDbContext db, IOptions<JwtOptions> options)
 {
     private readonly JwtOptions _options = options.Value;
 
-    public async Task<IssuedRefreshToken> IssueAsync(int userId)
+    public Task<IssuedRefreshToken> IssueAsync(int userId)
     {
         var issued = Create(userId);
         db.RefreshTokens.Add(issued.Entity);
-        await db.SaveChangesAsync();
-        return issued;
+        return Task.FromResult(issued);
     }
 
     // Rotation: the presented token is revoked and a new one issued, whether or not the caller
     // goes on to use the new one — a replayed old token is always rejected after first use.
     public async Task<(User User, IssuedRefreshToken NewToken)?> RotateAsync(string rawToken)
     {
-        var hash = Hash(rawToken);
+        if (!TryHash(rawToken, out var hash)) return null;
         var now = DateTime.UtcNow;
         var existing = await db.RefreshTokens
             .AsNoTracking()
@@ -40,31 +39,34 @@ public class RefreshTokenService(AppDbContext db, IOptions<JwtOptions> options)
             return null;
         }
 
-        if (existing.User.RevokedAt is not null)
+        var ownsTransaction = db.Database.CurrentTransaction is null;
+        await using var transaction = ownsTransaction ? await db.Database.BeginTransactionAsync() : null;
+        var user = await RowLocks.UserAsync(db, existing.UserId);
+        if (user is null || user.RevokedAt is not null)
         {
+            if (transaction is not null) await transaction.RollbackAsync();
             return null;
         }
 
-        await using var transaction = await db.Database.BeginTransactionAsync();
         var claimed = await db.RefreshTokens
             .Where(t => t.Id == existing.Id && !t.IsRevoked && t.ExpiresAt >= now)
             .ExecuteUpdateAsync(update => update.SetProperty(t => t.IsRevoked, true));
         if (claimed != 1)
         {
-            await transaction.RollbackAsync();
+            if (transaction is not null) await transaction.RollbackAsync();
             return null;
         }
 
         var issued = Create(existing.UserId);
         db.RefreshTokens.Add(issued.Entity);
         await db.SaveChangesAsync();
-        await transaction.CommitAsync();
-        return (existing.User, issued);
+        if (transaction is not null) await transaction.CommitAsync();
+        return (user, issued);
     }
 
     public async Task<bool> RevokeAsync(string rawToken)
     {
-        var hash = Hash(rawToken);
+        if (!TryHash(rawToken, out var hash)) return false;
         var existing = await db.RefreshTokens.FirstOrDefaultAsync(t => t.TokenHash == hash);
         if (existing is null) return false;
 
@@ -75,24 +77,35 @@ public class RefreshTokenService(AppDbContext db, IOptions<JwtOptions> options)
 
     public async Task RevokeAllForUserAsync(int userId)
     {
-        await db.RefreshTokens
+        var activeTokens = await db.RefreshTokens
             .Where(t => t.UserId == userId && !t.IsRevoked)
-            .ExecuteUpdateAsync(s => s.SetProperty(t => t.IsRevoked, true));
+            .ToListAsync();
+        foreach (var token in activeTokens) token.IsRevoked = true;
     }
 
-    private static string Hash(string raw)
+    private static bool TryHash(string? raw, out string hash)
     {
-        var bytes = SHA256.HashData(Convert.FromBase64String(raw));
-        return Convert.ToBase64String(bytes);
+        hash = string.Empty;
+        if (string.IsNullOrWhiteSpace(raw) || raw.Length != 88) return false;
+
+        Span<byte> decoded = stackalloc byte[64];
+        if (!Convert.TryFromBase64String(raw, decoded, out var bytesWritten) || bytesWritten != decoded.Length)
+        {
+            return false;
+        }
+
+        hash = Convert.ToBase64String(SHA256.HashData(decoded));
+        return true;
     }
 
     private IssuedRefreshToken Create(int userId)
     {
-        var raw = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64));
+        var bytes = RandomNumberGenerator.GetBytes(64);
+        var raw = Convert.ToBase64String(bytes);
         return new IssuedRefreshToken(raw, new RefreshToken
         {
             UserId = userId,
-            TokenHash = Hash(raw),
+            TokenHash = Convert.ToBase64String(SHA256.HashData(bytes)),
             ExpiresAt = DateTime.UtcNow.AddDays(_options.RefreshTokenLifetimeDays),
             IsRevoked = false,
         });

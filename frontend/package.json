@@ -11,8 +11,14 @@
     "check:auth": "node scripts/check-auth-rules.mjs",
     "check:protocol": "node scripts/check-protocol-form.mjs",
     "check:production": "node scripts/check-production-bundle.mjs",
+    "check:types": "tsc -p tsconfig.app.json --noEmit",
+    "format": "prettier --write \"src/**/*.{ts,html,css}\" \"tests/**/*.ts\" \"scripts/**/*.{js,mjs,ts}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,html,css}\" \"tests/**/*.ts\" \"scripts/**/*.{js,mjs,ts}\"",
     "watch": "ng build --watch --configuration development",
-    "test": "npm run check:auth && npm run check:protocol",
+    "test": "npm run test:unit && npm run test:accessibility && npm run check:auth && npm run check:protocol",
+    "test:unit": "ng test --watch=false",
+    "test:unit:watch": "ng test",
+    "test:accessibility": "node scripts/check-live-regions.mjs",
     "test:e2e": "bash scripts/run-e2e.sh",
     "test:offline": "npm run build && playwright test --config playwright.offline.config.ts"
   },
@@ -39,7 +45,9 @@
     "@playwright/test": "^1.61.1",
     "@types/leaflet": "^1.9.21",
     "@types/qrcode": "^1.5.6",
+    "jsdom": "^26.1.0",
     "prettier": "^3.8.1",
-    "typescript": "~6.0.2"
+    "typescript": "~6.0.2",
+    "vitest": "^4.0.8"
   }
 }

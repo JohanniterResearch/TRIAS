@@ -102,6 +102,7 @@ public class AuthController(
 
     [HttpPost("refresh-token")]
     [AllowAnonymous]
+    [EnableRateLimiting(RateLimitPolicies.RefreshPolicy)]
     public async Task<IActionResult> Refresh(RefreshTokenRequest request)
     {
         var rotated = await refreshTokens.RotateAsync(request.RefreshToken);
@@ -121,7 +122,11 @@ public class AuthController(
     [AllowPendingPasswordChange]
     public async Task<IActionResult> Logout(RefreshTokenRequest request)
     {
-        await refreshTokens.RevokeAsync(request.RefreshToken);
+        if (!await refreshTokens.RevokeAsync(request.RefreshToken))
+        {
+            return BadRequest(new ErrorResponse("Invalid refresh token."));
+        }
+
         return NoContent();
     }
 

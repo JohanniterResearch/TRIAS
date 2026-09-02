@@ -6,6 +6,7 @@ import { ApiClient } from '../../api/api-client';
 import { OfflineQueueService } from '../../sync/offline-queue.service';
 import { QrScanner } from '../../shared/qr-scanner';
 import { AuthStore } from '../auth.store';
+import { homeRouteForToken } from '../auth.rules';
 import { DevAccess } from '../components/dev-access';
 
 @Component({
@@ -17,13 +18,16 @@ import { DevAccess } from '../components/dev-access';
       <h1>QR Login</h1>
 
       @if (error) {
-        <p class="form-error">{{ error }}</p>
+        <p class="form-error" role="alert" aria-live="assertive">{{ error }}</p>
+      }
+      @if (busy) {
+        <p class="status-message" role="status" aria-live="polite">Anmeldung läuft.</p>
       }
 
       <form [formGroup]="qrForm" (ngSubmit)="submitQr()" class="auth-form">
         <label>
           QR Code
-          <input formControlName="qrCode" autocomplete="one-time-code" autofocus>
+          <input formControlName="qrCode" autocomplete="one-time-code" autofocus />
         </label>
         <button type="submit" [disabled]="busy || qrForm.invalid">Einloggen</button>
       </form>
@@ -34,11 +38,11 @@ import { DevAccess } from '../components/dev-access';
       <form [formGroup]="userForm" (ngSubmit)="submitUser()" class="auth-form">
         <label>
           Benutzername
-          <input formControlName="username" autocomplete="username">
+          <input formControlName="username" autocomplete="username" />
         </label>
         <label>
           Passwort
-          <input formControlName="password" type="password" autocomplete="current-password">
+          <input formControlName="password" type="password" autocomplete="current-password" />
         </label>
         <button type="submit" [disabled]="busy || userForm.invalid">Mit Passwort einloggen</button>
       </form>
@@ -68,41 +72,52 @@ export class LoginPage {
   private readonly offlineQueue = inject(OfflineQueueService);
 
   protected submitQr(qrCode = this.qrForm.controls.qrCode.value): void {
-    this.run(() => this.api.qrLogin(qrCode.trim()).subscribe({
-      next: (result) => {
-        const expired = this.auth.activeSession();
-        if (expired?.expired && (expired.tokenType !== 'qr' || expired.eventSceneId !== result.eventSceneId)) {
-          this.fail('Die ausstehende Sitzung muss mit demselben QR Zugang fortgesetzt werden.');
-          return;
-        }
-        this.auth.setResponderSession({ token: result.token, tokenType: 'qr', eventSceneId: result.eventSceneId });
-        this.offlineQueue.flush().catch(() => undefined);
-        this.router.navigateByUrl('/role-selection');
-      },
-      error: () => this.fail('QR Code ist ungültig oder abgelaufen.'),
-    }));
+    this.run(() =>
+      this.api.qrLogin(qrCode.trim()).subscribe({
+        next: (result) => {
+          const expired = this.auth.activeSession();
+          if (
+            expired?.expired &&
+            (expired.tokenType !== 'qr' || expired.eventSceneId !== result.eventSceneId)
+          ) {
+            this.fail('Die ausstehende Sitzung muss mit demselben QR Zugang fortgesetzt werden.');
+            return;
+          }
+          this.auth.setResponderSession({
+            token: result.token,
+            tokenType: 'qr',
+            eventSceneId: result.eventSceneId,
+          });
+          this.offlineQueue.flush().catch(() => undefined);
+          this.router.navigateByUrl(homeRouteForToken('qr'));
+        },
+        error: () => this.fail('QR Code ist ungültig oder abgelaufen.'),
+      }),
+    );
   }
 
   protected submitUser(): void {
-    this.run(() => this.api.userLogin(this.userForm.getRawValue()).subscribe({
-      next: (result) => {
-        const username = this.userForm.controls.username.value;
-        const expired = this.auth.activeSession();
-        if (expired?.expired && (expired.tokenType !== 'user' || expired.username !== username)) {
-          this.fail('Die ausstehende Sitzung muss mit demselben Benutzer fortgesetzt werden.');
-          return;
-        }
-        this.auth.setResponderSession({
-          token: result.token,
-          refreshToken: result.refreshToken,
-          tokenType: 'user',
-          username,
-        });
-        this.offlineQueue.flush().catch(() => undefined);
-        this.router.navigateByUrl('/role-selection');
-      },
-      error: () => this.fail('Benutzername oder Passwort ist ungültig.'),
-    }));
+    this.run(() =>
+      this.api.userLogin(this.userForm.getRawValue()).subscribe({
+        next: (result) => {
+          const username = this.userForm.controls.username.value;
+          const expired = this.auth.activeSession();
+          if (expired?.expired && (expired.tokenType !== 'user' || expired.username !== username)) {
+            this.fail('Die ausstehende Sitzung muss mit demselben Benutzer fortgesetzt werden.');
+            return;
+          }
+          this.auth.setResponderSession({
+            token: result.token,
+            refreshToken: result.refreshToken,
+            tokenType: 'user',
+            username,
+          });
+          this.offlineQueue.flush().catch(() => undefined);
+          this.router.navigateByUrl(homeRouteForToken('user'));
+        },
+        error: () => this.fail('Benutzername oder Passwort ist ungültig.'),
+      }),
+    );
   }
 
   private run(action: () => void): void {
@@ -115,5 +130,4 @@ export class LoginPage {
     this.busy = false;
     this.error = message;
   }
-
 }

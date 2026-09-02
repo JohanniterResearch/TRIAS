@@ -7,13 +7,17 @@ obj/
 .env
 .codex
 .agents
-/.claude-flow/
+.claude-flow/
 /.claude/
 /.swarm/
-/backend/.claude-flow/
+/backend/.idea/
 /ruvector.db
+
+# .hermes plans remain visible until the owner decides whether they are shared artifacts.
 
 # ignore /docs contents (not the dir itself, or the pilot negation below can never match)
 /docs/*
 # pilot handoff deliverables are shared via the repo, unlike the rest of /docs
 !/docs/pilot/
+!/docs/KnownIssues.md
+!/docs/remediationPlan.md

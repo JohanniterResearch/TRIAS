@@ -97,7 +97,9 @@ namespace Ambulanzsystem.Api.Data.Migrations
 
                     b.Property<string>("FieldTimestampsJson")
                         .IsRequired()
+                        .ValueGeneratedOnAdd()
                         .HasColumnType("jsonb")
+                        .HasDefaultValue("{}")
                         .HasColumnName("field_timestamps");
 
                     b.Property<DateTime?>("FinalizedAt")
@@ -259,7 +261,8 @@ namespace Ambulanzsystem.Api.Data.Migrations
                         .HasColumnName("created_at");
 
                     b.Property<string>("Description")
-                        .HasColumnType("text")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
                         .HasColumnName("description");
 
                     b.Property<string>("Name")
@@ -352,15 +355,19 @@ namespace Ambulanzsystem.Api.Data.Migrations
 
                     b.Property<string>("FieldTimestampsJson")
                         .IsRequired()
+                        .ValueGeneratedOnAdd()
                         .HasColumnType("jsonb")
+                        .HasDefaultValue("{}")
                         .HasColumnName("field_timestamps");
 
                     b.Property<string>("HumanReadableId")
-                        .HasColumnType("text")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
                         .HasColumnName("human_readable_id");
 
                     b.Property<string>("IndoorLocation")
-                        .HasColumnType("text")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
                         .HasColumnName("indoor_location");
 
                     b.Property<bool?>("Kontaminiert")
@@ -376,7 +383,8 @@ namespace Ambulanzsystem.Api.Data.Migrations
                         .HasColumnName("location_accuracy_meters");
 
                     b.Property<string>("LocationSource")
-                        .HasColumnType("text")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
                         .HasColumnName("location_source");
 
                     b.Property<DateTime?>("LocationUpdatedAt")
@@ -388,7 +396,8 @@ namespace Ambulanzsystem.Api.Data.Migrations
                         .HasColumnName("longitude_patient");
 
                     b.Property<string>("Name")
-                        .HasColumnType("text")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
                         .HasColumnName("name");
 
                     b.Property<int>("OperationSceneId")
@@ -606,7 +615,8 @@ namespace Ambulanzsystem.Api.Data.Migrations
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
                     b.Property<string>("AssignedLocation")
-                        .HasColumnType("text")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
                         .HasColumnName("assigned_location");
 
                     b.Property<int?>("AssignedPatientId")
@@ -614,7 +624,8 @@ namespace Ambulanzsystem.Api.Data.Migrations
                         .HasColumnName("assigned_patient_id");
 
                     b.Property<string>("ContactInfo")
-                        .HasColumnType("text")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
                         .HasColumnName("contact_info");
 
                     b.Property<DateTime>("CreatedAt")
@@ -623,7 +634,8 @@ namespace Ambulanzsystem.Api.Data.Migrations
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasColumnType("text")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
                         .HasColumnName("name");
 
                     b.Property<int>("OperationSceneId")
@@ -631,7 +643,8 @@ namespace Ambulanzsystem.Api.Data.Migrations
                         .HasColumnName("operation_scene_id");
 
                     b.Property<string>("Status")
-                        .HasColumnType("text")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
                         .HasColumnName("status");
 
                     b.Property<DateTime>("UpdatedAt")
@@ -730,6 +743,26 @@ namespace Ambulanzsystem.Api.Data.Migrations
                         .HasDatabaseName("ix_users_username");
 
                     b.ToTable("users", (string)null);
+                });
+
+            modelBuilder.Entity("OperationalMetadata", b =>
+                {
+                    b.Property<string>("Key")
+                        .HasColumnType("text")
+                        .HasColumnName("key");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("value");
+
+                    b.HasKey("Key")
+                        .HasName("pk_operational_metadata");
+
+                    b.ToTable("operational_metadata", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_operational_metadata_deployment_id", "\"key\" = 'deployment_id'");
+                        });
                 });
 
             modelBuilder.Entity("Ambulanzsystem.Api.Domain.AmbulanzprotokollExport", b =>

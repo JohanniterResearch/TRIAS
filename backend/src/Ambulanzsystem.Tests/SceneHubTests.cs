@@ -1,8 +1,11 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
+using Microsoft.Extensions.Configuration;
 using Xunit;
 
 namespace Ambulanzsystem.Tests;
@@ -17,19 +20,19 @@ public class SceneHubTests(WebApplicationFactory<Program> factory) : IClassFixtu
     private record PatientBearing(int id);
     private record QrCode(string qrToken);
 
-    private async Task<(HttpClient Client, string Token)> AdminClientAsync()
+    private async Task<(HttpClient Client, string Token)> AdminClientAsync(WebApplicationFactory<Program>? appFactory = null)
     {
-        var client = factory.CreateClient();
+        var client = (appFactory ?? factory).CreateClient();
         var token = await TestAuth.LoginAsync(client, "/api/admin-login", "admin", "dev-admin-password");
         client.DefaultRequestHeaders.Authorization = new("Bearer", token);
         return (client, token);
     }
 
-    private HubConnection BuildHubConnection(string token) =>
+    private HubConnection BuildHubConnection(string token, WebApplicationFactory<Program>? appFactory = null) =>
         new HubConnectionBuilder()
-            .WithUrl(new Uri(factory.Server.BaseAddress, "/hubs/scene"), options =>
+            .WithUrl(new Uri((appFactory ?? factory).Server.BaseAddress, "/hubs/scene"), options =>
             {
-                options.HttpMessageHandlerFactory = _ => factory.Server.CreateHandler();
+                options.HttpMessageHandlerFactory = _ => (appFactory ?? factory).Server.CreateHandler();
                 options.AccessTokenProvider = () => Task.FromResult<string?>(token);
             })
             .Build();
@@ -89,9 +92,82 @@ public class SceneHubTests(WebApplicationFactory<Program> factory) : IClassFixtu
         await using var connection = BuildHubConnection(qrToken);
         await connection.StartAsync();
 
+        var ownAuditBefore = await SnapshotAuditCountAsync(admin, eventA.id);
+        var deniedAuditBefore = await SnapshotAuditCountAsync(admin, eventB.id);
+
         // eventA (own scope) succeeds; eventB (a different event entirely) must be rejected.
         await connection.InvokeAsync("JoinScene", eventA.id);
-
         await Assert.ThrowsAsync<HubException>(() => connection.InvokeAsync("JoinScene", eventB.id));
+
+        Assert.Equal(ownAuditBefore + 1, await SnapshotAuditCountAsync(admin, eventA.id));
+        Assert.Equal(deniedAuditBefore, await SnapshotAuditCountAsync(admin, eventB.id));
+    }
+
+    [Fact]
+    public async Task RedactionFlag_AppliesIdenticallyToSnapshotAndPatientUpdated()
+    {
+        using var redactingFactory = factory.WithWebHostBuilder(builder => builder.ConfigureAppConfiguration((_, config) =>
+            config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Features:RedactPersonalData"] = "true",
+            })));
+        var (admin, token) = await AdminClientAsync(redactingFactory);
+        var scene = (await (await admin.PostAsJsonAsync("/api/operation-scenes", new { name = $"redact-{Guid.NewGuid():N}" }))
+            .Content.ReadFromJsonAsync<SceneBearing>())!;
+        var patient = (await (await admin.PostAsJsonAsync("/api/persons/manual",
+                new { operationSceneId = scene.id, name = "Sensitive Name" }))
+            .Content.ReadFromJsonAsync<PatientBearing>())!;
+        (await admin.PostAsJsonAsync($"/api/persons/{patient.id}/location", new
+        {
+            lat = 48.2082,
+            lng = 16.3738,
+            source = "manual",
+            accuracyMeters = 3.5,
+            indoorLocation = "Treatment tent 4",
+        })).EnsureSuccessStatusCode();
+
+        await using var connection = BuildHubConnection(token, redactingFactory);
+        var snapshotTcs = new TaskCompletionSource<JsonElement>();
+        connection.On<JsonElement>("SceneSnapshot", message => snapshotTcs.TrySetResult(message));
+        var updateTcs = new TaskCompletionSource<JsonElement>();
+        connection.On<JsonElement>("PatientUpdated", message => updateTcs.TrySetResult(message));
+
+        await connection.StartAsync();
+        await connection.InvokeAsync("JoinScene", scene.id);
+        var snapshotPatient = (await snapshotTcs.Task.WaitAsync(TimeSpan.FromSeconds(10)))
+            .GetProperty("patients").EnumerateArray().Single();
+
+        (await admin.PostAsJsonAsync($"/api/persons/{patient.id}/update-triage-color",
+            new { triageColor = "rot" })).EnsureSuccessStatusCode();
+        var updatedPatient = (await updateTcs.Task.WaitAsync(TimeSpan.FromSeconds(10))).GetProperty("patient");
+
+        AssertRedacted(snapshotPatient);
+        AssertRedacted(updatedPatient);
+        Assert.Equal(patient.id, snapshotPatient.GetProperty("id").GetInt32());
+        Assert.Equal(patient.id, updatedPatient.GetProperty("id").GetInt32());
+        Assert.Equal(scene.id, updatedPatient.GetProperty("operationSceneId").GetInt32());
+        Assert.Equal("rot", updatedPatient.GetProperty("triagefarbe").GetString());
+    }
+
+    private static void AssertRedacted(JsonElement patient)
+    {
+        foreach (var field in new[]
+                 {
+                     "name", "longitudePatient", "latitudePatient", "locationSource",
+                     "locationAccuracyMeters", "indoorLocation", "locationUpdatedAt",
+                 })
+        {
+            Assert.Equal(JsonValueKind.Null, patient.GetProperty(field).ValueKind);
+        }
+    }
+
+    private static async Task<int> SnapshotAuditCountAsync(HttpClient admin, int sceneId)
+    {
+        var response = await admin.GetAsync("/api/audit?action=read&entityType=scene_snapshot&pageSize=500");
+        response.EnsureSuccessStatusCode();
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        return body.GetProperty("entries").EnumerateArray().Count(entry =>
+            entry.GetProperty("entityId").ValueKind != JsonValueKind.Null &&
+            entry.GetProperty("entityId").GetInt32() == sceneId);
     }
 }

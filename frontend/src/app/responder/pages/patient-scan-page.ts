@@ -19,20 +19,27 @@ import { ResponderStateStore } from '../services/responder-state';
       <h1>Patient QR scannen</h1>
 
       @if (!state.scene()) {
-        <p class="form-error">Bitte zuerst eine Szene auswählen.</p>
+        <p class="form-error" role="alert" aria-live="assertive">
+          Bitte zuerst eine Szene auswählen.
+        </p>
         <a routerLink="/role-selection">Zur Szenenauswahl</a>
       } @else {
         @if (error()) {
-          <p class="form-error">{{ error() }}</p>
+          <p class="form-error" role="alert" aria-live="assertive">{{ error() }}</p>
+        }
+        @if (busy()) {
+          <p class="status-message" role="status" aria-live="polite">Patient wird verarbeitet.</p>
         }
         @if (!online()) {
-          <button type="button" (click)="createManual()" [disabled]="busy()">Offline manuell anlegen</button>
+          <button type="button" (click)="createManual()" [disabled]="busy()">
+            Offline manuell anlegen
+          </button>
         }
 
         <form [formGroup]="qrForm" (ngSubmit)="verifyQr()" class="auth-form">
           <label>
             Patient QR Code
-            <input formControlName="qrCode" autocomplete="off" autofocus>
+            <input formControlName="qrCode" autocomplete="off" autofocus />
           </label>
           <button type="submit" [disabled]="busy() || qrForm.invalid">QR prüfen</button>
         </form>
@@ -43,7 +50,7 @@ import { ResponderStateStore } from '../services/responder-state';
         <form [formGroup]="manualForm" (ngSubmit)="createManual()" class="auth-form">
           <label>
             Name optional
-            <input formControlName="name">
+            <input formControlName="name" />
           </label>
           <button type="submit" [disabled]="busy()">Manuellen Patienten anlegen</button>
         </form>
@@ -80,7 +87,8 @@ export class PatientScanPage {
         await this.captureLocation(result.patient.id);
         this.router.navigateByUrl(`/patient/${result.patient.id}`);
       },
-      error: () => this.fail('Patient QR Code ist unbekannt oder kann offline nicht geprüft werden.'),
+      error: () =>
+        this.fail('Patient QR Code ist unbekannt oder kann offline nicht geprüft werden.'),
     });
   }
 
@@ -92,18 +100,23 @@ export class PatientScanPage {
 
     const clientGeneratedId = crypto.randomUUID();
     this.run();
-    this.api.createManualPatient({
-      operationSceneId: scene.id,
-      name: this.manualForm.controls.name.value || undefined,
-      clientGeneratedId,
-    }).subscribe({
-      next: async (patient) => {
-        this.state.setPatient(patient);
-        await this.captureLocation(patient.id);
-        this.router.navigateByUrl(`/patient/${patient.id}`);
-      },
-      error: () => navigator.onLine ? this.fail('Patient konnte nicht angelegt werden.') : this.createManualOffline(clientGeneratedId),
-    });
+    this.api
+      .createManualPatient({
+        operationSceneId: scene.id,
+        name: this.manualForm.controls.name.value || undefined,
+        clientGeneratedId,
+      })
+      .subscribe({
+        next: async (patient) => {
+          this.state.setPatient(patient);
+          await this.captureLocation(patient.id);
+          this.router.navigateByUrl(`/patient/${patient.id}`);
+        },
+        error: () =>
+          navigator.onLine
+            ? this.fail('Patient konnte nicht angelegt werden.')
+            : this.createManualOffline(clientGeneratedId),
+      });
   }
 
   protected online(): boolean {
@@ -116,12 +129,14 @@ export class PatientScanPage {
       return;
     }
 
-    this.api.updatePatientLocation(patientId, {
-      lat: fix.lat,
-      lng: fix.lng,
-      source: 'gps',
-      accuracyMeters: fix.accuracyMeters,
-    }).subscribe({ next: (patient) => this.state.setPatient(patient), error: () => undefined });
+    this.api
+      .updatePatientLocation(patientId, {
+        lat: fix.lat,
+        lng: fix.lng,
+        source: 'gps',
+        accuracyMeters: fix.accuracyMeters,
+      })
+      .subscribe({ next: (patient) => this.state.setPatient(patient), error: () => undefined });
   }
 
   private async createManualOffline(clientGeneratedId = crypto.randomUUID()): Promise<void> {
@@ -149,5 +164,4 @@ export class PatientScanPage {
     this.busy.set(false);
     this.error.set(message);
   }
-
 }

@@ -22,11 +22,12 @@ public class LoginQrCodesController(AppDbContext db, AuditService audit) : Contr
             return BadRequest(new ErrorResponse("number must be between 1 and 500."));
         }
 
-        var sceneExists = await db.OperationScenes.AnyAsync(s => s.Id == request.EventSceneId);
-        if (!sceneExists)
+        if (!await SceneAccess.IsTopLevelEventAsync(db, request.EventSceneId))
         {
-            return BadRequest(new ErrorResponse("eventSceneId does not exist."));
+            return BadRequest(new ErrorResponse("eventSceneId must reference an existing top-level event."));
         }
+
+        if (!await SceneAccess.CanAdministerAsync(User, db, request.EventSceneId)) return Forbid();
 
         var codes = new List<QrCodeLogin>();
         for (var i = 0; i < request.Number; i++)
@@ -53,9 +54,23 @@ public class LoginQrCodesController(AppDbContext db, AuditService audit) : Contr
     [AuditRead("login_qr_code_list")]
     public async Task<IActionResult> List([FromQuery] int? eventSceneId, [FromQuery] bool unusedOnly = false)
     {
+        if (eventSceneId is int requestedEventSceneId)
+        {
+            if (!await SceneAccess.IsTopLevelEventAsync(db, requestedEventSceneId))
+            {
+                return BadRequest(new ErrorResponse("eventSceneId must reference an existing top-level event."));
+            }
+
+            if (!await SceneAccess.CanAdministerAsync(User, db, requestedEventSceneId)) return Forbid();
+        }
+
         var query = db.QrCodeLogins.AsQueryable();
+        if (User.TokenType() == TokenTypes.Leitstelle && User.EventSceneId() is int scopedEventSceneId)
+        {
+            query = query.Where(c => c.EventSceneId == scopedEventSceneId);
+        }
         if (eventSceneId is not null) query = query.Where(c => c.EventSceneId == eventSceneId);
-        if (unusedOnly) query = query.Where(c => c.FirstLogin == null);
+        if (unusedOnly) query = query.Where(c => c.FirstLogin == null && c.RevokedAt == null);
 
         var codes = await query.OrderByDescending(c => c.CreatedAt).ToListAsync();
         return Ok(codes.Select(LoginQrCodeResponse.From));
@@ -66,6 +81,7 @@ public class LoginQrCodesController(AppDbContext db, AuditService audit) : Contr
     {
         var code = await db.QrCodeLogins.FindAsync(id);
         if (code is null) return NotFound();
+        if (!await SceneAccess.CanAdministerAsync(User, db, code.EventSceneId)) return Forbid();
 
         code.RevokedAt = DateTime.UtcNow;
         audit.LogRevoke(User, null, "unknown", "qr_code_login", id);

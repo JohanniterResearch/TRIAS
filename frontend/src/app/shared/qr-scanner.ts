@@ -1,19 +1,24 @@
 import { Component, ElementRef, input, OnDestroy, output, signal, viewChild } from '@angular/core';
 
-declare const BarcodeDetector: undefined | {
-  new(options?: { formats?: string[] }): { detect(source: CanvasImageSource): Promise<Array<{ rawValue: string }>> };
-};
+declare const BarcodeDetector:
+  | undefined
+  | {
+      new (options?: { formats?: string[] }): {
+        detect(source: CanvasImageSource): Promise<Array<{ rawValue: string }>>;
+      };
+    };
 
 @Component({
   selector: 'app-qr-scanner',
   template: `
     <div class="camera-panel">
       <video #video autoplay muted playsinline></video>
-      <button type="button" (click)="start()" [disabled]="scanning()">
-        {{ scanning() ? 'Kamera aktiv' : buttonLabel() }}
-      </button>
+      <button type="button" (click)="start()" [disabled]="scanning()">{{ buttonLabel() }}</button>
+      @if (scanning()) {
+        <p class="status-message" role="status" aria-live="polite">Kamera aktiv</p>
+      }
       @if (error()) {
-        <p class="form-error">{{ error() }}</p>
+        <p class="form-error" role="alert" aria-live="assertive">{{ error() }}</p>
       }
     </div>
   `,
@@ -39,7 +44,9 @@ export class QrScanner implements OnDestroy {
     }
 
     try {
-      this.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      this.stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment' },
+      });
       const video = this.video()?.nativeElement;
       if (!video) {
         this.stop();

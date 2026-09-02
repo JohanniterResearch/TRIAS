@@ -714,11 +714,21 @@ button:disabled {
   padding: 0.45rem 0.8rem;
 }
 
-.triage-counts .rot { background: #b3261e; }
-.triage-counts .gelb { background: #b77900; }
-.triage-counts .gruen { background: #188038; }
-.triage-counts .schwarz { background: #1f2933; }
-.triage-counts .unassigned { background: #52606d; }
+.triage-counts .rot {
+  background: #b3261e;
+}
+.triage-counts .gelb {
+  background: #b77900;
+}
+.triage-counts .gruen {
+  background: #188038;
+}
+.triage-counts .schwarz {
+  background: #1f2933;
+}
+.triage-counts .unassigned {
+  background: #52606d;
+}
 
 .situation-layout {
   display: grid;

@@ -1,5 +1,13 @@
 import { DecimalPipe } from '@angular/common';
-import { AfterViewInit, Component, ElementRef, inject, OnDestroy, signal, viewChild } from '@angular/core';
+import {
+  AfterViewInit,
+  Component,
+  ElementRef,
+  inject,
+  OnDestroy,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import * as L from 'leaflet';
@@ -22,19 +30,23 @@ type TriageColor = components['schemas']['TriageColor'];
       <h1>Triage erfassen</h1>
 
       @if (!state.patient()) {
-        <p class="form-error">Kein Patient ausgewählt.</p>
+        <p class="form-error" role="alert" aria-live="assertive">Kein Patient ausgewählt.</p>
         <a routerLink="/scan-patient">Patient aufnehmen</a>
       } @else {
         @if (message()) {
-          <p class="status-message">{{ message() }}</p>
+          <p class="status-message" role="status" aria-live="polite">{{ message() }}</p>
         }
         @if (error()) {
-          <p class="form-error">{{ error() }}</p>
+          <p class="form-error" role="alert" aria-live="assertive">{{ error() }}</p>
         }
 
         <div class="triage-colors">
           @for (color of colors; track color.value) {
-            <button type="button" [class]="color.value" (click)="save({ triageColor: color.value })">
+            <button
+              type="button"
+              [class]="color.value"
+              (click)="save({ triageColor: color.value })"
+            >
               {{ color.label }}
             </button>
           }
@@ -43,7 +55,7 @@ type TriageColor = components['schemas']['TriageColor'];
         <form [formGroup]="flagsForm" class="flag-grid">
           @for (flag of flags; track flag.name) {
             <label>
-              <input type="checkbox" [formControlName]="flag.name" (change)="saveFlags()">
+              <input type="checkbox" [formControlName]="flag.name" (change)="saveFlags()" />
               {{ flag.label }}
             </label>
           }
@@ -61,29 +73,39 @@ type TriageColor = components['schemas']['TriageColor'];
           }
           <label>
             Latitude
-            <input formControlName="lat" type="number" step="any">
+            <input formControlName="lat" type="number" step="any" />
           </label>
           <label>
             Longitude
-            <input formControlName="lng" type="number" step="any">
+            <input formControlName="lng" type="number" step="any" />
           </label>
           <label>
             Innenbereich
-            <input formControlName="indoorLocation" placeholder="Zelt, Sektor, Raum">
+            <input formControlName="indoorLocation" placeholder="Zelt, Sektor, Raum" />
           </label>
           <p>Indoor-GPS kann ungenau sein; Sektor/Zelt/Raum ergänzen.</p>
-          <div #locationMap class="location-correction-map" aria-label="Position auf Karte korrigieren"></div>
+          <div
+            #locationMap
+            class="location-correction-map"
+            aria-label="Position auf Karte korrigieren"
+          ></div>
           <button type="submit">Position speichern</button>
         </form>
 
         <div class="row-actions">
           <a routerLink="/body/front">Körper vorne markieren</a>
           <a routerLink="/body/back">Körper hinten markieren</a>
-          <a [routerLink]="['/ambulanzprotokoll', state.patient()?.id]" [state]="{ returnTo: '/triage' }">Ambulanzprotokoll</a>
+          <a
+            [routerLink]="['/ambulanzprotokoll', state.patient()?.id]"
+            [state]="{ returnTo: '/triage' }"
+            >Ambulanzprotokoll</a
+          >
         </div>
         @if (pendingProtocol()) {
           <div class="row-actions">
-            <button type="button" (click)="continueToProtocol()">Weiter zum Ambulanzprotokoll</button>
+            <button type="button" (click)="continueToProtocol()">
+              Weiter zum Ambulanzprotokoll
+            </button>
             <button type="button" (click)="pendingProtocol.set(false)">Überspringen</button>
           </div>
         }
@@ -151,10 +173,16 @@ export class TriagePage implements AfterViewInit, OnDestroy {
     const lat = patient?.latitudePatient ?? 48.2082;
     const lng = patient?.longitudePatient ?? 16.3738;
     this.map = L.map(element).setView([lat, lng], patient?.latitudePatient == null ? 13 : 17);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors' }).addTo(this.map);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors',
+    }).addTo(this.map);
     if (patient?.latitudePatient != null && patient.longitudePatient != null) {
       this.setMarker(patient.latitudePatient, patient.longitudePatient);
-      this.locationForm.patchValue({ lat: patient.latitudePatient, lng: patient.longitudePatient, indoorLocation: patient.indoorLocation ?? '' });
+      this.locationForm.patchValue({
+        lat: patient.latitudePatient,
+        lng: patient.longitudePatient,
+        indoorLocation: patient.indoorLocation ?? '',
+      });
     }
     this.map.on('click', ({ latlng }: L.LeafletMouseEvent) => {
       this.locationForm.patchValue({ lat: latlng.lat, lng: latlng.lng });
@@ -185,8 +213,13 @@ export class TriagePage implements AfterViewInit, OnDestroy {
         this.message.set('Gespeichert.');
       },
       error: () => {
-        this.offlineQueue.queueTriage(patient.id, queuedBody);
-        this.message.set('Lokal gespeichert, Sync ausstehend.');
+        this.offlineQueue
+          .queueTriage(patient.id, queuedBody)
+          .then(() => this.message.set('Lokal gespeichert, Sync ausstehend.'))
+          .catch(() => {
+            this.message.set('');
+            this.error.set('Lokale Sync-Warteschlange konnte nicht gespeichert werden.');
+          });
       },
     });
   }
@@ -199,18 +232,20 @@ export class TriagePage implements AfterViewInit, OnDestroy {
       return;
     }
 
-    this.api.updatePatientLocation(patient.id, {
-      lat: Number(raw.lat),
-      lng: Number(raw.lng),
-      source: 'manual',
-      indoorLocation: raw.indoorLocation || undefined,
-    }).subscribe({
-      next: (updated) => {
-        this.state.setPatient(updated);
-        this.message.set('Position gespeichert.');
-      },
-      error: () => this.error.set('Position konnte nicht gespeichert werden.'),
-    });
+    this.api
+      .updatePatientLocation(patient.id, {
+        lat: Number(raw.lat),
+        lng: Number(raw.lng),
+        source: 'manual',
+        indoorLocation: raw.indoorLocation || undefined,
+      })
+      .subscribe({
+        next: (updated) => {
+          this.state.setPatient(updated);
+          this.message.set('Position gespeichert.');
+        },
+        error: () => this.error.set('Position konnte nicht gespeichert werden.'),
+      });
   }
 
   protected continueToProtocol(): void {
@@ -222,6 +257,11 @@ export class TriagePage implements AfterViewInit, OnDestroy {
 
   private setMarker(lat: number, lng: number): void {
     this.marker?.remove();
-    this.marker = L.circleMarker([lat, lng], { radius: 9, color: '#102033', fillColor: '#d32f2f', fillOpacity: 0.9 }).addTo(this.map!);
+    this.marker = L.circleMarker([lat, lng], {
+      radius: 9,
+      color: '#102033',
+      fillColor: '#d32f2f',
+      fillOpacity: 0.9,
+    }).addTo(this.map!);
   }
 }

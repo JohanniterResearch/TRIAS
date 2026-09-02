@@ -22,10 +22,13 @@ type LoginQrCode = components['schemas']['LoginQrCode'];
       </header>
 
       @if (message()) {
-        <p class="status-message">{{ message() }}</p>
+        <p class="status-message" role="status" aria-live="polite">{{ message() }}</p>
       }
       @if (error()) {
-        <p class="form-error">{{ error() }}</p>
+        <p class="form-error" role="alert" aria-live="assertive">{{ error() }}</p>
+      }
+      @if (busy()) {
+        <p class="status-message" role="status" aria-live="polite">Aktion läuft.</p>
       }
 
       <div class="admin-grid">
@@ -34,26 +37,26 @@ type LoginQrCode = components['schemas']['LoginQrCode'];
           <form [formGroup]="sceneForm" (ngSubmit)="saveScene()" class="auth-form">
             <label>
               Name
-              <input formControlName="name">
+              <input formControlName="name" />
             </label>
             <label>
               Beschreibung
-              <input formControlName="description">
+              <input formControlName="description" />
             </label>
             <label>
               Parent Szene ID
-              <input formControlName="parentSceneId" type="number">
+              <input formControlName="parentSceneId" type="number" />
             </label>
             <label>
               Zugriff von
-              <input formControlName="accessWindowStart" type="datetime-local">
+              <input formControlName="accessWindowStart" type="datetime-local" />
             </label>
             <label>
               Zugriff bis
-              <input formControlName="accessWindowEnd" type="datetime-local">
+              <input formControlName="accessWindowEnd" type="datetime-local" />
             </label>
             <label class="check-row">
-              <input formControlName="active" type="checkbox">
+              <input formControlName="active" type="checkbox" />
               Aktiv
             </label>
             <button type="submit" [disabled]="busy() || sceneForm.invalid">Szene speichern</button>
@@ -82,15 +85,15 @@ type LoginQrCode = components['schemas']['LoginQrCode'];
           <form [formGroup]="loginQrForm" (ngSubmit)="generateLoginQr()" class="auth-form">
             <label>
               Event Szene ID
-              <input formControlName="eventSceneId" type="number">
+              <input formControlName="eventSceneId" type="number" />
             </label>
             <label>
               Anzahl
-              <input formControlName="number" type="number">
+              <input formControlName="number" type="number" />
             </label>
             <label>
               Gültig ab Login (Stunden)
-              <input formControlName="expiresInHours" type="number">
+              <input formControlName="expiresInHours" type="number" />
             </label>
             <button type="submit" [disabled]="busy() || loginQrForm.invalid">Generieren</button>
           </form>
@@ -104,7 +107,12 @@ type LoginQrCode = components['schemas']['LoginQrCode'];
                 <strong>Responder QR</strong>
                 <app-qr-code-image [token]="code.qrToken" label="Responder Login QR Code" />
                 <span>{{ code.qrToken }}</span>
-                <small>Event {{ code.eventSceneId }} · {{ code.expiresAt ? (code.expiresAt | date: 'short') : 'noch nicht aktiviert' }}</small>
+                <small
+                  >Event {{ code.eventSceneId }} ·
+                  {{
+                    code.expiresAt ? (code.expiresAt | date: 'short') : 'noch nicht aktiviert'
+                  }}</small
+                >
                 @if (!code.revokedAt) {
                   <button type="button" (click)="revokeLoginQr(code.id)">Widerrufen</button>
                 }
@@ -118,12 +126,14 @@ type LoginQrCode = components['schemas']['LoginQrCode'];
           <form [formGroup]="patientQrForm" (ngSubmit)="generatePatientQr()" class="auth-form">
             <label>
               Anzahl
-              <input formControlName="number" type="number">
+              <input formControlName="number" type="number" />
             </label>
             <button type="submit" [disabled]="busy() || patientQrForm.invalid">Generieren</button>
           </form>
           <div class="row-actions">
-            <button type="button" (click)="loadPatientQr()" [disabled]="busy()">Ungenutzte laden</button>
+            <button type="button" (click)="loadPatientQr()" [disabled]="busy()">
+              Ungenutzte laden
+            </button>
             <button type="button" (click)="print()">Drucken</button>
           </div>
           <div class="print-sheet">
@@ -142,11 +152,11 @@ type LoginQrCode = components['schemas']['LoginQrCode'];
           <form [formGroup]="userForm" (ngSubmit)="createUser()" class="auth-form">
             <label>
               Benutzername
-              <input formControlName="username">
+              <input formControlName="username" />
             </label>
             <label>
               Startpasswort
-              <input formControlName="password" type="password">
+              <input formControlName="password" type="password" />
             </label>
             <label>
               Rolle
@@ -165,7 +175,7 @@ type LoginQrCode = components['schemas']['LoginQrCode'];
             </label>
             <label>
               Event Szene ID
-              <input formControlName="eventSceneId" type="number">
+              <input formControlName="eventSceneId" type="number" />
             </label>
             <button type="submit" [disabled]="busy() || userForm.invalid">Benutzer anlegen</button>
           </form>
@@ -237,29 +247,44 @@ export class AdminDashboard {
   });
 
   protected loadScenes(): void {
-    this.run(() => this.api.listScenes().subscribe({
-      next: (scenes) => this.done(() => this.scenes.set(scenes)),
-      error: () => this.fail('Szenen konnten nicht geladen werden.'),
-    }));
+    this.run(() =>
+      this.api.listScenes().subscribe({
+        next: (scenes) => this.done(() => this.scenes.set(scenes)),
+        error: () => this.fail('Szenen konnten nicht geladen werden.'),
+      }),
+    );
   }
 
   protected saveScene(): void {
     const raw = this.sceneForm.getRawValue();
-    this.run(() => this.api.saveScene({
-      id: raw.id ?? undefined,
-      name: raw.name,
-      description: raw.description || undefined,
-      parentSceneId: raw.parentSceneId ?? undefined,
-      accessWindowStart: toIso(raw.accessWindowStart),
-      accessWindowEnd: toIso(raw.accessWindowEnd),
-      active: raw.active,
-    }).subscribe({
-      next: (scene) => this.done(() => {
-        this.upsertScene(scene);
-        this.sceneForm.reset({ id: null, name: '', description: '', parentSceneId: null, accessWindowStart: '', accessWindowEnd: '', active: true });
-      }, 'Szene gespeichert.'),
-      error: () => this.fail('Szene konnte nicht gespeichert werden.'),
-    }));
+    this.run(() =>
+      this.api
+        .saveScene({
+          id: raw.id ?? undefined,
+          name: raw.name,
+          description: raw.description || undefined,
+          parentSceneId: raw.parentSceneId ?? undefined,
+          accessWindowStart: toIso(raw.accessWindowStart),
+          accessWindowEnd: toIso(raw.accessWindowEnd),
+          active: raw.active,
+        })
+        .subscribe({
+          next: (scene) =>
+            this.done(() => {
+              this.upsertScene(scene);
+              this.sceneForm.reset({
+                id: null,
+                name: '',
+                description: '',
+                parentSceneId: null,
+                accessWindowStart: '',
+                accessWindowEnd: '',
+                active: true,
+              });
+            }, 'Szene gespeichert.'),
+          error: () => this.fail('Szene konnte nicht gespeichert werden.'),
+        }),
+    );
   }
 
   protected editScene(scene: OperationScene): void {
@@ -275,82 +300,114 @@ export class AdminDashboard {
   }
 
   protected deleteScene(id: number): void {
-    this.run(() => this.api.deleteScene(id).subscribe({
-      next: () => this.done(() => this.scenes.update((scenes) => scenes.filter((scene) => scene.id !== id)), 'Szene gelöscht.'),
-      error: () => this.fail('Szene konnte nicht gelöscht werden. Falls Patienten verknüpft sind, bitte deaktivieren.'),
-    }));
+    this.run(() =>
+      this.api.deleteScene(id).subscribe({
+        next: () =>
+          this.done(
+            () => this.scenes.update((scenes) => scenes.filter((scene) => scene.id !== id)),
+            'Szene gelöscht.',
+          ),
+        error: () =>
+          this.fail(
+            'Szene konnte nicht gelöscht werden. Falls Patienten verknüpft sind, bitte deaktivieren.',
+          ),
+      }),
+    );
   }
 
   protected generateLoginQr(): void {
     const raw = this.loginQrForm.getRawValue();
-    this.run(() => this.api.generateLoginQrCodes({
-      eventSceneId: Number(raw.eventSceneId),
-      number: raw.number,
-      expiresInHours: raw.expiresInHours,
-    }).subscribe({
-      next: (codes) => this.done(() => this.loginQrCodes.set(codes), 'Responder QR Codes generiert.'),
-      error: () => this.fail('Responder QR Codes konnten nicht generiert werden.'),
-    }));
+    this.run(() =>
+      this.api
+        .generateLoginQrCodes({
+          eventSceneId: Number(raw.eventSceneId),
+          number: raw.number,
+          expiresInHours: raw.expiresInHours,
+        })
+        .subscribe({
+          next: (codes) =>
+            this.done(() => this.loginQrCodes.set(codes), 'Responder QR Codes generiert.'),
+          error: () => this.fail('Responder QR Codes konnten nicht generiert werden.'),
+        }),
+    );
   }
 
   protected loadLoginQr(): void {
     const eventSceneId = this.loginQrForm.controls.eventSceneId.value;
-    this.run(() => this.api.listLoginQrCodes(eventSceneId ?? undefined).subscribe({
-      next: (codes) => this.done(() => this.loginQrCodes.set(codes)),
-      error: () => this.fail('Responder QR Codes konnten nicht geladen werden.'),
-    }));
+    this.run(() =>
+      this.api.listLoginQrCodes(eventSceneId ?? undefined).subscribe({
+        next: (codes) => this.done(() => this.loginQrCodes.set(codes)),
+        error: () => this.fail('Responder QR Codes konnten nicht geladen werden.'),
+      }),
+    );
   }
 
   protected revokeLoginQr(id: number): void {
-    this.run(() => this.api.revokeLoginQrCode(id).subscribe({
-      next: () => this.done(() => this.loadLoginQr(), 'Responder QR Code widerrufen.'),
-      error: () => this.fail('Responder QR Code konnte nicht widerrufen werden.'),
-    }));
+    this.run(() =>
+      this.api.revokeLoginQrCode(id).subscribe({
+        next: () => this.done(() => this.loadLoginQr(), 'Responder QR Code widerrufen.'),
+        error: () => this.fail('Responder QR Code konnte nicht widerrufen werden.'),
+      }),
+    );
   }
 
   protected generatePatientQr(): void {
-    this.run(() => this.api.generatePatientQrCodes(this.patientQrForm.getRawValue()).subscribe({
-      next: (tokens) => this.done(() => this.patientQrCodes.set(tokens), 'Patient QR Codes generiert.'),
-      error: () => this.fail('Patient QR Codes konnten nicht generiert werden.'),
-    }));
+    this.run(() =>
+      this.api.generatePatientQrCodes(this.patientQrForm.getRawValue()).subscribe({
+        next: (tokens) =>
+          this.done(() => this.patientQrCodes.set(tokens), 'Patient QR Codes generiert.'),
+        error: () => this.fail('Patient QR Codes konnten nicht generiert werden.'),
+      }),
+    );
   }
 
   protected loadPatientQr(): void {
-    this.run(() => this.api.listUnusedPatientQrCodes().subscribe({
-      next: (tokens) => this.done(() => this.patientQrCodes.set(tokens)),
-      error: () => this.fail('Patient QR Codes konnten nicht geladen werden.'),
-    }));
+    this.run(() =>
+      this.api.listUnusedPatientQrCodes().subscribe({
+        next: (tokens) => this.done(() => this.patientQrCodes.set(tokens)),
+        error: () => this.fail('Patient QR Codes konnten nicht geladen werden.'),
+      }),
+    );
   }
 
   protected createUser(): void {
     const raw = this.userForm.getRawValue();
-    this.run(() => this.api.createUser({
-      username: raw.username,
-      password: raw.password,
-      role: raw.role,
-      accountType: raw.accountType,
-      eventSceneId: raw.eventSceneId ?? undefined,
-    }).subscribe({
-      next: (user) => this.done(() => {
-        this.createdUser.set(user);
-        this.upsertUser(user);
-      }, 'Benutzer angelegt.'),
-      error: () => this.fail('Benutzer konnte nicht angelegt werden.'),
-    }));
+    this.run(() =>
+      this.api
+        .createUser({
+          username: raw.username,
+          password: raw.password,
+          role: raw.role,
+          accountType: raw.accountType,
+          eventSceneId: raw.eventSceneId ?? undefined,
+        })
+        .subscribe({
+          next: (user) =>
+            this.done(() => {
+              this.createdUser.set(user);
+              this.upsertUser(user);
+            }, 'Benutzer angelegt.'),
+          error: () => this.fail('Benutzer konnte nicht angelegt werden.'),
+        }),
+    );
   }
 
   protected revokeUser(id: number): void {
-    this.run(() => this.api.revokeUser(id).subscribe({
-      next: () => this.done(() => this.loadUsers(), 'Zugang widerrufen.'),
-      error: () => this.fail('Zugang konnte nicht widerrufen werden.'),
-    }));
+    this.run(() =>
+      this.api.revokeUser(id).subscribe({
+        next: () => this.done(() => this.loadUsers(), 'Zugang widerrufen.'),
+        error: () => this.fail('Zugang konnte nicht widerrufen werden.'),
+      }),
+    );
   }
 
   protected loadUsers(): void {
-    this.run(() => this.api.listUsers().subscribe({
-      next: (users) => this.done(() => this.users.set(users)),
-      error: () => this.fail('Benutzer konnten nicht geladen werden.'),
-    }));
+    this.run(() =>
+      this.api.listUsers().subscribe({
+        next: (users) => this.done(() => this.users.set(users)),
+        error: () => this.fail('Benutzer konnten nicht geladen werden.'),
+      }),
+    );
   }
 
   protected print(): void {
@@ -365,7 +422,9 @@ export class AdminDashboard {
   }
 
   private upsertUser(user: components['schemas']['User']): void {
-    this.users.update((users) => [...users.filter((item) => item.id !== user.id), user].sort((a, b) => a.id - b.id));
+    this.users.update((users) =>
+      [...users.filter((item) => item.id !== user.id), user].sort((a, b) => a.id - b.id),
+    );
   }
 
   private run(action: () => void): void {

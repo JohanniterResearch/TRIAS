@@ -3,6 +3,7 @@ import { Router } from '@angular/router';
 
 import { ApiClient } from '../../api/api-client';
 import { AuthStore } from '../auth.store';
+import { homeRouteForToken } from '../auth.rules';
 
 @Component({
   selector: 'app-dev-access',
@@ -11,7 +12,10 @@ import { AuthStore } from '../auth.store';
       DEV {{ role() === 'admin' ? 'Admin' : 'Responder' }}
     </button>
     @if (error) {
-      <p class="form-error">{{ error }}</p>
+      <p class="form-error" role="alert" aria-live="assertive">{{ error }}</p>
+    }
+    @if (busy) {
+      <p class="status-message" role="status" aria-live="polite">DEV Anmeldung läuft.</p>
     }
   `,
 })
@@ -36,7 +40,7 @@ export class DevAccess {
             username: result.username,
             requiresPasswordChange: result.requiresPasswordChange,
           });
-          this.router.navigateByUrl('/admin');
+          this.router.navigateByUrl(homeRouteForToken('admin', result.requiresPasswordChange));
         } else {
           this.auth.setResponderSession({
             token: result.token,
@@ -44,7 +48,7 @@ export class DevAccess {
             username: result.username,
             requiresPasswordChange: result.requiresPasswordChange,
           });
-          this.router.navigateByUrl('/role-selection');
+          this.router.navigateByUrl(homeRouteForToken('user', result.requiresPasswordChange));
         }
       },
       error: () => {

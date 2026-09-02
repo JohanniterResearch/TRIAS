@@ -5,7 +5,7 @@ import QRCode from 'qrcode';
   selector: 'app-qr-code-image',
   template: `
     @if (source()) {
-      <img class="qr-code-image" [src]="source()" [alt]="label()">
+      <img class="qr-code-image" [src]="source()" [alt]="label()" />
     }
   `,
 })
@@ -16,8 +16,9 @@ export class QrCodeImage {
 
   constructor() {
     effect(() => {
-      QRCode.toDataURL(this.token(), { errorCorrectionLevel: 'M', margin: 4, width: 320 })
-        .then((source) => this.source.set(source));
+      QRCode.toDataURL(this.token(), { errorCorrectionLevel: 'M', margin: 4, width: 320 }).then(
+        (source) => this.source.set(source),
+      );
     });
   }
 }

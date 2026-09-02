@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -12,12 +13,15 @@ public class AmbulanzprotokollTests(WebApplicationFactory<Program> factory) : IC
     private record TokenBearing(string? token);
     private record SceneBearing(int id);
     private record PatientBearing(int id);
+    private static readonly ConcurrentDictionary<WebApplicationFactory<Program>, Task<string>> AdminTokens = new();
+
+    private Task<string> AdminTokenAsync() => AdminTokens.GetOrAdd(factory, f =>
+        TestAuth.LoginAsync(f.CreateClient(), "/api/admin-login", "admin", "dev-admin-password"));
 
     private async Task<HttpClient> AdminClientAsync()
     {
         var client = factory.CreateClient();
-        var token = await TestAuth.LoginAsync(client, "/api/admin-login", "admin", "dev-admin-password");
-        client.DefaultRequestHeaders.Authorization = new("Bearer", token);
+        client.DefaultRequestHeaders.Authorization = new("Bearer", await AdminTokenAsync());
         return client;
     }
 
@@ -220,5 +224,125 @@ public class AmbulanzprotokollTests(WebApplicationFactory<Program> factory) : IC
         var adminCorrection = await admin.PutAsJsonAsync($"/api/persons/{patientId}/ambulanzprotokoll-page1",
             new { status = "finalized", formState = new { patient = new { familienname = "Corrected" } } });
         Assert.Equal(HttpStatusCode.OK, adminCorrection.StatusCode);
+    }
+
+    [Fact]
+    public async Task ConcurrentUpdates_ToExistingRecord_PreserveDisjointLeavesAndRejectOlderReplay()
+    {
+        var admin = await AdminClientAsync();
+        var token = admin.DefaultRequestHeaders.Authorization!.Parameter;
+
+        for (var attempt = 0; attempt < 8; attempt++)
+        {
+            var patientId = await CreatePatientAsync(admin);
+            (await admin.PutAsJsonAsync($"/api/persons/{patientId}/ambulanzprotokoll-page1",
+                new { status = "draft", formState = new { } })).EnsureSuccessStatusCode();
+
+            var timestamp = DateTime.UtcNow.AddMinutes(-1);
+            var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var first = PutAsync(token, patientId, new
+            {
+                status = "draft",
+                formState = new { vitals = new { puls = $"{80 + attempt}" } },
+                clientUpdatedAt = timestamp,
+            }, start.Task);
+            var second = PutAsync(token, patientId, new
+            {
+                status = "draft",
+                formState = new { patient = new { vorname = $"Parallel-{attempt}" } },
+                clientUpdatedAt = timestamp,
+            }, start.Task);
+
+            start.SetResult();
+            var responses = await Task.WhenAll(first, second);
+            Assert.All(responses, response => response.EnsureSuccessStatusCode());
+
+            var older = await admin.PutAsJsonAsync($"/api/persons/{patientId}/ambulanzprotokoll-page1", new
+            {
+                status = "draft",
+                formState = new { vitals = new { puls = "1" } },
+                clientUpdatedAt = timestamp.AddMinutes(-1),
+            });
+            older.EnsureSuccessStatusCode();
+
+            var record = await (await admin.GetAsync($"/api/persons/{patientId}/ambulanzprotokoll-page1"))
+                .Content.ReadFromJsonAsync<JsonElement>();
+            var formState = record.GetProperty("formState");
+            Assert.Equal($"{80 + attempt}", formState.GetProperty("vitals").GetProperty("puls").GetString());
+            Assert.Equal($"Parallel-{attempt}", formState.GetProperty("patient").GetProperty("vorname").GetString());
+        }
+    }
+
+    [Fact]
+    public async Task ConcurrentFirstCreates_PreserveBothLeavesWithoutServerError()
+    {
+        var admin = await AdminClientAsync();
+        var token = admin.DefaultRequestHeaders.Authorization!.Parameter;
+
+        for (var attempt = 0; attempt < 8; attempt++)
+        {
+            var patientId = await CreatePatientAsync(admin);
+            var timestamp = DateTime.UtcNow.AddMinutes(-1);
+            var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var requests = new[]
+            {
+                PutAsync(token, patientId, new
+                {
+                    status = "draft",
+                    formState = new { vitals = new { puls = $"{90 + attempt}" } },
+                    clientUpdatedAt = timestamp,
+                }, start.Task),
+                PutAsync(token, patientId, new
+                {
+                    status = "draft",
+                    formState = new { patient = new { vorname = $"First-{attempt}" } },
+                    clientUpdatedAt = timestamp,
+                }, start.Task),
+            };
+
+            start.SetResult();
+            var responses = await Task.WhenAll(requests);
+            Assert.All(responses, response => response.EnsureSuccessStatusCode());
+            var record = await (await admin.GetAsync($"/api/persons/{patientId}/ambulanzprotokoll-page1"))
+                .Content.ReadFromJsonAsync<JsonElement>();
+            var formState = record.GetProperty("formState");
+            Assert.Equal($"{90 + attempt}", formState.GetProperty("vitals").GetProperty("puls").GetString());
+            Assert.Equal($"First-{attempt}", formState.GetProperty("patient").GetProperty("vorname").GetString());
+        }
+    }
+
+    [Fact]
+    public async Task ConcurrentFinalizationAndUnrelatedDraftSave_CannotLeaveRecordDraft()
+    {
+        var admin = await AdminClientAsync();
+        var patientId = await CreatePatientAsync(admin);
+        var (responder, _) = await ResponderClientAsync(admin);
+        var adminToken = admin.DefaultRequestHeaders.Authorization!.Parameter;
+        var responderToken = responder.DefaultRequestHeaders.Authorization!.Parameter;
+
+        (await admin.PutAsJsonAsync($"/api/persons/{patientId}/ambulanzprotokoll-page1",
+            new { status = "draft", formState = new { } })).EnsureSuccessStatusCode();
+
+        var responses = await Task.WhenAll(
+            PutAsync(adminToken, patientId, new { status = "finalized", formState = new { } }),
+            PutAsync(responderToken, patientId, new
+            {
+                status = "draft",
+                formState = new { history = new { allergien = "concurrent" } },
+            }));
+
+        Assert.Equal(HttpStatusCode.OK, responses[0].StatusCode);
+        Assert.Contains(responses[1].StatusCode, new[] { HttpStatusCode.OK, HttpStatusCode.Forbidden });
+        var record = await (await admin.GetAsync($"/api/persons/{patientId}/ambulanzprotokoll-page1"))
+            .Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("finalized", record.GetProperty("status").GetString());
+    }
+
+    private async Task<HttpResponseMessage> PutAsync(string? token, int patientId, object request, Task? start = null)
+    {
+        if (start is not null) await start;
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new("Bearer", token);
+        return await client.PutAsJsonAsync($"/api/persons/{patientId}/ambulanzprotokoll-page1", request);
     }
 }

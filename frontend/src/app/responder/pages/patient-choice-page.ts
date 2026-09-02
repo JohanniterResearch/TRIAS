@@ -17,15 +17,22 @@ import { ResponderStateStore } from '../services/responder-state';
       <h1>{{ label() }}</h1>
 
       @if (message()) {
-        <p class="status-message">{{ message() }}</p>
+        <p class="status-message" role="status" aria-live="polite">{{ message() }}</p>
       }
       @if (error()) {
-        <p class="form-error">{{ error() }}</p>
+        <p class="form-error" role="alert" aria-live="assertive">{{ error() }}</p>
+      }
+      @if (busy()) {
+        <p class="status-message" role="status" aria-live="polite">QR Code wird ersetzt.</p>
       }
 
       <div class="choice-grid">
         <a routerLink="/triage">Triage</a>
-        <a [routerLink]="['/ambulanzprotokoll', patientId()]" [state]="{ returnTo: '/patient/' + patientId() }">Ambulanzprotokoll</a>
+        <a
+          [routerLink]="['/ambulanzprotokoll', patientId()]"
+          [state]="{ returnTo: '/patient/' + patientId() }"
+          >Ambulanzprotokoll</a
+        >
         <a routerLink="/triage" [state]="{ pendingProtocol: true }">Beides starten</a>
         <button type="button" disabled>Dritte Option folgt</button>
       </div>
@@ -34,7 +41,7 @@ import { ResponderStateStore } from '../services/responder-state';
         <h2>QR neu zuweisen</h2>
         <label>
           Neuer QR Code
-          <input formControlName="qrCode">
+          <input formControlName="qrCode" />
         </label>
         <button type="submit" [disabled]="reassignForm.invalid || busy()">QR ersetzen</button>
       </form>

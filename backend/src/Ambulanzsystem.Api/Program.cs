@@ -26,7 +26,15 @@ builder.Services
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
-    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto);
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.ForwardLimit = 1;
+    // Both Compose definitions bind the API to loopback, so production traffic can only arrive
+    // through a host-local reverse proxy. Trust exactly one forwarding hop; otherwise Docker's
+    // bridge source address collapses every client into one rate-limit partition.
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("Default"))
@@ -39,6 +47,7 @@ builder.Services.AddScoped<AuditService>();
 builder.Services.AddSingleton<MetricsService>();
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<RealtimePublisher>();
+builder.Services.AddSingleton<RealtimePatientMapper>();
 builder.Services.AddScoped<SceneNotifier>();
 builder.Services.AddHostedService<RealtimeDispatcher>();
 

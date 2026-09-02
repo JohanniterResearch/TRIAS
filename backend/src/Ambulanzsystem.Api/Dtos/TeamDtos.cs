@@ -1,8 +1,11 @@
+using System.ComponentModel.DataAnnotations;
 using Ambulanzsystem.Api.Domain;
 
 namespace Ambulanzsystem.Api.Dtos;
 
-public record CreateTeamRequest(int OperationSceneId, string Name);
+public record CreateTeamRequest(
+    int OperationSceneId,
+    [MaxLength(ExternalStringLimits.Name)] string Name);
 
 public record TeamResponse(
     int Id,

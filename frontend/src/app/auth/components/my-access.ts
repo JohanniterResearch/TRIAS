@@ -15,11 +15,17 @@ import { AuthStore } from '../auth.store';
           <strong>{{ label(session.tokenType) }}</strong>
           <span>{{ session.username || 'QR Sitzung' }}</span>
         </div>
-        <button type="button" (click)="selfCancel()" [disabled]="busy || !sync.queueReady() || sync.pendingCount() > 0">
+        <button
+          type="button"
+          (click)="selfCancel()"
+          [disabled]="busy || !sync.queueReady() || sync.pendingCount() > 0"
+        >
           {{ busy ? 'Beende...' : 'Zugang beenden' }}
         </button>
         @if (sync.pendingCount() > 0) {
-          <p class="form-error">Zugang kann erst nach dem Abschluss der Synchronisierung beendet werden.</p>
+          <p class="form-error" role="alert" aria-live="assertive">
+            Zugang kann erst nach dem Abschluss der Synchronisierung beendet werden.
+          </p>
         }
       </aside>
     }

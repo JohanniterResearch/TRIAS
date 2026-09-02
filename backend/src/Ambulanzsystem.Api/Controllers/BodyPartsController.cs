@@ -1,3 +1,4 @@
+using System.Data;
 using System.Text.Json;
 using Ambulanzsystem.Api.Auth;
 using Ambulanzsystem.Api.Data;
@@ -36,9 +37,11 @@ public class BodyPartsController(AppDbContext db, AuditService audit, SceneNotif
             return BadRequest(new ErrorResponse("Unknown bodyPartId."));
         }
 
-        var body = await db.Bodies.Include(b => b.Patient).FirstOrDefaultAsync(b => b.PatientId == request.Idpatient);
+        await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
+        var body = await RowLocks.BodyAsync(db, request.Idpatient);
         if (body is null) return NotFound();
-        if (!await SceneAccess.CanAccessAsync(User, db, body.Patient.OperationSceneId)) return Forbid();
+        var patient = await db.Patients.SingleAsync(p => p.Id == request.Idpatient);
+        if (!await SceneAccess.CanAccessAsync(User, db, patient.OperationSceneId)) return Forbid();
 
         var parts = JsonSerializer.Deserialize<Dictionary<string, int>>(body.BodyPartsJson)!;
         var before = parts.GetValueOrDefault(request.BodyPartId, 0);
@@ -49,9 +52,10 @@ public class BodyPartsController(AppDbContext db, AuditService audit, SceneNotif
         audit.LogFieldWrite(User, "body", body.Id, request.Idpatient, request.BodyPartId, before, after);
 
         await db.SaveChangesAsync();
+        await tx.CommitAsync();
 
         var protokollStatus = await db.AmbulanzprotokollPage1s.Where(r => r.PatientId == request.Idpatient).Select(r => r.Status).FirstOrDefaultAsync();
-        notifier.PatientUpdated(body.Patient.OperationSceneId, PatientResponse.From(body.Patient), parts, false, protokollStatus);
+        notifier.PatientUpdated(patient.OperationSceneId, PatientResponse.From(patient), parts, false, protokollStatus);
 
         return Ok(new BodyPartsResponse(request.Idpatient, parts, body.UpdatedAt));
     }

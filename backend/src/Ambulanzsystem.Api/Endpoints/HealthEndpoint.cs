@@ -12,21 +12,27 @@ public static class HealthEndpoint
         app.MapGet("/health", async (AppDbContext db, RealtimePublisher realtime) =>
         {
             var dbHealthy = await CanConnectAsync(db);
-            var status = dbHealthy ? "healthy" : "unhealthy";
-
-            // Degraded, not unhealthy: a non-empty queue at any snapshot instant is often just
-            // transient dispatch lag under load, not an outage (contract/schemas/realtime-messages.md).
-            var realtimeStatus = realtime.DispatcherHealthy && realtime.PendingCount == 0 ? "healthy" : "degraded";
+            var health = Evaluate(dbHealthy, realtime.DispatcherHealthy, realtime.PendingCount);
 
             var body = new
             {
-                status,
-                database = dbHealthy ? "healthy" : "unhealthy",
-                realtime = realtimeStatus,
+                status = health.Status,
+                database = health.Database,
+                realtime = health.Realtime,
             };
 
-            return dbHealthy ? Results.Ok(body) : Results.Json(body, statusCode: 503);
+            return Results.Json(body, statusCode: health.StatusCode);
         });
+    }
+
+    public static (int StatusCode, string Status, string Database, string Realtime) Evaluate(
+        bool databaseHealthy,
+        bool dispatcherHealthy,
+        int pendingCount)
+    {
+        var realtime = !dispatcherHealthy ? "unhealthy" : pendingCount > 0 ? "degraded" : "healthy";
+        var status = !databaseHealthy || !dispatcherHealthy ? "unhealthy" : pendingCount > 0 ? "degraded" : "healthy";
+        return (status == "unhealthy" ? 503 : 200, status, databaseHealthy ? "healthy" : "unhealthy", realtime);
     }
 
     private static async Task<bool> CanConnectAsync(AppDbContext db)

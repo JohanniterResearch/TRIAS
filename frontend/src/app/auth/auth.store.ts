@@ -30,22 +30,16 @@ export class AuthStore {
   readonly adminSession = computed(() => this.state().admin);
   readonly responderSession = computed(() => this.state().responder);
   readonly activeSession = computed(() => this.state().responder ?? this.state().admin);
-  readonly bearerToken = computed(() => this.activeSession()?.expired ? null : this.activeSession()?.token ?? null);
-  readonly requiresPasswordChange = computed(() => this.activeSession()?.requiresPasswordChange === true);
+  readonly bearerToken = computed(() =>
+    this.activeSession()?.expired ? null : (this.activeSession()?.token ?? null),
+  );
+  readonly requiresPasswordChange = computed(
+    () => this.activeSession()?.requiresPasswordChange === true,
+  );
 
   tokenExpiresAt(): number | null {
     const token = this.bearerToken();
-    if (!token) {
-      return null;
-    }
-
-    try {
-      const encoded = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-      const payload = JSON.parse(atob(encoded.padEnd(Math.ceil(encoded.length / 4) * 4, '=')));
-      return typeof payload.exp === 'number' ? payload.exp * 1000 : null;
-    } catch {
-      return null;
-    }
+    return token ? this.jwtExpiresAt(token) : null;
   }
 
   setAdminSession(session: Omit<Session, 'savedAt'>): void {
@@ -66,9 +60,11 @@ export class AuthStore {
       return;
     }
     const expired = { ...active, expired: true };
-    this.save(active.tokenType === 'admin' || active.tokenType === 'leitstelle'
-      ? { admin: expired, responder: null }
-      : { admin: null, responder: expired });
+    this.save(
+      active.tokenType === 'admin' || active.tokenType === 'leitstelle'
+        ? { admin: expired, responder: null }
+        : { admin: null, responder: expired },
+    );
   }
 
   refreshTokens(token: string, refreshToken: string): void {
@@ -78,9 +74,11 @@ export class AuthStore {
     }
 
     const refreshed = this.withSavedAt({ ...active, token, refreshToken });
-    this.save(active.tokenType === 'admin' || active.tokenType === 'leitstelle'
-      ? { admin: refreshed, responder: null }
-      : { admin: null, responder: refreshed });
+    this.save(
+      active.tokenType === 'admin' || active.tokenType === 'leitstelle'
+        ? { admin: refreshed, responder: null }
+        : { admin: null, responder: refreshed },
+    );
   }
 
   hasPersistedSession(requirement: GuardRequirement): boolean {
@@ -88,7 +86,7 @@ export class AuthStore {
   }
 
   sessionMatches(session: Session | null, requirement: GuardRequirement): boolean {
-    if (!session || session.expired) {
+    if (!session || session.expired || this.jwtExpired(session.token)) {
       return false;
     }
 
@@ -97,6 +95,21 @@ export class AuthStore {
 
   private withSavedAt(session: Omit<Session, 'savedAt'>): Session {
     return { ...session, savedAt: new Date().toISOString() };
+  }
+
+  private jwtExpiresAt(token: string): number | null {
+    try {
+      const encoded = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+      const payload = JSON.parse(atob(encoded.padEnd(Math.ceil(encoded.length / 4) * 4, '=')));
+      return typeof payload.exp === 'number' ? payload.exp * 1000 : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private jwtExpired(token: string): boolean {
+    const expiresAt = this.jwtExpiresAt(token);
+    return expiresAt !== null && expiresAt <= Date.now();
   }
 
   private save(state: AuthState): void {

@@ -3,9 +3,19 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Ambulanzsystem.Api.Data;
+using Ambulanzsystem.Api.Auth;
+using Ambulanzsystem.Api.Controllers;
+using Ambulanzsystem.Api.Domain;
+using Ambulanzsystem.Api.Dtos;
+using Ambulanzsystem.Api.Services;
+using System.Security.Claims;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace Ambulanzsystem.Tests;
@@ -14,7 +24,24 @@ namespace Ambulanzsystem.Tests;
 // self-cancel, forced-password-change gating, and subject-bound password changes.
 public class SessionSecurityGapTests(WebApplicationFactory<Program> factory) : IClassFixture<WebApplicationFactory<Program>>
 {
+    private sealed class FailOnRefreshRevocationInterceptor : SaveChangesInterceptor
+    {
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData,
+            InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            if (eventData.Context!.ChangeTracker.Entries<RefreshToken>()
+                .Any(entry => entry.State == EntityState.Modified && entry.Entity.IsRevoked))
+            {
+                throw new InvalidOperationException("Injected refresh revocation failure.");
+            }
+
+            return base.SavingChangesAsync(eventData, result, cancellationToken);
+        }
+    }
     private record TokenBearing(string? token);
+    private record RefreshBearing(string? token, string? refreshToken);
     private record SceneBearing(int id);
     private record QrCode(int id, string qrToken);
     private record AdminLoginBody(string? token, bool requiresPasswordChange);
@@ -57,9 +84,9 @@ public class SessionSecurityGapTests(WebApplicationFactory<Program> factory) : I
         return (client, codes[0].id);
     }
 
-    private async Task<string> SetFirstDevAdminPasswordGateAsync(bool required)
+    private static async Task<string> SetFirstDevAdminPasswordGateAsync(WebApplicationFactory<Program> appFactory, bool required)
     {
-        await using var scope = factory.Services.CreateAsyncScope();
+        await using var scope = appFactory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var admin = await db.Users
             .Where(u => u.Role == Ambulanzsystem.Api.Domain.Role.Admin && u.RevokedAt == null)
@@ -141,7 +168,7 @@ public class SessionSecurityGapTests(WebApplicationFactory<Program> factory) : I
         Assert.Equal(HttpStatusCode.OK, validate.StatusCode);
 
         var logout = await newAdmin.PostAsJsonAsync("/api/logout", new { refreshToken = Convert.ToBase64String(new byte[64]) });
-        Assert.Equal(HttpStatusCode.NoContent, logout.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, logout.StatusCode);
 
         var changePassword = await newAdmin.PostAsJsonAsync("/api/users/change-password", new
         {
@@ -176,10 +203,12 @@ public class SessionSecurityGapTests(WebApplicationFactory<Program> factory) : I
     [Fact]
     public async Task DevLogin_BypassesForcedChangeWithoutMintingRefreshToken_AndRealLoginStillRequiresIt()
     {
-        var username = await SetFirstDevAdminPasswordGateAsync(true);
+        await using var devLoginFactory = factory.WithWebHostBuilder(_ => { });
+        await using var realLoginFactory = factory.WithWebHostBuilder(_ => { });
+        var username = await SetFirstDevAdminPasswordGateAsync(devLoginFactory, true);
         try
         {
-            var client = factory.CreateClient();
+            var client = devLoginFactory.CreateClient();
 
             var devLogin = await client.PostAsJsonAsync("/api/dev-login", new { role = "admin" });
             devLogin.EnsureSuccessStatusCode();
@@ -192,7 +221,7 @@ public class SessionSecurityGapTests(WebApplicationFactory<Program> factory) : I
             client.DefaultRequestHeaders.Authorization = new("Bearer", devBody.token);
             Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/operation-scenes")).StatusCode);
 
-            var realLogin = await factory.CreateClient().PostAsJsonAsync("/api/admin-login", new
+            var realLogin = await realLoginFactory.CreateClient().PostAsJsonAsync("/api/admin-login", new
             {
                 username,
                 password = "dev-admin-password",
@@ -202,7 +231,7 @@ public class SessionSecurityGapTests(WebApplicationFactory<Program> factory) : I
         }
         finally
         {
-            await SetFirstDevAdminPasswordGateAsync(false);
+            await SetFirstDevAdminPasswordGateAsync(devLoginFactory, false);
         }
     }
 
@@ -245,7 +274,7 @@ public class SessionSecurityGapTests(WebApplicationFactory<Program> factory) : I
     }
 
     [Fact]
-    public async Task ChangePassword_RejectsNewPasswordShorterThan8Characters()
+    public async Task ChangePassword_RejectsBlankAndShortPasswords_ButAcceptsEightCharacters()
     {
         var admin = await AdminClientAsync();
         var username = $"short-pw-{Guid.NewGuid():N}";
@@ -258,12 +287,153 @@ public class SessionSecurityGapTests(WebApplicationFactory<Program> factory) : I
         var token = (await login.Content.ReadFromJsonAsync<TokenBearing>())!.token!;
         client.DefaultRequestHeaders.Authorization = new("Bearer", token);
 
-        var attempt = await client.PostAsJsonAsync("/api/users/change-password", new
+        foreach (var newPassword in new[] { "", "       ", "1234567" })
+        {
+            var rejected = await client.PostAsJsonAsync("/api/users/change-password", new
+            {
+                username,
+                password = "originalPassword1",
+                newPassword,
+            });
+            Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
+        }
+
+        var accepted = await client.PostAsJsonAsync("/api/users/change-password", new
         {
             username,
             password = "originalPassword1",
-            newPassword = "short1",
+            newPassword = "12345678",
         });
-        Assert.Equal(HttpStatusCode.BadRequest, attempt.StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, accepted.StatusCode);
+    }
+
+    [Fact]
+    public async Task ConcurrentPasswordChangeAndRefresh_NeverLeavesSuccessorRefreshTokenUsable()
+    {
+        var admin = await AdminClientAsync();
+
+        for (var attempt = 0; attempt < 8; attempt++)
+        {
+            var username = $"refresh-race-{Guid.NewGuid():N}";
+            var oldPassword = "originalPassword1";
+            var create = await admin.PostAsJsonAsync("/api/users", new
+            {
+                username,
+                password = oldPassword,
+                role = "responder",
+            });
+            create.EnsureSuccessStatusCode();
+
+            var client = factory.CreateClient();
+            client.DefaultRequestHeaders.Add("X-Forwarded-For", $"198.51.100.{attempt + 1}");
+            var login = await client.PostAsJsonAsync("/api/user-login", new { username, password = oldPassword });
+            login.EnsureSuccessStatusCode();
+            var session = (await login.Content.ReadFromJsonAsync<RefreshBearing>())!;
+            client.DefaultRequestHeaders.Authorization = new("Bearer", session.token);
+
+            var refreshClient = factory.CreateClient();
+            refreshClient.DefaultRequestHeaders.Add("X-Forwarded-For", $"198.51.100.{attempt + 1}");
+            var changeTask = client.PostAsJsonAsync("/api/users/change-password", new
+            {
+                username,
+                password = oldPassword,
+                newPassword = "changedPassword2",
+            });
+            var rotateTask = refreshClient.PostAsJsonAsync("/api/refresh-token", new
+            {
+                refreshToken = session.refreshToken,
+            });
+
+            await Task.WhenAll(changeTask, rotateTask);
+            Assert.Equal(HttpStatusCode.NoContent, changeTask.Result.StatusCode);
+            Assert.Contains(rotateTask.Result.StatusCode, new[] { HttpStatusCode.OK, HttpStatusCode.Unauthorized });
+
+            if (rotateTask.Result.StatusCode == HttpStatusCode.OK)
+            {
+                var successor = (await rotateTask.Result.Content.ReadFromJsonAsync<RefreshBearing>())!;
+                var replay = await refreshClient.PostAsJsonAsync("/api/refresh-token", new
+                {
+                    refreshToken = successor.refreshToken,
+                });
+                Assert.Equal(HttpStatusCode.Unauthorized, replay.StatusCode);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task ChangePassword_WhenRefreshRevocationFails_RollsBackEverySecurityMutationAndAudit()
+    {
+        string connectionString;
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            connectionString = scope.ServiceProvider.GetRequiredService<AppDbContext>()
+                .Database.GetConnectionString()!;
+        }
+
+        var username = $"atomic-password-{Guid.NewGuid():N}";
+        var oldPassword = "originalPassword1";
+        int userId;
+        string originalStamp;
+        await using (var arrange = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
+            .UseNpgsql(connectionString).UseSnakeCaseNamingConvention().Options))
+        {
+            var user = new User
+            {
+                Username = username,
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(oldPassword),
+                Role = Role.Responder,
+                RequiresPasswordChange = true,
+            };
+            arrange.Users.Add(user);
+            await arrange.SaveChangesAsync();
+            arrange.RefreshTokens.Add(new RefreshToken
+            {
+                UserId = user.Id,
+                TokenHash = Convert.ToBase64String(Guid.NewGuid().ToByteArray()),
+                ExpiresAt = DateTime.UtcNow.AddDays(1),
+            });
+            await arrange.SaveChangesAsync();
+            userId = user.Id;
+            originalStamp = user.SecurityStamp;
+        }
+
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseNpgsql(connectionString)
+            .UseSnakeCaseNamingConvention()
+            .AddInterceptors(new FailOnRefreshRevocationInterceptor())
+            .Options;
+        await using (var db = new AppDbContext(options))
+        {
+            var controller = new UsersController(
+                db,
+                new RefreshTokenService(db, Options.Create(new JwtOptions())),
+                new AuditService(db))
+            {
+                ControllerContext = new ControllerContext
+                {
+                    HttpContext = new DefaultHttpContext
+                    {
+                        User = new ClaimsPrincipal(new ClaimsIdentity(new[]
+                        {
+                            new Claim(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub, userId.ToString()),
+                            new Claim(TokenTypes.ClaimType, TokenTypes.User),
+                        }, "test")),
+                    },
+                },
+            };
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() => controller.ChangePassword(
+                new ChangePasswordRequest(username, oldPassword, "changedPassword2")));
+        }
+
+        await using var verify = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
+            .UseNpgsql(connectionString).UseSnakeCaseNamingConvention().Options);
+        var unchanged = await verify.Users.SingleAsync(user => user.Id == userId);
+        Assert.True(BCrypt.Net.BCrypt.Verify(oldPassword, unchanged.PasswordHash));
+        Assert.True(unchanged.RequiresPasswordChange);
+        Assert.Equal(originalStamp, unchanged.SecurityStamp);
+        Assert.False(await verify.RefreshTokens.Where(token => token.UserId == userId).AnyAsync(token => token.IsRevoked));
+        Assert.False(await verify.AuditLogs.AnyAsync(entry =>
+            entry.ActorId == userId && entry.EntityType == "user" && entry.AfterJson == "\"changed\""));
     }
 }

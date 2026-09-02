@@ -19,9 +19,11 @@ public class RealtimeDispatcher(
                 try
                 {
                     await hub.Clients.Group(message.GroupName).SendAsync(message.MethodName, message.Payload, stoppingToken);
+                    publisher.DispatcherHealthy = true;
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
+                    publisher.DispatcherHealthy = false;
                     logger.LogWarning(ex, "Failed to dispatch realtime message {Method} to {Group}", message.MethodName, message.GroupName);
                 }
             }

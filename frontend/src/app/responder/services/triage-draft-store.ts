@@ -21,11 +21,10 @@ export class TriageDraftStore {
       return;
     }
     const real = all[realId];
-    const provisionalIsNewer = Date.parse(String(provisional['clientUpdatedAt'] ?? 0))
-      >= Date.parse(String(real?.['clientUpdatedAt'] ?? 0));
-    all[realId] = provisionalIsNewer
-      ? { ...real, ...provisional }
-      : { ...provisional, ...real };
+    const provisionalIsNewer =
+      Date.parse(String(provisional['clientUpdatedAt'] ?? 0)) >=
+      Date.parse(String(real?.['clientUpdatedAt'] ?? 0));
+    all[realId] = provisionalIsNewer ? { ...real, ...provisional } : { ...provisional, ...real };
     delete all[provisionalId];
     localStorage.setItem(key, JSON.stringify(all));
   }

@@ -13,41 +13,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Responder QR login (online-only). Short-lived token, no refresh token. */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        qr_code: string;
-                    };
-                };
-            };
-            responses: {
-                /** @description Logged in. Token has type=qr, scoped to the event scene subtree. */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            /** @constant */
-                            status: "ok";
-                            token: string;
-                            /** @description Top-level scene this QR grants access to. */
-                            eventSceneId?: number;
-                        };
-                    };
-                };
-                401: components["responses"]["Unauthorized"];
-                429: components["responses"]["RateLimited"];
-            };
-        };
+        /**
+         * Responder QR login (online-only). Short-lived token, no refresh token.
+         * @description Exchanges an active responder login QR token for a short-lived event-scoped access token.
+         */
+        post: operations["qrLogin"];
         delete?: never;
         options?: never;
         head?: never;
@@ -63,38 +33,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Responder username/password login (token type=user). */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["CredentialsRequest"];
-                };
-            };
-            responses: {
-                /** @description Logged in. */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            /** @constant */
-                            status: "ok";
-                            token: string;
-                            refreshToken: string;
-                        };
-                    };
-                };
-                401: components["responses"]["Unauthorized"];
-                429: components["responses"]["RateLimited"];
-            };
-        };
+        /**
+         * Responder username/password login (token type=user).
+         * @description Authenticates a responder username and password and returns an access and refresh token pair.
+         */
+        post: operations["userLogin"];
         delete?: never;
         options?: never;
         head?: never;
@@ -110,40 +53,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Admin or Leitstelle login. Token type reflects the user's role. */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["CredentialsRequest"];
-                };
-            };
-            responses: {
-                /** @description Logged in. */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            /** @constant */
-                            status: "ok";
-                            token: string;
-                            refreshToken: string;
-                            requiresPasswordChange: boolean;
-                            role: components["schemas"]["Role"];
-                        };
-                    };
-                };
-                401: components["responses"]["Unauthorized"];
-                429: components["responses"]["RateLimited"];
-            };
-        };
+        /**
+         * Admin or Leitstelle login. Token type reflects the user's role.
+         * @description Authenticates an Admin or Leitstelle account and returns its role-specific token pair.
+         */
+        post: operations["adminLogin"];
         delete?: never;
         options?: never;
         head?: never;
@@ -159,37 +73,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Rotate a refresh token (old is revoked, new pair issued). */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        refreshToken: string;
-                    };
-                };
-            };
-            responses: {
-                /** @description New token pair. */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            token: string;
-                            refreshToken: string;
-                        };
-                    };
-                };
-                401: components["responses"]["Unauthorized"];
-            };
-        };
+        /**
+         * Rotate a refresh token (old is revoked, new pair issued).
+         * @description Consumes one valid refresh token and rotates it into a new access and refresh token pair.
+         */
+        post: operations["refreshToken"];
         delete?: never;
         options?: never;
         head?: never;
@@ -205,32 +93,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Revoke the given refresh token. Policy AuthenticatedUser. */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        refreshToken: string;
-                    };
-                };
-            };
-            responses: {
-                /** @description Revoked. */
-                204: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                401: components["responses"]["Unauthorized"];
-            };
-        };
+        /**
+         * Revoke the given refresh token. Policy AuthenticatedUser.
+         * @description Revokes the submitted refresh token for the authenticated session.
+         */
+        post: operations["logout"];
         delete?: never;
         options?: never;
         head?: never;
@@ -246,33 +113,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Route-guard check. Policy TriageWrite (any authenticated session). */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Token valid. */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            /** @constant */
-                            isValid: true;
-                            /** @enum {string} */
-                            role?: "admin" | "leitstelle" | "user" | "qr";
-                        };
-                    };
-                };
-                401: components["responses"]["Unauthorized"];
-            };
-        };
+        /**
+         * Route-guard check. Policy TriageWrite (any authenticated session).
+         * @description Confirms that the current bearer token is valid and returns its effective role.
+         */
+        post: operations["validateToken"];
         delete?: never;
         options?: never;
         head?: never;
@@ -288,52 +133,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** DEV ONLY. Password-free login for seeded accounts. 404 unless Development env AND Features__EnableDevLogin. */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        /** @enum {string} */
-                        role: "admin" | "user";
-                    };
-                };
-            };
-            responses: {
-                /** @description Logged in with a development-bypass token. It is intentionally non-refreshable and requiresPasswordChange is always false. */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            /** @constant */
-                            status: "ok";
-                            token: string;
-                            /** @description Username of the real seeded account represented by the token. */
-                            username: string;
-                            /** @constant */
-                            requiresPasswordChange: false;
-                            /** @description Optional for compatibility; omitted for development-bypass sessions. */
-                            refreshToken?: string;
-                        };
-                    };
-                };
-                400: components["responses"]["BadRequest"];
-                /** @description Not available (any non-dev configuration). */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-            };
-        };
+        /**
+         * DEV ONLY. Password-free login for seeded accounts. 404 unless Development env AND Features__EnableDevLogin.
+         * @description Creates a non-refreshable seeded-account token when the explicit development-login feature is enabled.
+         */
+        post: operations["developmentLogin"];
         delete?: never;
         options?: never;
         head?: never;
@@ -347,75 +151,17 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List users for the Admin revocation view. Policy AdminOnly. */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Users. */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["User"][];
-                    };
-                };
-                401: components["responses"]["Unauthorized"];
-                403: components["responses"]["Forbidden"];
-            };
-        };
+        /**
+         * List users for the Admin revocation view. Policy AdminOnly.
+         * @description Returns the users visible in the Admin account-revocation view.
+         */
+        get: operations["listUsers"];
         put?: never;
-        /** Create a user (admin, leitstelle, or responder). Policy AdminOnly. New admin/leitstelle users get requiresPasswordChange=true. */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        username: string;
-                        password: string;
-                        role: components["schemas"]["Role"];
-                        /**
-                         * @default permanent
-                         * @enum {string}
-                         */
-                        accountType?: "permanent" | "event";
-                        /** @description Required when accountType=event; access is scoped to this top-level scene's subtree and its access window. */
-                        eventSceneId?: number;
-                    };
-                };
-            };
-            responses: {
-                /** @description Created. */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["User"];
-                    };
-                };
-                401: components["responses"]["Unauthorized"];
-                403: components["responses"]["Forbidden"];
-                /** @description Username already exists. */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-            };
-        };
+        /**
+         * Create a user (admin, leitstelle, or responder). Policy AdminOnly. New admin/leitstelle users get requiresPasswordChange=true.
+         * @description Creates an Admin, Leitstelle, or responder account with the requested scope.
+         */
+        post: operations["createUser"];
         delete?: never;
         options?: never;
         head?: never;
@@ -431,34 +177,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Change own password. Verifies current password, regenerates security stamp (invalidates all live tokens), revokes all refresh tokens. Policy AuthenticatedUser. */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        username: string;
-                        password: string;
-                        newPassword: string;
-                    };
-                };
-            };
-            responses: {
-                /** @description Changed. All outstanding sessions for this user are now invalid. */
-                204: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                401: components["responses"]["Unauthorized"];
-            };
-        };
+        /**
+         * Change own password. Verifies current password, regenerates security stamp (invalidates all live tokens), revokes all refresh tokens. Policy AuthenticatedUser.
+         * @description Changes the caller's password and invalidates its existing access and refresh tokens.
+         */
+        post: operations["changePassword"];
         delete?: never;
         options?: never;
         head?: never;
@@ -474,30 +197,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** End a user's access early. Policy LeitstelleOrAdmin. Blocks new actions/reads; no forced client logout. */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: components["parameters"]["idPath"];
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Revoked. */
-                204: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                401: components["responses"]["Unauthorized"];
-                403: components["responses"]["Forbidden"];
-                404: components["responses"]["NotFound"];
-            };
-        };
+        /**
+         * End a user's access early. Policy LeitstelleOrAdmin. Blocks new actions/reads; no forced client logout.
+         * @description Ends access for the authorized target account identified by the path ID.
+         */
+        post: operations["revokeUser"];
         delete?: never;
         options?: never;
         head?: never;
@@ -513,26 +217,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** A responder/session ends its own access by choice. Policy TriageWrite. */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Access ended. */
-                204: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                401: components["responses"]["Unauthorized"];
-            };
-        };
+        /**
+         * A responder/session ends its own access by choice. Policy TriageWrite.
+         * @description Ends the authenticated responder or QR session's own access.
+         */
+        post: operations["cancelOwnAccess"];
         delete?: never;
         options?: never;
         head?: never;
@@ -548,42 +237,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Bulk-generate responder login QR codes for an event. Policy LeitstelleOrAdmin. */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        number: number;
-                        /** @description Top-level scene (event) the codes grant access to. */
-                        eventSceneId: number;
-                        /**
-                         * @description Access window from first login (FR-AUTH-08).
-                         * @default 12
-                         */
-                        expiresInHours?: number;
-                    };
-                };
-            };
-            responses: {
-                /** @description Generated codes. */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["LoginQrCode"][];
-                    };
-                };
-                401: components["responses"]["Unauthorized"];
-                403: components["responses"]["Forbidden"];
-            };
-        };
+        /**
+         * Bulk-generate responder login QR codes for an event. Policy LeitstelleOrAdmin.
+         * @description Generates the requested number of responder login QR codes for an authorized top-level event.
+         */
+        post: operations["generateLoginQrCodes"];
         delete?: never;
         options?: never;
         head?: never;
@@ -597,31 +255,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List login QR codes. Policy LeitstelleOrAdmin. */
-        get: {
-            parameters: {
-                query?: {
-                    eventSceneId?: number;
-                    unusedOnly?: boolean;
-                };
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Codes. */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["LoginQrCode"][];
-                    };
-                };
-                401: components["responses"]["Unauthorized"];
-            };
-        };
+        /**
+         * List login QR codes. Policy LeitstelleOrAdmin.
+         * @description Lists responder login QR codes within the caller's authorized event scope and optional filters.
+         */
+        get: operations["listLoginQrCodes"];
         put?: never;
         post?: never;
         delete?: never;
@@ -639,29 +277,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Revoke a login QR code early. Policy LeitstelleOrAdmin. */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: components["parameters"]["idPath"];
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Revoked. */
-                204: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                401: components["responses"]["Unauthorized"];
-                404: components["responses"]["NotFound"];
-            };
-        };
+        /**
+         * Revoke a login QR code early. Policy LeitstelleOrAdmin.
+         * @description Revokes one responder login QR code within the caller's authorized event scope.
+         */
+        post: operations["revokeLoginQrCode"];
         delete?: never;
         options?: never;
         head?: never;
@@ -677,35 +297,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Bulk-generate unbound patient QR codes (64-char random tokens). Policy AdminOnly. */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        number: number;
-                    };
-                };
-            };
-            responses: {
-                /** @description Generated codes. */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": string[];
-                    };
-                };
-                401: components["responses"]["Unauthorized"];
-                403: components["responses"]["Forbidden"];
-            };
-        };
+        /**
+         * Bulk-generate unbound patient QR codes (64-char random tokens). Policy AdminOnly.
+         * @description Generates unbound random patient QR tokens for later printing and assignment.
+         */
+        post: operations["generatePatientQrCodes"];
         delete?: never;
         options?: never;
         head?: never;
@@ -719,28 +315,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List codes not yet bound to a patient (for printing). Policy LeitstelleOrAdmin. */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Unbound codes. */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": string[];
-                    };
-                };
-                401: components["responses"]["Unauthorized"];
-            };
-        };
+        /**
+         * List codes not yet bound to a patient (for printing). Policy LeitstelleOrAdmin.
+         * @description Returns patient QR tokens that are not currently bound to a patient.
+         */
+        get: operations["listUnusedPatientQrCodes"];
         put?: never;
         post?: never;
         delete?: never;
@@ -756,71 +335,17 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List scenes visible to the session (admin/leitstelle = all current, responder/qr = authorized event subtree within access window). Policy TriageWrite. */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Scenes. */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["OperationScene"][];
-                    };
-                };
-                401: components["responses"]["Unauthorized"];
-            };
-        };
+        /**
+         * List scenes visible to the session (admin/leitstelle = all current, responder/qr = authorized event subtree within access window). Policy TriageWrite.
+         * @description Lists the operation scenes visible to the current session and its event scope.
+         */
+        get: operations["listOperationScenes"];
         put?: never;
-        /** Create or update a scene (upsert by optional id). Policy LeitstelleOrAdmin. parentSceneId marks a sub-site; max one nesting level, cycles rejected. */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        /** @description Present = update */
-                        id?: number;
-                        name: string;
-                        description?: string;
-                        organisationId?: number;
-                        /** @description Parent = the event (D6). Null = this scene IS the event. */
-                        parentSceneId?: number;
-                        /** Format: date-time */
-                        accessWindowStart?: string;
-                        /** Format: date-time */
-                        accessWindowEnd?: string;
-                        /** @default true */
-                        active?: boolean;
-                    };
-                };
-            };
-            responses: {
-                /** @description Saved scene. */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["OperationScene"];
-                    };
-                };
-                400: components["responses"]["BadRequest"];
-                401: components["responses"]["Unauthorized"];
-                403: components["responses"]["Forbidden"];
-            };
-        };
+        /**
+         * Create or update a scene (upsert by optional id). Policy LeitstelleOrAdmin. parentSceneId marks a sub-site; max one nesting level, cycles rejected.
+         * @description Creates a scene or updates the existing scene identified in the request within the caller's authorized scope.
+         */
+        post: operations["saveOperationScene"];
         delete?: never;
         options?: never;
         head?: never;
@@ -837,37 +362,11 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Delete an EMPTY scene. Policy AdminOnly. 409 while patients are linked (OD-02 default) — deactivate instead. */
-        delete: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: components["parameters"]["idPath"];
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Deleted. */
-                204: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                401: components["responses"]["Unauthorized"];
-                403: components["responses"]["Forbidden"];
-                404: components["responses"]["NotFound"];
-                /** @description Patients linked; deletion blocked. */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-            };
-        };
+        /**
+         * Delete an EMPTY scene. Policy AdminOnly. 409 while patients are linked (OD-02 default) — deactivate instead.
+         * @description Deletes an empty operation scene; scenes with linked patients remain protected.
+         */
+        delete: operations["deleteOperationScene"];
         options?: never;
         head?: never;
         patch?: never;
@@ -880,57 +379,17 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List organisations. Policy AdminOnly. */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Organisations. */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Organisation"][];
-                    };
-                };
-                401: components["responses"]["Unauthorized"];
-            };
-        };
+        /**
+         * List organisations. Policy AdminOnly.
+         * @description Lists organisations available for operation-scene administration.
+         */
+        get: operations["listOrganisations"];
         put?: never;
-        /** Create an organisation. Policy AdminOnly. */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        name: string;
-                    };
-                };
-            };
-            responses: {
-                /** @description Created. */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Organisation"];
-                    };
-                };
-                401: components["responses"]["Unauthorized"];
-            };
-        };
+        /**
+         * Create an organisation. Policy AdminOnly.
+         * @description Creates an organisation for later assignment to operation scenes.
+         */
+        post: operations["createOrganisation"];
         delete?: never;
         options?: never;
         head?: never;
@@ -944,62 +403,17 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List teams for a scene. Policy TriageWrite. */
-        get: {
-            parameters: {
-                query: {
-                    operationSceneId: number;
-                };
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Teams. */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Team"][];
-                    };
-                };
-                401: components["responses"]["Unauthorized"];
-            };
-        };
+        /**
+         * List teams for a scene. Policy TriageWrite.
+         * @description Lists the coordination teams assigned to the requested operation scene.
+         */
+        get: operations["listTeams"];
         put?: never;
-        /** Create a team in a scene. Policy LeitstelleOrAdmin. */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        operationSceneId: number;
-                        /** @description Name or radio call sign. */
-                        name: string;
-                    };
-                };
-            };
-            responses: {
-                /** @description Created. */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Team"];
-                    };
-                };
-                401: components["responses"]["Unauthorized"];
-                403: components["responses"]["Forbidden"];
-            };
-        };
+        /**
+         * Create a team in a scene. Policy LeitstelleOrAdmin.
+         * @description Creates a coordination team in an authorized operation scene.
+         */
+        post: operations["createTeam"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1014,41 +428,11 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Update any subset of optional coordination fields (FR-TEAM-07 — every field independently optional/clearable). Policy TriageWrite. */
-        put: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: components["parameters"]["idPath"];
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        /** @enum {string|null} */
-                        status?: "free" | "busy" | "unavailable" | null;
-                        assignedPatientId?: number | null;
-                        assignedLocation?: string | null;
-                        contactInfo?: string | null;
-                    };
-                };
-            };
-            responses: {
-                /** @description Updated team. */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Team"];
-                    };
-                };
-                401: components["responses"]["Unauthorized"];
-                404: components["responses"]["NotFound"];
-            };
-        };
+        /**
+         * Update any subset of optional coordination fields (FR-TEAM-07 — every field independently optional/clearable). Policy TriageWrite.
+         * @description Updates the supplied coordination fields for the identified team. Team coordination is online-only in V1: requests carry no client timestamp, disjoint fields are updated independently, and concurrent writes to the same field use database-arrival order.
+         */
+        put: operations["updateTeam"];
         post?: never;
         delete?: never;
         options?: never;
@@ -1063,30 +447,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List patients linked to a scene (situation room + patient overview). Policy TriageWrite. Every request is read-audit-logged (D7). */
-        get: {
-            parameters: {
-                query: {
-                    operationSceneId: number;
-                };
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Patients. */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Patient"][];
-                    };
-                };
-                401: components["responses"]["Unauthorized"];
-            };
-        };
+        /**
+         * List patients linked to a scene (situation room + patient overview). Policy TriageWrite. Every request is read-audit-logged (D7).
+         * @description Lists patients linked to the requested visible operation scene and records the read in the audit log.
+         */
+        get: operations["listPersons"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1104,51 +469,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Scan a patient QR tag. Unknown token -> 404. Unbound -> creates Patient + fully-seeded Body, binds code, links scene (201). Bound -> returns existing patient, refreshes scene link (200). Concurrency-safe (row lock) — parallel scans of the same code yield the same patient. Online-only. Policy TriageWrite. */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        qr_code: string;
-                        operationSceneId: number;
-                    };
-                };
-            };
-            responses: {
-                /** @description Existing patient returned. */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["VerifyQrResult"];
-                    };
-                };
-                /** @description New patient created. */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["VerifyQrResult"];
-                    };
-                };
-                401: components["responses"]["Unauthorized"];
-                /** @description Unknown QR token — rejected (UC-04). */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-            };
-        };
+        /**
+         * Scan a patient QR tag. Unknown token -> 404. Unbound -> creates Patient + fully-seeded Body, binds code, links scene (201). Bound -> returns existing patient, refreshes scene link (200). Concurrency-safe (row lock) — parallel scans of the same code yield the same patient. Online-only. Policy TriageWrite.
+         * @description Resolves a patient QR token, creating and binding a patient when the token is still unbound.
+         */
+        post: operations["verifyPatientQrCode"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1164,49 +489,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Create a patient without a QR code. Idempotent on clientGeneratedId (D3): replaying the same UUID returns the already-created patient (200) instead of a duplicate (201 on first create). Server generates humanReadableId (no patient-identifying content). Policy TriageWrite. */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        operationSceneId: number;
-                        name?: string;
-                        /**
-                         * Format: uuid
-                         * @description Offline idempotency key generated by the client.
-                         */
-                        clientGeneratedId?: string;
-                    };
-                };
-            };
-            responses: {
-                /** @description Idempotent replay — patient already existed for this clientGeneratedId. */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Patient"];
-                    };
-                };
-                /** @description Created. */
-                201: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Patient"];
-                    };
-                };
-                401: components["responses"]["Unauthorized"];
-            };
-        };
+        /**
+         * Create a patient without a QR code. Idempotent on clientGeneratedId (D3): replaying the same UUID returns the already-created patient (200) instead of a duplicate (201 on first create). Server generates humanReadableId (no patient-identifying content). Policy TriageWrite.
+         * @description Creates an untagged patient idempotently from the caller-provided client generation ID.
+         */
+        post: operations["createManualPatient"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1222,49 +509,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Record-only START triage write (D1). triageColor validated against rot|gelb|gruen|schwarz (shared normalize helper maps 'grün'->'gruen', trims, lowercases; everything else incl. 'blau' -> 400). Field-level LWW merge using clientUpdatedAt when supplied (NFR-SAFE-08/09). Audit-logged with before/after. Publishes realtime update. Policy TriageWrite. */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: components["parameters"]["idPath"];
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        triageColor?: components["schemas"]["TriageColor"];
-                        respiration?: boolean;
-                        blutung?: boolean;
-                        radialispuls?: boolean;
-                        transport?: boolean;
-                        dringend?: boolean;
-                        kontaminiert?: boolean;
-                        /**
-                         * Format: date-time
-                         * @description Client-side write timestamp for offline replay merge; must not be more than five minutes ahead of server UTC. Older timestamps remain valid.
-                         */
-                        clientUpdatedAt?: string;
-                    };
-                };
-            };
-            responses: {
-                /** @description Updated patient. */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Patient"];
-                    };
-                };
-                400: components["responses"]["BadRequest"];
-                401: components["responses"]["Unauthorized"];
-                404: components["responses"]["NotFound"];
-            };
-        };
+        /**
+         * Record-only START triage write (D1). triageColor validated against rot|gelb|gruen|schwarz (shared normalize helper maps 'grün'->'gruen', trims, lowercases; everything else incl. 'blau' -> 400). Field-level LWW merge using clientUpdatedAt when supplied (NFR-SAFE-08/09). Audit-logged with before/after. Publishes realtime update. Policy TriageWrite.
+         * @description Updates supplied START triage fields and emits the resulting audit and realtime records.
+         */
+        post: operations["updatePatientTriage"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1280,43 +529,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Set the breathing-sufficient flag. Publishes realtime update. Policy TriageWrite. */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: components["parameters"]["idPath"];
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        respiration: boolean;
-                        /**
-                         * Format: date-time
-                         * @description Must not be more than five minutes ahead of server UTC. Older timestamps remain valid.
-                         */
-                        clientUpdatedAt?: string;
-                    };
-                };
-            };
-            responses: {
-                /** @description Updated patient. */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Patient"];
-                    };
-                };
-                400: components["responses"]["BadRequest"];
-                401: components["responses"]["Unauthorized"];
-                404: components["responses"]["NotFound"];
-            };
-        };
+        /**
+         * Set the breathing-sufficient flag. Publishes realtime update. Policy TriageWrite.
+         * @description Updates the patient's breathing-sufficient flag and publishes the resulting patient state.
+         */
+        post: operations["updatePatientRespiration"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1332,56 +549,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Update patient position (auto-captured device GPS or manual correction, FR-LOC-05/06). Publishes realtime update. Policy TriageWrite. */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: components["parameters"]["idPath"];
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        /** @description WGS84 latitude, inclusive range -90 through 90. */
-                        lat: number;
-                        /** @description WGS84 longitude, inclusive range -180 through 180. */
-                        lng: number;
-                        /**
-                         * @description Only device GPS or explicit manual correction is accepted.
-                         * @default gps
-                         * @enum {string}
-                         */
-                        source?: "gps" | "manual";
-                        /** @description Finite, non-negative reported GPS accuracy; UI flags >10m as unreliable (FR-LOC-07). */
-                        accuracyMeters?: number;
-                        /** @description Optional free text: tent/sector/room/floor/treatment bay (FR-LOC-08). */
-                        indoorLocation?: string;
-                        /**
-                         * Format: date-time
-                         * @description Client-side write timestamp for offline replay merge (NFR-SAFE-08/09); must not be more than five minutes ahead of server UTC. Older timestamps remain valid.
-                         */
-                        clientUpdatedAt?: string;
-                    };
-                };
-            };
-            responses: {
-                /** @description Updated patient. */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Patient"];
-                    };
-                };
-                400: components["responses"]["BadRequest"];
-                401: components["responses"]["Unauthorized"];
-                404: components["responses"]["NotFound"];
-            };
-        };
+        /**
+         * Update patient position (auto-captured device GPS or manual correction, FR-LOC-05/06). Publishes realtime update. Policy TriageWrite.
+         * @description Updates the patient's validated GPS or manually corrected location and publishes the new state.
+         */
+        post: operations["updatePatientLocation"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1397,44 +569,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Unbind the patient's current QR code and bind the given UNBOUND code (mis-attached tag correction, FR-QR-07). Policy TriageWrite. */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: components["parameters"]["idPath"];
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        qr_code: string;
-                    };
-                };
-            };
-            responses: {
-                /** @description Updated patient with new QR binding. */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Patient"];
-                    };
-                };
-                401: components["responses"]["Unauthorized"];
-                404: components["responses"]["NotFound"];
-                /** @description Given code is already bound to another patient. */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-            };
-        };
+        /**
+         * Unbind the patient's current QR code and bind the given UNBOUND code (mis-attached tag correction, FR-QR-07). Policy TriageWrite.
+         * @description Replaces the patient's current QR binding with the supplied unbound patient QR token.
+         */
+        post: operations["reassignPatientQrCode"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1448,31 +587,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Triage change history for a patient, sourced from the audit log (FR-SIT-08). Policy LeitstelleOrAdmin. */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    id: components["parameters"]["idPath"];
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Chronological triage changes. */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["TriageHistoryEntry"][];
-                    };
-                };
-                401: components["responses"]["Unauthorized"];
-                404: components["responses"]["NotFound"];
-            };
-        };
+        /**
+         * Triage change history for a patient, sourced from the audit log (FR-SIT-08). Policy LeitstelleOrAdmin.
+         * @description Returns the patient's triage changes in chronological order from the audit log.
+         */
+        get: operations["getPatientTriageHistory"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1488,84 +607,16 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get the page-1 record, or a default-shaped empty draft if none saved yet. Read-audit-logged. Policy TriageWrite. */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    patientId: components["parameters"]["patientIdPath"];
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Form record (formState conforms to schemas/ambulanzprotokoll-page1.schema.json). */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ProtokollRecord"];
-                    };
-                };
-                401: components["responses"]["Unauthorized"];
-                /** @description Patient does not exist. */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-            };
-        };
-        /** Upsert the page-1 record. Draft accepts any partial data; missing branches are merged with the default state; concurrent saves merge field-level LWW (older non-empty values survive empty newer fields, NFR-SAFE-09). status=finalized stamps finalizedAt and returns soft-validation warnings — never a hard block for empty fields. Post-finalize saves stay allowed (Leitstelle/Admin any form; responder their own records); all audit-logged. Policy TriageWrite. */
-        put: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    patientId: components["parameters"]["patientIdPath"];
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        /** @enum {string} */
-                        status: "draft" | "finalized";
-                        formState: components["schemas"]["ProtokollFormState"];
-                        /**
-                         * Format: date-time
-                         * @description Local edit timestamp for newer-wins comparison; must not be more than five minutes ahead of server UTC. Older timestamps remain valid.
-                         */
-                        clientUpdatedAt?: string;
-                    };
-                };
-            };
-            responses: {
-                /** @description Saved record (merged server state) plus any finalize warnings. */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ProtokollRecord"] & {
-                            warnings?: string[];
-                        };
-                    };
-                };
-                400: components["responses"]["BadRequest"];
-                401: components["responses"]["Unauthorized"];
-                /** @description Patient does not exist. */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-            };
-        };
+        /**
+         * Get the page-1 record, or a default-shaped empty draft if none saved yet. Read-audit-logged. Policy TriageWrite.
+         * @description Returns the saved page-one protocol or a default-shaped draft for the requested patient.
+         */
+        get: operations["getAmbulanzprotokollPage1"];
+        /**
+         * Upsert the page-1 record. Draft accepts any partial data; missing branches are merged with the default state; concurrent saves merge field-level LWW (older non-empty values survive empty newer fields, NFR-SAFE-09). status=finalized stamps finalizedAt and returns soft-validation warnings — never a hard block for empty fields. Post-finalize saves stay allowed (Leitstelle/Admin any form; responder their own records); all audit-logged. Policy TriageWrite.
+         * @description Merges and saves page-one protocol data and returns the persisted record with any server validation warnings.
+         */
+        put: operations["saveAmbulanzprotokollPage1"];
         post?: never;
         delete?: never;
         options?: never;
@@ -1580,32 +631,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** JSON export (V1 export format, FR-DOC-09). Wraps formState with patient/event metadata, generation timestamp, and an actor watermark (NFR-SEC-10). The export is persisted server-side (long-term archive, FR-DOC-14) and the action is audit-logged. Admin and Leitstelle may export authorized patients; a named responder may export only a patient they own. Anonymous QR sessions and cross-owner responders receive 403, with no archive or success audit created. */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    patientId: components["parameters"]["patientIdPath"];
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Export document. */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ProtokollExport"];
-                    };
-                };
-                401: components["responses"]["Unauthorized"];
-                403: components["responses"]["Forbidden"];
-                404: components["responses"]["NotFound"];
-            };
-        };
+        /**
+         * JSON export (V1 export format, FR-DOC-09). Wraps formState with patient/event metadata, generation timestamp, and an actor watermark (NFR-SEC-10). The export is persisted server-side (long-term archive, FR-DOC-14) and the action is audit-logged. Admin and Leitstelle may export authorized patients; a named responder may export only a patient they own. Anonymous QR sessions and cross-owner responders receive 403, with no archive or success audit created.
+         * @description Generates, archives, and audit-logs the authorized JSON export for the requested patient's protocol.
+         */
+        get: operations["exportAmbulanzprotokollPage1"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1621,70 +651,16 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Full region-toggle body state for a patient (all canonical keys always present). Policy TriageWrite. */
-        get: {
-            parameters: {
-                query: {
-                    idpatient: number;
-                };
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Region-state map, one entry per key in contract/body-regions.json. */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["BodyParts"];
-                    };
-                };
-                401: components["responses"]["Unauthorized"];
-                404: components["responses"]["NotFound"];
-            };
-        };
-        /** Toggle one region's marker. bodyPartId validated against the canonical key list. Publishes realtime update. Policy TriageWrite. */
-        put: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        idpatient: number;
-                        /** @description One key from contract/body-regions.json. */
-                        bodyPartId: string;
-                        isClicked: boolean;
-                    };
-                };
-            };
-            responses: {
-                /** @description Updated full body state. */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["BodyParts"];
-                    };
-                };
-                /** @description Unknown bodyPartId. */
-                400: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                401: components["responses"]["Unauthorized"];
-                404: components["responses"]["NotFound"];
-            };
-        };
+        /**
+         * Full region-toggle body state for a patient (all canonical keys always present). Policy TriageWrite.
+         * @description Returns the complete canonical body-region marker state for the requested patient.
+         */
+        get: operations["getBodyParts"];
+        /**
+         * Toggle one region's marker. bodyPartId validated against the canonical key list. Publishes realtime update. Policy TriageWrite.
+         * @description Sets one validated body-region marker and returns the patient's complete updated marker state.
+         */
+        put: operations["updateBodyPart"];
         post?: never;
         delete?: never;
         options?: never;
@@ -1699,39 +675,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Query the append-only audit log (D7). Policy AdminOnly. */
-        get: {
-            parameters: {
-                query?: {
-                    patientId?: number;
-                    action?: "read" | "write" | "export" | "login" | "revoke";
-                    from?: string;
-                    to?: string;
-                    page?: number;
-                    pageSize?: number;
-                };
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Audit entries, newest first. */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            total: number;
-                            entries: components["schemas"]["AuditEntry"][];
-                        };
-                    };
-                };
-                401: components["responses"]["Unauthorized"];
-                403: components["responses"]["Forbidden"];
-            };
-        };
+        /**
+         * Query the append-only audit log (D7). Policy AdminOnly.
+         * @description Queries append-only audit entries using the supplied patient, action, entity type, time, and paging filters.
+         */
+        get: operations["queryAuditLog"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1747,35 +695,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** In-process operational counters (reset on restart). Policy AdminOnly. */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Counters. */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            totalRequests?: number;
-                            authFailures?: number;
-                            dbErrors?: number;
-                            realtimeConnected?: boolean;
-                            realtimePendingQueue?: number;
-                            realtimeDroppedMessages?: number;
-                        };
-                    };
-                };
-                401: components["responses"]["Unauthorized"];
-            };
-        };
+        /**
+         * In-process operational counters (reset on restart). Policy AdminOnly.
+         * @description Returns process-local request, authentication, database, and realtime counters for operators.
+         */
+        get: operations["getMetrics"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1791,41 +715,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Health endpoint (NFR-OPS-01). Unauthenticated. Degraded when DB unreachable or realtime publish queue backed up. */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Health report. */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            /** @enum {string} */
-                            status: "healthy" | "degraded" | "unhealthy";
-                            /** @enum {string} */
-                            database?: "healthy" | "unhealthy";
-                            /** @enum {string} */
-                            realtime?: "healthy" | "degraded";
-                        };
-                    };
-                };
-                /** @description Unhealthy. */
-                503: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-            };
-        };
+        /**
+         * Health endpoint (NFR-OPS-01). Unauthenticated. A realtime publish queue backlog is degraded.
+         * @description Reports unauthenticated database and realtime readiness. Database or realtime dispatcher unavailable is unhealthy (HTTP 503).
+         */
+        get: operations["getHealth"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1846,10 +740,15 @@ export interface components {
         /** @enum {string} */
         Role: "admin" | "leitstelle" | "responder";
         /**
-         * @description Canonical ASCII values (D5). UI displays 'grün' for 'gruen'. 'blau' is invalid in V1.
+         * @description Canonical output uses ASCII `gruen` (D5); input `grün` is accepted as an alias and normalized to `gruen`. `blau` is invalid in V1.
          * @enum {string}
          */
         TriageColor: "rot" | "gelb" | "gruen" | "schwarz";
+        /**
+         * @description Accepts Unicode `grün` as an input alias; responses always serialize the canonical ASCII value `gruen`.
+         * @enum {string}
+         */
+        TriageColorInput: "rot" | "gelb" | "gruen" | "grün" | "schwarz";
         CredentialsRequest: {
             username: string;
             password: string;
@@ -2022,7 +921,8 @@ export interface components {
             id: number;
             /** Format: date-time */
             timestamp: string;
-            actorId: number;
+            /** @description Null for audit events without an authenticated database user. */
+            actorId: number | null;
             /** @enum {string} */
             actorRole: "admin" | "leitstelle" | "user" | "qr";
             /** @enum {string} */
@@ -2030,11 +930,11 @@ export interface components {
             entityType: string;
             entityId?: number | null;
             patientId?: number | null;
-            changedFields?: string[];
-            /** @description Field name -> value before write. */
-            before?: Record<string, never> | null;
-            /** @description Field name -> value after write. */
-            after?: Record<string, never> | null;
+            changedFields?: string[] | null;
+            /** @description JSON-encoded value before the action */
+            before?: string | null;
+            /** @description JSON-encoded value after the action */
+            after?: string | null;
         };
         incident: {
             ambulanzort?: string;
@@ -2202,7 +1102,7 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description Login rate limit exceeded (fixed window 10/60s per IP, NFR-SEC-05). */
+        /** @description Login or refresh-token rate limit exceeded (fixed window 10/60s per IP, NFR-SEC-05). */
         RateLimited: {
             headers: {
                 [name: string]: unknown;
@@ -2221,4 +1121,1287 @@ export interface components {
     pathItems: never;
 }
 export type $defs = Record<string, never>;
-export type operations = Record<string, never>;
+export interface operations {
+    qrLogin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    qr_code: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Logged in. Token has type=qr, scoped to the event scene subtree. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        status: "ok";
+                        token: string;
+                        /** @description Top-level scene this QR grants access to. */
+                        eventSceneId?: number;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    userLogin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CredentialsRequest"];
+            };
+        };
+        responses: {
+            /** @description Logged in. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        status: "ok";
+                        token: string;
+                        refreshToken: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    adminLogin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CredentialsRequest"];
+            };
+        };
+        responses: {
+            /** @description Logged in. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        status: "ok";
+                        token: string;
+                        refreshToken: string;
+                        requiresPasswordChange: boolean;
+                        role: components["schemas"]["Role"];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    refreshToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    refreshToken: string;
+                };
+            };
+        };
+        responses: {
+            /** @description New token pair. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        token: string;
+                        refreshToken: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    logout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    refreshToken: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Revoked. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    validateToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Token valid. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        isValid: true;
+                        /** @enum {string} */
+                        role?: "admin" | "leitstelle" | "user" | "qr";
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    developmentLogin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    role: "admin" | "user";
+                };
+            };
+        };
+        responses: {
+            /** @description Logged in with a development-bypass token. It is intentionally non-refreshable and requiresPasswordChange is always false. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        status: "ok";
+                        token: string;
+                        /** @description Username of the real seeded account represented by the token. */
+                        username: string;
+                        /** @constant */
+                        requiresPasswordChange: false;
+                        /** @description Optional for compatibility; omitted for development-bypass sessions. */
+                        refreshToken?: string;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            /** @description Not available (any non-dev configuration). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listUsers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Users. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    username: string;
+                    password: string;
+                    role: components["schemas"]["Role"];
+                    /**
+                     * @default permanent
+                     * @enum {string}
+                     */
+                    accountType?: "permanent" | "event";
+                    /** @description Required when accountType=event; access is scoped to this top-level scene's subtree and its access window. */
+                    eventSceneId?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description Username already exists. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    changePassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    username: string;
+                    password: string;
+                    newPassword: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Changed. All outstanding sessions for this user are now invalid. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    revokeUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["idPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    cancelOwnAccess: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Access ended. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    generateLoginQrCodes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    number: number;
+                    /** @description Top-level scene (event) the codes grant access to. */
+                    eventSceneId: number;
+                    /**
+                     * @description Access window from first login (FR-AUTH-08).
+                     * @default 12
+                     */
+                    expiresInHours?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Generated codes. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoginQrCode"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    listLoginQrCodes: {
+        parameters: {
+            query?: {
+                eventSceneId?: number;
+                unusedOnly?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Codes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoginQrCode"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    revokeLoginQrCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["idPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    generatePatientQrCodes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    number: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Generated codes. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string[];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    listUnusedPatientQrCodes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Unbound codes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string[];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    listOperationScenes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Scenes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationScene"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    saveOperationScene: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Present = update */
+                    id?: number;
+                    name: string;
+                    description?: string;
+                    organisationId?: number;
+                    /** @description Parent = the event (D6). Null = this scene IS the event. */
+                    parentSceneId?: number;
+                    /** Format: date-time */
+                    accessWindowStart?: string;
+                    /** Format: date-time */
+                    accessWindowEnd?: string;
+                    /** @default true */
+                    active?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description Saved scene. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OperationScene"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    deleteOperationScene: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["idPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description Patients linked; deletion blocked. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    listOrganisations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Organisations. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Organisation"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createOrganisation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Organisation"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    listTeams: {
+        parameters: {
+            query: {
+                operationSceneId: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Teams. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Team"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createTeam: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    operationSceneId: number;
+                    /** @description Name or radio call sign. */
+                    name: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Team"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    updateTeam: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["idPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string|null} */
+                    status?: "free" | "busy" | "unavailable" | null;
+                    assignedPatientId?: number | null;
+                    assignedLocation?: string | null;
+                    contactInfo?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description Updated team. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Team"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listPersons: {
+        parameters: {
+            query: {
+                operationSceneId: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Patients. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Patient"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    verifyPatientQrCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    qr_code: string;
+                    operationSceneId: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Existing patient returned. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VerifyQrResult"];
+                };
+            };
+            /** @description New patient created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VerifyQrResult"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Unknown QR token — rejected (UC-04). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    createManualPatient: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    operationSceneId: number;
+                    name?: string;
+                    /**
+                     * Format: uuid
+                     * @description Offline idempotency key generated by the client.
+                     */
+                    clientGeneratedId?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Idempotent replay — patient already existed for this clientGeneratedId. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Patient"];
+                };
+            };
+            /** @description Created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Patient"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    updatePatientTriage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["idPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    triageColor?: components["schemas"]["TriageColorInput"];
+                    respiration?: boolean;
+                    blutung?: boolean;
+                    radialispuls?: boolean;
+                    transport?: boolean;
+                    dringend?: boolean;
+                    kontaminiert?: boolean;
+                    /**
+                     * Format: date-time
+                     * @description Client-side write timestamp for offline replay merge; must not be more than five minutes ahead of server UTC. Older timestamps remain valid.
+                     */
+                    clientUpdatedAt?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Updated patient. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Patient"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updatePatientRespiration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["idPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    respiration: boolean;
+                    /**
+                     * Format: date-time
+                     * @description Must not be more than five minutes ahead of server UTC. Older timestamps remain valid.
+                     */
+                    clientUpdatedAt?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Updated patient. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Patient"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updatePatientLocation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["idPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description WGS84 latitude, inclusive range -90 through 90. */
+                    lat: number;
+                    /** @description WGS84 longitude, inclusive range -180 through 180. */
+                    lng: number;
+                    /**
+                     * @description Only device GPS or explicit manual correction is accepted.
+                     * @default gps
+                     * @enum {string}
+                     */
+                    source?: "gps" | "manual";
+                    /** @description Finite, non-negative reported GPS accuracy; UI flags >10m as unreliable (FR-LOC-07). */
+                    accuracyMeters?: number;
+                    /** @description Optional free text: tent/sector/room/floor/treatment bay (FR-LOC-08). */
+                    indoorLocation?: string;
+                    /**
+                     * Format: date-time
+                     * @description Client-side write timestamp for offline replay merge (NFR-SAFE-08/09); must not be more than five minutes ahead of server UTC. Older timestamps remain valid.
+                     */
+                    clientUpdatedAt?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Updated patient. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Patient"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    reassignPatientQrCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["idPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    qr_code: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Updated patient with new QR binding. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Patient"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description Given code is already bound to another patient. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getPatientTriageHistory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["idPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Chronological triage changes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TriageHistoryEntry"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getAmbulanzprotokollPage1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                patientId: components["parameters"]["patientIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Form record (formState conforms to schemas/ambulanzprotokoll-page1.schema.json). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProtokollRecord"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Patient does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    saveAmbulanzprotokollPage1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                patientId: components["parameters"]["patientIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    status: "draft" | "finalized";
+                    formState: components["schemas"]["ProtokollFormState"];
+                    /**
+                     * Format: date-time
+                     * @description Local edit timestamp for newer-wins comparison; must not be more than five minutes ahead of server UTC. Older timestamps remain valid.
+                     */
+                    clientUpdatedAt?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Saved record (merged server state) plus any finalize warnings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProtokollRecord"] & {
+                        warnings: string[];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            /** @description Patient does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    exportAmbulanzprotokollPage1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                patientId: components["parameters"]["patientIdPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Export document. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProtokollExport"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getBodyParts: {
+        parameters: {
+            query: {
+                idpatient: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Region-state map, one entry per key in contract/body-regions.json. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BodyParts"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateBodyPart: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    idpatient: number;
+                    /** @description One key from contract/body-regions.json. */
+                    bodyPartId: string;
+                    isClicked: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description Updated full body state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BodyParts"];
+                };
+            };
+            /** @description Unknown bodyPartId. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    queryAuditLog: {
+        parameters: {
+            query?: {
+                patientId?: number;
+                action?: "read" | "write" | "export" | "login" | "revoke";
+                /** @description Exact audited entity category, for example `patient` or `scene_snapshot`. */
+                entityType?: string;
+                from?: string;
+                to?: string;
+                page?: number;
+                pageSize?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Audit entries, newest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        total: number;
+                        entries: components["schemas"]["AuditEntry"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getMetrics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Counters. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        totalRequests?: number;
+                        authFailures?: number;
+                        dbErrors?: number;
+                        realtimeConnected?: boolean;
+                        realtimePendingQueue?: number;
+                        realtimeDroppedMessages?: number;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getHealth: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Healthy or degraded health report. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        status: "healthy" | "degraded";
+                        /** @constant */
+                        database?: "healthy";
+                        /** @enum {string} */
+                        realtime?: "healthy" | "degraded";
+                    };
+                };
+            };
+            /** @description Unhealthy. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        status: "unhealthy";
+                        /** @enum {string} */
+                        database: "healthy" | "unhealthy";
+                        /** @enum {string} */
+                        realtime: "healthy" | "degraded" | "unhealthy";
+                    };
+                };
+            };
+        };
+    };
+}

@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+using Ambulanzsystem.Api.Auth;
 using Ambulanzsystem.Api.Domain;
 
 namespace Ambulanzsystem.Api.Dtos;
@@ -5,8 +7,8 @@ namespace Ambulanzsystem.Api.Dtos;
 // Role is nullable on purpose: a missing role in the request must be a 400, never a silent
 // default — Role.Admin is enum value 0, so an unvalidated default would create admins by accident.
 public record CreateUserRequest(
-    string Username,
-    string Password,
+    [Required, MaxLength(ExternalStringLimits.Name)] string Username,
+    [Required, MinLength(PasswordPolicy.MinimumLength)] string Password,
     Role? Role,
     AccountType AccountType = AccountType.Permanent,
     int? EventSceneId = null);
@@ -27,4 +29,7 @@ public record UserResponse(
         u.RequiresPasswordChange, u.RevokedAt, u.CreatedAt, u.UpdatedAt);
 }
 
-public record ChangePasswordRequest(string Username, string Password, string NewPassword);
+public record ChangePasswordRequest(
+    [Required, MaxLength(ExternalStringLimits.Name)] string Username,
+    [Required] string Password,
+    [Required, MinLength(PasswordPolicy.MinimumLength)] string NewPassword);

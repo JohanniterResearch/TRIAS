@@ -14,21 +14,24 @@ import { AuthStore } from '../auth.store';
       <h1>Neues Passwort setzen</h1>
 
       @if (error) {
-        <p class="form-error">{{ error }}</p>
+        <p class="form-error" role="alert" aria-live="assertive">{{ error }}</p>
+      }
+      @if (busy) {
+        <p class="status-message" role="status" aria-live="polite">Passwort wird geändert.</p>
       }
 
       <form [formGroup]="form" (ngSubmit)="submit()" class="auth-form">
         <label>
           Benutzername
-          <input formControlName="username" autocomplete="username">
+          <input formControlName="username" autocomplete="username" />
         </label>
         <label>
           Aktuelles Passwort
-          <input formControlName="password" type="password" autocomplete="current-password">
+          <input formControlName="password" type="password" autocomplete="current-password" />
         </label>
         <label>
           Neues Passwort
-          <input formControlName="newPassword" type="password" autocomplete="new-password">
+          <input formControlName="newPassword" type="password" autocomplete="new-password" />
         </label>
         <button type="submit" [disabled]="busy || form.invalid">Passwort ändern</button>
       </form>

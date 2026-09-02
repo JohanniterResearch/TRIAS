@@ -5,14 +5,43 @@ namespace Ambulanzsystem.Api.Data;
 
 public static class DataSeeder
 {
+    private const string DeploymentIdKey = "deployment_id";
+
     // Runs on every startup; both halves are idempotent (guarded on "table is empty").
     public static async Task SeedAsync(AppDbContext db, IConfiguration config, IHostEnvironment env)
     {
+        await SeedDeploymentIdentityAsync(db, config, env);
         await SeedUsersAsync(db, config, env);
 
         if (env.IsDevelopment() && config.GetValue<bool>("Bootstrap:SeedDevSampleData"))
         {
             await SeedDevSampleDataAsync(db);
+        }
+    }
+
+    private static async Task SeedDeploymentIdentityAsync(AppDbContext db, IConfiguration config, IHostEnvironment env)
+    {
+        var deploymentId = config["BACKUP_EXPECTED_DEPLOYMENT_ID"];
+        // Compose maps this var with a `${VAR:-}` default (docker-compose.yml), so an operator who
+        // forgot to export it gets "" here, not null — must be rejected the same as a missing key,
+        // or an unrecoverable blank identity gets seeded into the immutable row below.
+        if (string.IsNullOrWhiteSpace(deploymentId))
+        {
+            deploymentId = env.IsDevelopment() ? "development"
+                : env.IsEnvironment("Test") || env.IsEnvironment("Testing") ? "test"
+                : throw new InvalidOperationException("BACKUP_EXPECTED_DEPLOYMENT_ID is required outside development and test environments.");
+        }
+
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO operational_metadata (key, value) VALUES ({DeploymentIdKey}, {deploymentId})
+            ON CONFLICT (key) DO NOTHING
+            """);
+
+        var existing = await db.Database.SqlQuery<string>($"SELECT value AS \"Value\" FROM operational_metadata WHERE key = {DeploymentIdKey}")
+            .SingleAsync();
+        if (existing != deploymentId)
+        {
+            throw new InvalidOperationException("BACKUP_EXPECTED_DEPLOYMENT_ID does not match the immutable database deployment identity.");
         }
     }
 

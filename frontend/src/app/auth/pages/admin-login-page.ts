@@ -4,6 +4,7 @@ import { Router, RouterLink } from '@angular/router';
 
 import { ApiClient } from '../../api/api-client';
 import { AuthStore } from '../auth.store';
+import { homeRouteForToken } from '../auth.rules';
 import { DevAccess } from '../components/dev-access';
 
 @Component({
@@ -15,17 +16,20 @@ import { DevAccess } from '../components/dev-access';
       <h1>Anmelden</h1>
 
       @if (error) {
-        <p class="form-error">{{ error }}</p>
+        <p class="form-error" role="alert" aria-live="assertive">{{ error }}</p>
+      }
+      @if (busy) {
+        <p class="status-message" role="status" aria-live="polite">Anmeldung läuft.</p>
       }
 
       <form [formGroup]="form" (ngSubmit)="submit()" class="auth-form">
         <label>
           Benutzername
-          <input formControlName="username" autocomplete="username" autofocus>
+          <input formControlName="username" autocomplete="username" autofocus />
         </label>
         <label>
           Passwort
-          <input formControlName="password" type="password" autocomplete="current-password">
+          <input formControlName="password" type="password" autocomplete="current-password" />
         </label>
         <button type="submit" [disabled]="busy || form.invalid">Einloggen</button>
       </form>
@@ -77,7 +81,7 @@ export class AdminLoginPage {
           username: credentials.username,
           requiresPasswordChange: result.requiresPasswordChange,
         });
-        this.router.navigateByUrl(result.requiresPasswordChange ? '/change-password' : '/admin');
+        this.router.navigateByUrl(homeRouteForToken(result.role, result.requiresPasswordChange));
       },
       error: () => {
         this.busy = false;
@@ -85,5 +89,4 @@ export class AdminLoginPage {
       },
     });
   }
-
 }

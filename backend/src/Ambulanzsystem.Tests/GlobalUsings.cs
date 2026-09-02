@@ -1,6 +1,6 @@
 global using Xunit;
 
-// Test classes share one physical Postgres database (see appsettings.Development.json) with no
-// per-test transaction isolation; xUnit's default parallel collections raced migrations/seeded
-// rows across hosts. Serializing here is the actual fix, not a workaround for a rare flake.
+// One isolated PostgreSQL database is created per test process by TestDatabaseIsolation. Tests
+// inside that process still share seeded rows, so keep them serial while allowing independent
+// test processes and E2E runs to execute without contaminating each other or the development DB.
 [assembly: CollectionBehavior(DisableTestParallelization = true)]

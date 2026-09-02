@@ -1,3 +1,4 @@
+using System.Data;
 using System.Text.Json;
 using Ambulanzsystem.Api.Auth;
 using Ambulanzsystem.Api.Data;
@@ -209,7 +210,8 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
     [Authorize(Policy = AuthPolicies.TriageWrite)]
     public async Task<IActionResult> UpdateTriageColor(int id, [FromBody] JsonElement body)
     {
-        var patient = await db.Patients.FindAsync(id);
+        await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
+        var patient = await RowLocks.PatientAsync(db, id);
         if (patient is null) return NotFound();
         if (!await SceneAccess.CanAccessAsync(User, db, patient.OperationSceneId)) return Forbid();
 
@@ -250,6 +252,7 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
 
         patient.FieldTimestampsJson = merge.Save();
         await db.SaveChangesAsync();
+        await tx.CommitAsync();
         await PublishPatientUpdatedAsync(patient, false);
 
         return Ok(PatientResponse.From(patient));
@@ -285,7 +288,8 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
     [Authorize(Policy = AuthPolicies.TriageWrite)]
     public async Task<IActionResult> UpdateRespiration(int id, [FromBody] JsonElement body)
     {
-        var patient = await db.Patients.FindAsync(id);
+        await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
+        var patient = await RowLocks.PatientAsync(db, id);
         if (patient is null) return NotFound();
         if (!await SceneAccess.CanAccessAsync(User, db, patient.OperationSceneId)) return Forbid();
 
@@ -311,6 +315,7 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
         }
 
         await db.SaveChangesAsync();
+        await tx.CommitAsync();
         await PublishPatientUpdatedAsync(patient, false);
         return Ok(PatientResponse.From(patient));
     }
@@ -319,7 +324,8 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
     [Authorize(Policy = AuthPolicies.TriageWrite)]
     public async Task<IActionResult> UpdateLocation(int id, [FromBody] JsonElement body)
     {
-        var patient = await db.Patients.FindAsync(id);
+        await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
+        var patient = await RowLocks.PatientAsync(db, id);
         if (patient is null) return NotFound();
         if (!await SceneAccess.CanAccessAsync(User, db, patient.OperationSceneId)) return Forbid();
 
@@ -345,6 +351,7 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
         }
 
         await db.SaveChangesAsync();
+        await tx.CommitAsync();
         await PublishPatientUpdatedAsync(patient, false);
         return Ok(PatientResponse.From(patient));
     }
@@ -430,7 +437,7 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
         if (!TryReadRequiredDouble(body, "lat", -90, 90, out var lat, out error)
             || !TryReadRequiredDouble(body, "lng", -180, 180, out var lng, out error)
             || !TryReadOptionalNonNegativeFiniteDouble(body, "accuracyMeters", out var accuracyMeters, out error)
-            || !TryReadOptionalString(body, "indoorLocation", out var indoorLocation, out error)
+            || !TryReadOptionalString(body, "indoorLocation", out var indoorLocation, out error, ExternalStringLimits.ShortText)
             || !TryReadClientUpdatedAt(body, out var clientUpdatedAt, out error))
         {
             return false;
@@ -484,7 +491,12 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
         return true;
     }
 
-    private static bool TryReadOptionalString(JsonElement body, string propertyName, out string? value, out ErrorResponse error)
+    private static bool TryReadOptionalString(
+        JsonElement body,
+        string propertyName,
+        out string? value,
+        out ErrorResponse error,
+        int? maxLength = null)
     {
         value = null;
         if (!body.TryGetProperty(propertyName, out var element) || element.ValueKind == JsonValueKind.Null)
@@ -500,6 +512,12 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
         }
 
         value = element.GetString();
+        if (maxLength is int limit && value!.Length > limit)
+        {
+            error = new ErrorResponse($"{propertyName} must not exceed {limit} characters.");
+            return false;
+        }
+
         error = null!;
         return true;
     }

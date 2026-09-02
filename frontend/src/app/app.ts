@@ -9,7 +9,7 @@ import { SessionRefreshService } from './auth/session-refresh.service';
   selector: 'app-root',
   imports: [RouterLink, RouterOutlet, SyncIndicator],
   templateUrl: './app.html',
-  styleUrl: './app.css'
+  styleUrl: './app.css',
 })
 export class App {
   protected readonly title = signal('Ambulanzsystem');

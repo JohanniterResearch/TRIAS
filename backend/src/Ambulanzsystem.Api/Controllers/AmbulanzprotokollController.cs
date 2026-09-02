@@ -1,3 +1,4 @@
+using System.Data;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Ambulanzsystem.Api.Auth;
@@ -34,7 +35,9 @@ public class AmbulanzprotokollController(AppDbContext db, AuditService audit, Sc
             patientId,
             record?.Status ?? "draft",
             formState,
-            record?.UpdatedAt ?? patient.CreatedAt,
+            // An unsaved/default-shaped protocol has no server edit timestamp. UnixEpoch keeps a
+            // real offline draft newer than this synthetic response after provisional-ID rekey.
+            record?.UpdatedAt ?? DateTime.UnixEpoch,
             record?.FinalizedAt));
     }
 
@@ -42,7 +45,8 @@ public class AmbulanzprotokollController(AppDbContext db, AuditService audit, Sc
     [RequestSizeLimit(2 * 1024 * 1024)]
     public async Task<IActionResult> Upsert(int patientId, UpsertProtokollRequest request)
     {
-        var patient = await db.Patients.FindAsync(patientId);
+        await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
+        var patient = await RowLocks.PatientAsync(db, patientId);
         if (patient is null) return NotFound();
         if (!await SceneAccess.CanAccessAsync(User, db, patient.OperationSceneId)) return Forbid();
 
@@ -123,6 +127,7 @@ public class AmbulanzprotokollController(AppDbContext db, AuditService audit, Sc
         audit.LogFieldsWrite(User, "ambulanzprotokoll", record.Id, patientId, diffs);
 
         await db.SaveChangesAsync();
+        await tx.CommitAsync();
 
         var bodyPartsJson = await db.Bodies.Where(b => b.PatientId == patientId).Select(b => b.BodyPartsJson).FirstOrDefaultAsync();
         var bodyParts = bodyPartsJson is null ? [] : JsonSerializer.Deserialize<Dictionary<string, int>>(bodyPartsJson)!;

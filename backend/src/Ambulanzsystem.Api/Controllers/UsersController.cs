@@ -32,6 +32,11 @@ public class UsersController(AppDbContext db, RefreshTokenService refreshTokens,
             return BadRequest(new ErrorResponse("role is required."));
         }
 
+        if (!PasswordPolicy.IsValid(request.Password))
+        {
+            return BadRequest(new ErrorResponse(PasswordPolicy.ErrorMessage));
+        }
+
         if (await db.Users.AnyAsync(u => u.Username == request.Username))
         {
             return Conflict(new ErrorResponse("Username already exists."));
@@ -40,6 +45,11 @@ public class UsersController(AppDbContext db, RefreshTokenService refreshTokens,
         if (request.AccountType == AccountType.Event && request.EventSceneId is null)
         {
             return BadRequest(new ErrorResponse("eventSceneId is required when accountType is event."));
+        }
+
+        if (request.EventSceneId is int eventSceneId && !await SceneAccess.IsTopLevelEventAsync(db, eventSceneId))
+        {
+            return BadRequest(new ErrorResponse("eventSceneId must reference an existing top-level event."));
         }
 
         var user = new User
@@ -70,32 +80,38 @@ public class UsersController(AppDbContext db, RefreshTokenService refreshTokens,
     [AllowPendingPasswordChange]
     public async Task<IActionResult> ChangePassword(ChangePasswordRequest request)
     {
-        if (request.NewPassword is null or { Length: < 8 })
+        if (!PasswordPolicy.IsValid(request.NewPassword))
         {
-            return BadRequest(new ErrorResponse("New password must be at least 8 characters."));
+            return BadRequest(new ErrorResponse(PasswordPolicy.ErrorMessage));
         }
 
-        var user = await db.Users.FirstOrDefaultAsync(u => u.Username == request.Username);
+        var subjectId = User.SubjectId();
+        if (subjectId is null) return Unauthorized(new ErrorResponse("Invalid current credentials."));
 
-        // Bound to the authenticated principal's own subject id: a correct password for a
-        // *different* account must not be enough to change it. Folded into the same "invalid
-        // credentials" response as a bad password so the error shape can't be used as a username
-        // oracle.
-        if (user is null || user.Id != User.SubjectId() || !BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        var user = await RowLocks.UserAsync(db, subjectId.Value);
+
+        // The same user-row lock is acquired by refresh rotation. It serializes password changes
+        // with creation of successor refresh tokens so no token can appear after the revoke-all
+        // query and survive with the new security stamp.
+        if (user is null || user.Username != request.Username ||
+            !BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
         {
             return Unauthorized(new ErrorResponse("Invalid current credentials."));
         }
 
-        user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
+        var passwordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
+
+        user.PasswordHash = passwordHash;
         user.RequiresPasswordChange = false;
         // Regenerating the stamp invalidates every outstanding access token for this user
         // (recreation spec §2.4) — a real security event, not just a local state change.
         user.SecurityStamp = Guid.NewGuid().ToString();
         // Never log the actual hash — just that a change happened.
         audit.LogFieldWrite(User, "user", user.Id, null, "password", null, "changed");
-        await db.SaveChangesAsync();
-
         await refreshTokens.RevokeAllForUserAsync(user.Id);
+        await db.SaveChangesAsync();
+        await transaction.CommitAsync();
 
         return NoContent();
     }
@@ -107,12 +123,25 @@ public class UsersController(AppDbContext db, RefreshTokenService refreshTokens,
         var user = await db.Users.FindAsync(id);
         if (user is null) return NotFound();
 
-        user.RevokedAt = DateTime.UtcNow;
-        user.RevokedBy = User.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub)?.Value;
-        audit.LogRevoke(User, null, "unknown", "user", id);
-        await db.SaveChangesAsync();
+        var actorType = User.TokenType();
+        if (user.Id == User.SubjectId()) return Forbid();
 
-        return NoContent();
+        if (actorType == TokenTypes.Leitstelle)
+        {
+            if (user.Role != Role.Responder || user.AccountType != AccountType.Event || user.EventSceneId is not int eventSceneId)
+            {
+                return Forbid();
+            }
+
+            if (!await SceneAccess.IsTopLevelEventAsync(db, eventSceneId) ||
+                !await SceneAccess.CanAdministerAsync(User, db, eventSceneId))
+            {
+                return Forbid();
+            }
+        }
+        return await RevokeUserAsync(
+            user,
+            User.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub)?.Value);
     }
 
     [HttpPost("self-cancel")]
@@ -148,11 +177,35 @@ public class UsersController(AppDbContext db, RefreshTokenService refreshTokens,
         var user = await db.Users.FindAsync(userId);
         if (user is null) return NotFound();
 
-        user.RevokedAt = DateTime.UtcNow;
-        user.RevokedBy = "self";
-        audit.LogRevoke(User, null, "unknown", "user", userId);
-        await db.SaveChangesAsync();
+        return await RevokeUserAsync(user, "self");
+    }
 
-        return NoContent();
+    private async Task<IActionResult> RevokeUserAsync(User user, string? revokedBy)
+    {
+        async Task<IActionResult> SaveAsync()
+        {
+            user.RevokedAt = DateTime.UtcNow;
+            user.RevokedBy = revokedBy;
+            audit.LogRevoke(User, null, "unknown", "user", user.Id);
+            await db.SaveChangesAsync();
+            return NoContent();
+        }
+
+        if (user.Role != Role.Admin || user.RevokedAt is not null) return await SaveAsync();
+
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        var activeAdmins = await db.Users
+            .FromSqlInterpolated($"SELECT * FROM users WHERE role = {Role.Admin.ToString()} AND revoked_at IS NULL ORDER BY id FOR UPDATE")
+            .ToListAsync();
+
+        if (activeAdmins.Count <= 1)
+        {
+            await transaction.RollbackAsync();
+            return Conflict(new ErrorResponse("The final active Admin cannot be revoked."));
+        }
+
+        var result = await SaveAsync();
+        await transaction.CommitAsync();
+        return result;
     }
 }

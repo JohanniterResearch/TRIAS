@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -12,11 +13,13 @@ namespace Ambulanzsystem.Tests;
 public class AuthFlowTests(WebApplicationFactory<Program> factory) : IClassFixture<WebApplicationFactory<Program>>
 {
     private HttpClient Client() => factory.CreateClient();
+    private static readonly ConcurrentDictionary<WebApplicationFactory<Program>, Task<string>> AdminTokens = new();
 
     private record TokenBearing(string? token, string? refreshToken);
 
-    private static Task<string> AdminLoginAsync(HttpClient client) =>
-        TestAuth.LoginAsync(client, "/api/admin-login", "admin", "dev-admin-password");
+    private Task<string> AdminLoginAsync(HttpClient client) =>
+        AdminTokens.GetOrAdd(factory, _ =>
+            TestAuth.LoginAsync(client, "/api/admin-login", "admin", "dev-admin-password"));
 
     [Fact]
     public async Task CreateUser_WithoutRole_Returns400_NotAdmin()
@@ -35,6 +38,32 @@ public class AuthFlowTests(WebApplicationFactory<Program> factory) : IClassFixtu
         });
 
         Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
+    }
+
+    [Fact]
+    public async Task CreateUser_RejectsBlankAndShortPasswords_ButAcceptsEightCharacters()
+    {
+        var client = Client();
+        client.DefaultRequestHeaders.Authorization = new("Bearer", await AdminLoginAsync(client));
+
+        foreach (var password in new[] { "", "       ", "1234567" })
+        {
+            var rejected = await client.PostAsJsonAsync("/api/users", new
+            {
+                username = $"password-policy-{Guid.NewGuid():N}",
+                password,
+                role = "responder",
+            });
+            Assert.Equal(HttpStatusCode.BadRequest, rejected.StatusCode);
+        }
+
+        var accepted = await client.PostAsJsonAsync("/api/users", new
+        {
+            username = $"password-policy-{Guid.NewGuid():N}",
+            password = "12345678",
+            role = "responder",
+        });
+        Assert.Equal(HttpStatusCode.Created, accepted.StatusCode);
     }
 
     [Fact]
@@ -162,6 +191,52 @@ public class AuthFlowTests(WebApplicationFactory<Program> factory) : IClassFixtu
         Assert.Equal(
             [HttpStatusCode.OK, HttpStatusCode.Unauthorized],
             rotations.Select(response => response.StatusCode).Order().ToArray());
+    }
+
+    [Fact]
+    public async Task RefreshAndLogout_MalformedTokens_ReturnControlledResponses()
+    {
+        foreach (var refreshToken in new[] { "", "not-base64!", new string('A', 1024) })
+        {
+            var refresh = await Client().PostAsJsonAsync("/api/refresh-token", new { refreshToken });
+            Assert.Contains(refresh.StatusCode, new[] { HttpStatusCode.BadRequest, HttpStatusCode.Unauthorized });
+        }
+
+        var admin = Client();
+        admin.DefaultRequestHeaders.Authorization = new("Bearer", await AdminLoginAsync(admin));
+        foreach (var refreshToken in new[] { "", "not-base64!", new string('A', 1024) })
+        {
+            var logout = await admin.PostAsJsonAsync("/api/logout", new { refreshToken });
+            Assert.Contains(logout.StatusCode, new[] { HttpStatusCode.BadRequest, HttpStatusCode.Unauthorized });
+        }
+    }
+
+    [Fact]
+    public async Task RefreshToken_RepeatedAbuse_UsesDedicatedRateLimit()
+    {
+        await using var isolatedFactory = factory.WithWebHostBuilder(_ => { });
+        var client = isolatedFactory.CreateClient();
+
+        for (var request = 0; request < 10; request++)
+        {
+            var response = await client.PostAsJsonAsync("/api/refresh-token", new
+            {
+                refreshToken = Convert.ToBase64String(Guid.NewGuid().ToByteArray()),
+            });
+            Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        }
+
+        var limited = await client.PostAsJsonAsync("/api/refresh-token", new
+        {
+            refreshToken = Convert.ToBase64String(Guid.NewGuid().ToByteArray()),
+        });
+        Assert.Equal(HttpStatusCode.TooManyRequests, limited.StatusCode);
+
+        // OpenAPI's RateLimited response promises the Error schema (status=error, message), not
+        // the empty body ASP.NET's rate limiter middleware emits by default.
+        var body = await limited.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("error", body.GetProperty("status").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(body.GetProperty("message").GetString()));
     }
 
     private static async Task<int> ReadAuditCountAsync(HttpClient client)

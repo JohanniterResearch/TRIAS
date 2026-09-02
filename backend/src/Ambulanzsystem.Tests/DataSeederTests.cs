@@ -18,8 +18,7 @@ namespace Ambulanzsystem.Tests;
 // a schema other than the one it was authored against.
 public class DataSeederTests : IAsyncLifetime
 {
-    private const string MaintenanceConnectionString =
-        "Host=localhost;Port=5434;Database=ambulanzsystem;Username=pls;Password=dev-only-password";
+    private static string MaintenanceConnectionString => TestDatabaseIsolation.MaintenanceConnectionString;
 
     private readonly string _testDbName = $"seedtest_{Guid.NewGuid():N}";
 
@@ -86,7 +85,8 @@ public class DataSeederTests : IAsyncLifetime
 
         var config = Config(
             ("Bootstrap:AdminUsername", "admin"),
-            ("Bootstrap:AdminPassword", "a-real-production-password"));
+            ("Bootstrap:AdminPassword", "a-real-production-password"),
+            ("BACKUP_EXPECTED_DEPLOYMENT_ID", "test-production-deployment"));
 
         await DataSeeder.SeedAsync(db, config, new FakeEnv(Environments.Production));
 
@@ -108,7 +108,8 @@ public class DataSeederTests : IAsyncLifetime
 
         var config = Config(
             ("Bootstrap:AdminPassword", "a-real-production-password"),
-            ("Bootstrap:SeedDevSampleData", "true"));
+            ("Bootstrap:SeedDevSampleData", "true"),
+            ("BACKUP_EXPECTED_DEPLOYMENT_ID", "test-production-deployment"));
 
         await DataSeeder.SeedAsync(db, config, new FakeEnv(Environments.Production));
 
@@ -148,5 +149,8 @@ public class DataSeederTests : IAsyncLifetime
 
         var users = await db.Users.ToListAsync();
         Assert.Single(users);
+        var deploymentId = await db.Database.SqlQuery<string>(
+            $"SELECT value AS \"Value\" FROM operational_metadata WHERE key = 'deployment_id'").SingleAsync();
+        Assert.Equal("development", deploymentId);
     }
 }

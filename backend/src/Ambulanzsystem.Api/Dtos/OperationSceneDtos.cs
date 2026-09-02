@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using Ambulanzsystem.Api.Domain;
 
 namespace Ambulanzsystem.Api.Dtos;
@@ -7,8 +8,8 @@ namespace Ambulanzsystem.Api.Dtos;
 // deactivated scene just because JSON-omitted bool binds to its type default.
 public record CreateOrUpdateSceneRequest(
     int? Id,
-    string Name,
-    string? Description,
+    [MaxLength(ExternalStringLimits.Name)] string Name,
+    [MaxLength(ExternalStringLimits.Description)] string? Description,
     int? OrganisationId,
     int? ParentSceneId,
     DateTime? AccessWindowStart,
