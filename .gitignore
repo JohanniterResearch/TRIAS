@@ -11,6 +11,10 @@ obj/
 /.claude/
 /.swarm/
 /.hermes/
+**/MISTAKES.md
+**/AGENTS.md
+**/CLAUDE.md
+**/*-codex.md
 scripts/agent-continuation*
 scripts/__pycache__/
 /backend/.idea/
