@@ -10,10 +10,11 @@ obj/
 .claude-flow/
 /.claude/
 /.swarm/
+/.hermes/
+scripts/agent-continuation*
+scripts/__pycache__/
 /backend/.idea/
 /ruvector.db
-
-# .hermes plans remain visible until the owner decides whether they are shared artifacts.
 
 # ignore /docs contents (not the dir itself, or the pilot negation below can never match)
 /docs/*
