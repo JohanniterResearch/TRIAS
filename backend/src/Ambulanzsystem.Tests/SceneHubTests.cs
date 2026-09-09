@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
@@ -32,6 +33,14 @@ public class SceneHubTests(WebApplicationFactory<Program> factory) : IClassFixtu
         new HubConnectionBuilder()
             .WithUrl(new Uri((appFactory ?? factory).Server.BaseAddress, "/hubs/scene"), options =>
             {
+                options.Transports = HttpTransportType.WebSockets;
+                options.SkipNegotiation = true;
+                options.WebSocketFactory = async (context, cancellationToken) =>
+                {
+                    var client = (appFactory ?? factory).Server.CreateWebSocketClient();
+                    client.ConfigureRequest = request => request.Headers.Authorization = $"Bearer {token}";
+                    return await client.ConnectAsync(context.Uri, cancellationToken);
+                };
                 options.HttpMessageHandlerFactory = _ => (appFactory ?? factory).Server.CreateHandler();
                 options.AccessTokenProvider = () => Task.FromResult<string?>(token);
             })

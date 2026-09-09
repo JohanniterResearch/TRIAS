@@ -68,21 +68,27 @@ public class AuthController(
 
     private async Task<IActionResult> LoginPrivileged(CredentialsRequest request, Role[] allowedRoles, bool asAdminResponse)
     {
-        var user = await db.Users.FirstOrDefaultAsync(u => u.Username == request.Username);
+        var userId = await db.Users.AsNoTracking().Where(u => u.Username == request.Username)
+            .Select(u => (int?)u.Id).SingleOrDefaultAsync();
+
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        var user = userId is int id ? await RowLocks.UserAsync(db, id) : null;
 
         if (user is null || user.RevokedAt is not null || !allowedRoles.Contains(user.Role)
+            || (user.AccountType == AccountType.Event && user.EventSceneId is null)
             || !BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
         {
             metrics.IncrementAuthFailures();
             return Unauthorized(new ErrorResponse("Invalid username or password."));
         }
 
-        await TouchLoginTimestamps(user);
+        TouchLoginTimestamps(user);
 
         var issued = tokens.IssueUserToken(user);
         var refresh = await refreshTokens.IssueAsync(user.Id);
         audit.LogLogin(user.Id, RoleClaim(user.Role), "user", user.Id);
         await db.SaveChangesAsync();
+        await transaction.CommitAsync();
 
         if (asAdminResponse)
         {
@@ -155,7 +161,8 @@ public class AuthController(
         }
 
         var wantedRole = request.role == "admin" ? Role.Admin : Role.Responder;
-        var user = await db.Users.Where(u => u.Role == wantedRole && u.RevokedAt == null)
+        var user = await db.Users.Where(u => u.Role == wantedRole && u.RevokedAt == null
+                && (u.AccountType != AccountType.Event || u.EventSceneId != null))
             .OrderBy(u => u.Id)
             .FirstOrDefaultAsync();
 
@@ -164,7 +171,7 @@ public class AuthController(
             return NotFound(new ErrorResponse("No seeded dev user for that role."));
         }
 
-        await TouchLoginTimestamps(user);
+        TouchLoginTimestamps(user);
 
         var issued = tokens.IssueUserToken(user, devPasswordChangeBypass: true);
         audit.LogLogin(user.Id, RoleClaim(user.Role), "user", user.Id);
@@ -173,11 +180,10 @@ public class AuthController(
         return Ok(new DevLoginResponse("ok", issued.Token, user.Username, false));
     }
 
-    private async Task TouchLoginTimestamps(User user)
+    private static void TouchLoginTimestamps(User user)
     {
         var now = DateTime.UtcNow;
         user.FirstLoginTime ??= now;
         user.LastLoginTime = now;
-        await db.SaveChangesAsync();
     }
 }

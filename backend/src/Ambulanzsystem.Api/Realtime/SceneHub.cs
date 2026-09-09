@@ -12,14 +12,22 @@ namespace Ambulanzsystem.Api.Realtime;
 // default) — DB writes are the source of truth; JoinScene's snapshot is the reconnect recovery
 // path, so there is no missed-message replay to implement.
 [Authorize(Policy = AuthPolicies.TriageWrite)]
-public class SceneHub(AppDbContext db, AuditService audit, RealtimePatientMapper patientMapper) : Hub
+public class SceneHub(AppDbContext db, AuditService audit, RealtimePatientMapper patientMapper,
+    SessionValidator sessions, SceneSubscriptions subscriptions) : Hub
 {
     public static string GroupName(int sceneId) => $"scene:{sceneId}";
 
     public async Task JoinScene(int sceneId)
     {
+        if (await sessions.ValidateAsync(Context.User!) != SessionValidity.Valid)
+        {
+            subscriptions.Remove(Context.ConnectionId);
+            throw new HubException("Session is no longer valid.");
+        }
+
         if (!await SceneAccess.CanAccessAsync(Context.User!, db, sceneId))
         {
+            subscriptions.Remove(Context.ConnectionId, sceneId);
             throw new HubException("Not authorized for this scene.");
         }
 
@@ -35,7 +43,7 @@ public class SceneHub(AppDbContext db, AuditService audit, RealtimePatientMapper
         // Do not subscribe the connection until the mandatory read audit is durable. If audit
         // persistence fails, this invocation fails closed and the caller cannot receive later
         // group broadcasts without retrying a fully audited join.
-        await Groups.AddToGroupAsync(Context.ConnectionId, GroupName(sceneId));
+        subscriptions.Add(Context.ConnectionId, Context.User!, sceneId);
 
         var snapshot = new SceneSnapshotMessage(
             "1", DateTime.UtcNow, sceneId,
@@ -45,6 +53,15 @@ public class SceneHub(AppDbContext db, AuditService audit, RealtimePatientMapper
         await Clients.Caller.SendAsync("SceneSnapshot", snapshot);
     }
 
-    public async Task LeaveScene(int sceneId) =>
-        await Groups.RemoveFromGroupAsync(Context.ConnectionId, GroupName(sceneId));
+    public Task LeaveScene(int sceneId)
+    {
+        subscriptions.Remove(Context.ConnectionId, sceneId);
+        return Task.CompletedTask;
+    }
+
+    public override Task OnDisconnectedAsync(Exception? exception)
+    {
+        subscriptions.Remove(Context.ConnectionId);
+        return base.OnDisconnectedAsync(exception);
+    }
 }

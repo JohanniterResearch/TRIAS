@@ -26,7 +26,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.Username).HasMaxLength(255).IsRequired();
             e.Property(x => x.Role).HasConversion<string>().HasMaxLength(32);
             e.Property(x => x.AccountType).HasConversion<string>().HasMaxLength(32);
-            e.HasOne(x => x.EventScene).WithMany().HasForeignKey(x => x.EventSceneId).OnDelete(DeleteBehavior.SetNull);
+            e.HasOne(x => x.EventScene).WithMany().HasForeignKey(x => x.EventSceneId).OnDelete(DeleteBehavior.Restrict);
         });
 
         b.Entity<Organisation>(e =>

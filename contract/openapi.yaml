@@ -484,15 +484,19 @@ paths:
     delete:
       tags: [operation-scenes]
       operationId: deleteOperationScene
-      description: Deletes an empty operation scene; scenes with linked patients remain protected.
-      summary: Delete an EMPTY scene. Policy AdminOnly. 409 while patients are linked (OD-02 default) — deactivate instead.
+      description: Deletes an empty operation scene; linked patients, sub-sites, and assigned user accounts (including revoked accounts) block deletion so account scope is preserved.
+      summary: Delete an EMPTY scene. Policy AdminOnly. Deactivate scenes with linked records instead.
       parameters: [{ $ref: "#/components/parameters/idPath" }]
       responses:
         "204": { description: Deleted. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
-        "409": { description: Patients linked; deletion blocked. }
+        "409":
+          description: Linked patients, sub-sites, or assigned user accounts (including revoked accounts); deletion blocked.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   # ----------------------------------------------------- organisations
   /api/organisations:

@@ -6,6 +6,7 @@ using Ambulanzsystem.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace Ambulanzsystem.Api.Controllers;
 
@@ -159,9 +160,23 @@ public class OperationScenesController(AppDbContext db, AuditService audit) : Co
             return Conflict(new ErrorResponse("Scene has sub-sites; remove or reassign them first."));
         }
 
+        if (await db.Users.AnyAsync(u => u.EventSceneId == id))
+        {
+            return Conflict(new ErrorResponse("Scene has assigned user accounts; deactivate instead of deleting."));
+        }
+
         db.OperationScenes.Remove(scene);
         audit.LogFieldWrite(User, "operation_scene", id, null, "deleted", scene.Name, null);
-        await db.SaveChangesAsync();
+        try
+        {
+            await db.SaveChangesAsync();
+        }
+        catch (DbUpdateException exception) when (exception.InnerException is PostgresException
+            { SqlState: PostgresErrorCodes.ForeignKeyViolation, ConstraintName: "fk_users_operation_scenes_event_scene_id" })
+        {
+            // An account may have been assigned after the precheck; the FK preserves its scope.
+            return Conflict(new ErrorResponse("Scene has assigned user accounts; deactivate instead of deleting."));
+        }
 
         return NoContent();
     }

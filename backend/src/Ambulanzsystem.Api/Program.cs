@@ -44,9 +44,11 @@ builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptio
 builder.Services.AddSingleton<TokenService>();
 builder.Services.AddScoped<RefreshTokenService>();
 builder.Services.AddScoped<AuditService>();
+builder.Services.AddScoped<SessionValidator>();
 builder.Services.AddSingleton<MetricsService>();
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<RealtimePublisher>();
+builder.Services.AddSingleton<SceneSubscriptions>();
 builder.Services.AddSingleton<RealtimePatientMapper>();
 builder.Services.AddScoped<SceneNotifier>();
 builder.Services.AddHostedService<RealtimeDispatcher>();
@@ -132,7 +134,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
-app.MapHub<SceneHub>("/hubs/scene");
+app.MapHub<SceneHub>("/hubs/scene", options => options.CloseOnAuthenticationExpiration = true);
 app.MapHealthEndpoint();
 if (File.Exists(spaIndex))
 {

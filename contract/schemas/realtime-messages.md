@@ -11,6 +11,17 @@ fail an API write (NFR-SAFE-03).
 - Auth: same JWT bearer as the API (query string `access_token` per SignalR convention).
   Any authenticated session (TriageWrite policy) may join groups within its scene scope;
   joining a scene outside the session's event subtree is rejected.
+- Every join revalidates the session and current scene access before reading its snapshot.
+  A subscription is registered only after the required read audit is durable.
+- Every delivery rechecks the session, JWT expiry, forced password change, and scene access
+  against the database. Revoked sessions and changed passwords invalidate established
+  connections' subscriptions; scene closure/access denial removes the affected subscription.
+  The Development-only password-change bypass retains the same rules as HTTP authentication.
+- Connections close on authentication expiry. Authorization lookup failures suppress delivery
+  and mark realtime health unhealthy; valid recipients do not mask a failure in the same dispatch.
+  Traffic already authorized before revocation commits may still be in flight.
+- Subscriptions are held in memory as connection IDs and required claims; bearer tokens are
+  not retained. Leave/disconnect removes subscriptions, and reconnect requires an audited join.
 
 ## Client → server methods
 

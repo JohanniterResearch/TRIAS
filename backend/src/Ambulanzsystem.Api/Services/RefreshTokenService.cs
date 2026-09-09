@@ -42,7 +42,8 @@ public class RefreshTokenService(AppDbContext db, IOptions<JwtOptions> options)
         var ownsTransaction = db.Database.CurrentTransaction is null;
         await using var transaction = ownsTransaction ? await db.Database.BeginTransactionAsync() : null;
         var user = await RowLocks.UserAsync(db, existing.UserId);
-        if (user is null || user.RevokedAt is not null)
+        if (user is null || user.RevokedAt is not null
+            || (user.AccountType == AccountType.Event && user.EventSceneId is null))
         {
             if (transaction is not null) await transaction.RollbackAsync();
             return null;
