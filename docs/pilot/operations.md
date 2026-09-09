@@ -7,6 +7,7 @@ values explicitly:
 
 ```sh
 export COMPOSE_PROJECT_NAME=ambulanz-production
+export BACKUP_EXPECTED_DEPLOYMENT_ID='<immutable identity for this deployment>'
 export BACKEND_IMAGE=ambulanzsystem-backend:2026-07-30
 export DB_PASSWORD='<database password>'
 export JWT_SECRET='<at least 32 random characters>'
@@ -25,6 +26,29 @@ The production overlay disables DEV login and demo seeding. The bootstrap Admin 
 only expected initial account after Stream A is integrated. In production the backend and
 database both bind only to `127.0.0.1`, so the host reverse proxy is the only intended
 public entrypoint.
+
+Choose the deployment identity once and retain the same value for every subsequent start,
+backup, and restore. For an existing database, use its `operational_metadata` row with
+`key = 'deployment_id'`; do not generate a replacement. Production rejects an absent or
+inconsistent identity. Database-only development startup (`docker compose up -d db`)
+does not require this variable.
+
+Before rolling out the event-scope repair, inventory existing orphaned event accounts:
+
+```sql
+SELECT id, role, revoked_at
+FROM users
+WHERE account_type = 'Event' AND event_scene_id IS NULL
+ORDER BY id;
+```
+
+Preserve these records. The repaired login, refresh, and live-session checks deny them;
+do not infer a missing assignment or convert them to permanent accounts. The restrictive
+foreign-key migration retains assigned accounts and existing orphan records and prevents
+event deletion while any account remains assigned, including revoked accounts. Run through
+the existing startup migration workflow and restart the backend to replace established
+realtime connections. Preserve database volumes and browser stores. Historical lost
+assignments and already-erased drafts cannot be recovered by this migration.
 
 ## Reverse proxy
 

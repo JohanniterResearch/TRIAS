@@ -19,6 +19,17 @@ if (( major < 2 || (major == 2 && minor < 24) || (major == 2 && minor == 24 && p
   exit 1
 fi
 
+# Use an empty env file so a local .env cannot hide missing operator configuration.
+env -u BACKUP_EXPECTED_DEPLOYMENT_ID docker compose --env-file /dev/null \
+  -f "$base" config --quiet db
+
+if env -u BACKUP_EXPECTED_DEPLOYMENT_ID DB_PASSWORD=placeholder JWT_SECRET=12345678901234567890123456789012 \
+  BOOTSTRAP_ADMIN_PASSWORD=placeholder PLS_ALLOWED_ORIGINS=https://example.invalid \
+  docker compose --env-file /dev/null -f "$base" -f "$production" --profile prod config --quiet 2>/dev/null; then
+  echo 'Production Compose unexpectedly rendered with BACKUP_EXPECTED_DEPLOYMENT_ID unset.' >&2
+  exit 1
+fi
+
 if DB_PASSWORD=placeholder JWT_SECRET=12345678901234567890123456789012 \
   BOOTSTRAP_ADMIN_PASSWORD=placeholder PLS_ALLOWED_ORIGINS=https://example.invalid \
   BACKUP_EXPECTED_DEPLOYMENT_ID= \

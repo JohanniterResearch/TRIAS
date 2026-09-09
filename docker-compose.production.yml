@@ -14,5 +14,6 @@ services:
       Bootstrap__SeedDevSampleData: "false"
       Features__EnableDevLogin: "false"
       PLS_ALLOWED_ORIGINS: ${PLS_ALLOWED_ORIGINS:?PLS_ALLOWED_ORIGINS is required}
+      BACKUP_EXPECTED_DEPLOYMENT_ID: ${BACKUP_EXPECTED_DEPLOYMENT_ID:?BACKUP_EXPECTED_DEPLOYMENT_ID is required}
     ports: !override
       - "127.0.0.1:${APP_HOST_PORT:-5000}:8080"
