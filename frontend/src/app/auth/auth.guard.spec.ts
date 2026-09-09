@@ -13,6 +13,7 @@ describe('route guard failure modes', () => {
     hasPersistedSession: vi.fn(() => true),
     requiresPasswordChange: vi.fn(() => false),
     activeSession: vi.fn(() => ({ tokenType: 'user' })),
+    sessionIdentity: vi.fn(),
     sessionMatches: vi.fn(() => true),
     markExpired: vi.fn(),
   };
@@ -21,10 +22,13 @@ describe('route guard failure modes', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    api.validateToken.mockReset();
     auth.hasPersistedSession.mockReturnValue(true);
     auth.requiresPasswordChange.mockReturnValue(false);
     auth.activeSession.mockReturnValue({ tokenType: 'user' });
     auth.sessionMatches.mockReturnValue(true);
+    const identity = {};
+    auth.sessionIdentity.mockImplementation(() => identity);
     TestBed.configureTestingModule({
       providers: [
         { provide: AuthStore, useValue: auth },
@@ -201,6 +205,7 @@ describe('route guard failure modes', () => {
 
     const result = run(guard, '/triage');
     session = { tokenType: 'user', refreshToken: 'refresh-b' };
+    auth.sessionIdentity.mockReturnValue({});
     refreshResult.error(new ApiRequestError(401, null));
 
     expect(await result).toEqual({ redirect: '/login' });
@@ -217,6 +222,7 @@ describe('route guard failure modes', () => {
 
     const result = run(guard, '/triage');
     session = { token: 'token-b', tokenType: 'admin' };
+    auth.sessionIdentity.mockReturnValue({});
     validation.next({ role: 'user' });
     validation.complete();
 
@@ -234,10 +240,126 @@ describe('route guard failure modes', () => {
 
     const result = run(guard, '/triage');
     session = { token: 'token-b', tokenType: 'admin', refreshToken: 'refresh-b' };
+    auth.sessionIdentity.mockReturnValue({});
     validation.error(new ApiRequestError(403, null));
 
     expect(await result).toEqual({ redirect: '/login' });
     expect(auth.markExpired).not.toHaveBeenCalled();
+  });
+
+  it('continues to the requested route after refresh rotates both credentials', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+    auth.activeSession.mockReturnValue({
+      token: 'old',
+      refreshToken: 'old-refresh',
+      tokenType: 'user',
+    });
+    api.validateToken.mockReturnValueOnce(throwError(() => new ApiRequestError(401, null)));
+    api.validateToken.mockReturnValueOnce(of({ role: 'user' }));
+    const refresh = TestBed.inject(SessionRefreshService) as any;
+    refresh.refreshSession.mockImplementation(() => {
+      auth.activeSession.mockReturnValue({
+        token: 'new',
+        refreshToken: 'new-refresh',
+        tokenType: 'user',
+      });
+      return of(undefined);
+    });
+    const guard = routes.find((route) => route.path === 'triage')!.canActivate![0] as CanActivateFn;
+
+    expect(await run(guard, '/triage')).toBe(true);
+    expect(api.validateToken).toHaveBeenCalledTimes(2);
+  });
+
+  it('accepts validation overlapping a background rotation of the same session', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+    auth.activeSession.mockReturnValue({
+      token: 'old',
+      refreshToken: 'old-refresh',
+      tokenType: 'user',
+    });
+    const validation = new Subject<{ role: string }>();
+    api.validateToken.mockReturnValue(validation);
+    const guard = routes.find((route) => route.path === 'triage')!.canActivate![0] as CanActivateFn;
+    const result = run(guard, '/triage');
+    auth.activeSession.mockReturnValue({
+      token: 'new',
+      refreshToken: 'new-refresh',
+      tokenType: 'user',
+    });
+    validation.next({ role: 'user' });
+    expect(await result).toBe(true);
+  });
+
+  it('keeps the scheduled validation retry through credential rotation', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+    auth.activeSession.mockReturnValue({
+      token: 'old',
+      refreshToken: 'old-refresh',
+      tokenType: 'user',
+    });
+    api.validateToken.mockReturnValueOnce(throwError(() => new TypeError('network')));
+    api.validateToken.mockReturnValueOnce(of({ role: 'user' }));
+    const guard = routes.find((route) => route.path === 'triage')!.canActivate![0] as CanActivateFn;
+    expect(await run(guard, '/triage')).toBe(true);
+    auth.activeSession.mockReturnValue({
+      token: 'new',
+      refreshToken: 'new-refresh',
+      tokenType: 'user',
+    });
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(api.validateToken).toHaveBeenCalledTimes(2);
+    expect(TestBed.inject(SyncStatusService).validationDegraded()).toBe(false);
+  });
+
+  it('revalidates rotated credentials when the degraded retry rejects its older token', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+    auth.activeSession.mockReturnValue({
+      token: 'old',
+      refreshToken: 'old-refresh',
+      tokenType: 'user',
+    });
+    const oldValidation = new Subject<never>();
+    api.validateToken.mockReturnValueOnce(throwError(() => new TypeError('network')));
+    api.validateToken.mockReturnValueOnce(oldValidation);
+    api.validateToken.mockReturnValueOnce(of({ role: 'user' }));
+    const guard = routes.find((route) => route.path === 'triage')!.canActivate![0] as CanActivateFn;
+    expect(await run(guard, '/triage')).toBe(true);
+    await vi.advanceTimersByTimeAsync(30_000);
+    auth.activeSession.mockReturnValue({
+      token: 'new',
+      refreshToken: 'new-refresh',
+      tokenType: 'user',
+    });
+    oldValidation.error(new ApiRequestError(401, null));
+    expect(auth.markExpired).not.toHaveBeenCalled();
+    expect(api.validateToken).toHaveBeenCalledTimes(3);
+    expect(TestBed.inject(SyncStatusService).validationDegraded()).toBe(false);
+  });
+
+  it('revalidates an initial 403 received after the same session rotates', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+    auth.activeSession.mockReturnValue({
+      token: 'old',
+      refreshToken: 'old-refresh',
+      tokenType: 'user',
+    });
+    const oldValidation = new Subject<never>();
+    api.validateToken.mockReturnValueOnce(oldValidation);
+    api.validateToken.mockReturnValueOnce(of({ role: 'user' }));
+    const guard = routes.find((route) => route.path === 'triage')!.canActivate![0] as CanActivateFn;
+    const result = run(guard, '/triage');
+    auth.activeSession.mockReturnValue({
+      token: 'new',
+      refreshToken: 'new-refresh',
+      tokenType: 'user',
+    });
+    oldValidation.error(new ApiRequestError(403, null));
+    expect(await result).toBe(true);
+    expect(auth.markExpired).not.toHaveBeenCalled();
+    expect(api.validateToken).toHaveBeenCalledTimes(2);
   });
 
   it('denies an expired responder before validation', async () => {

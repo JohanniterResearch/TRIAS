@@ -3,11 +3,11 @@ import { Component, ElementRef, inject, OnDestroy, signal, viewChild } from '@an
 import { ActivatedRoute, Router } from '@angular/router';
 import { Subscription } from 'rxjs';
 
-import { ApiClient } from '../../api/api-client';
+import { apiErrorMessage, ApiClient } from '../../api/api-client';
 import { MyAccess } from '../../auth/components/my-access';
 import { ResponderStateStore } from '../../responder/services/responder-state';
 import { OfflineQueueService } from '../../sync/offline-queue.service';
-import { ProtokollDraftRecord, ProtokollDraftStore } from '../services/protokoll-draft-store';
+import { ProtokollDraftStore } from '../services/protokoll-draft-store';
 
 type Status = 'draft' | 'finalized';
 type MarkerType =
@@ -735,17 +735,33 @@ export class AmbulanzprotokollPage implements OnDestroy {
   private readonly responderState = inject(ResponderStateStore);
   private readonly signatureCanvas = viewChild<ElementRef<HTMLCanvasElement>>('signatureCanvas');
   private readonly currentPatientId = signal(0);
-  private autosaveTimer = 0;
+  private editVersion = 0;
+  private currentWriteId: string | undefined;
+  private readonly savedSub: Subscription;
   private loadGeneration = 0;
   private loadSub: Subscription | null = null;
   private readonly routeSub: Subscription;
   private signaturePoint: { x: number; y: number } | null = null;
 
   constructor() {
+    this.savedSub = this.offlineQueue.protocolSaved.subscribe(
+      ({ patientId, sourcePatientId, writeId, record }) => {
+        if (
+          (patientId !== this.patientId() && sourcePatientId !== this.patientId()) ||
+          writeId !== this.currentWriteId
+        )
+          return;
+        this.status.set(record.status);
+        this.finalizedAt.set(record.finalizedAt ?? null);
+        this.warnings.set(record.warnings);
+        this.saveState.set(`server ${new Date(record.updatedAt).toLocaleTimeString()}`);
+      },
+    );
     this.routeSub = this.route.paramMap.subscribe((params) => {
       const patientId = Number(params.get('patientId') ?? this.responderState.patient()?.id ?? 0);
       if (!patientId || patientId === this.currentPatientId()) return;
-      window.clearTimeout(this.autosaveTimer);
+      this.currentWriteId = undefined;
+      this.editVersion++;
       this.loadSub?.unsubscribe();
       this.currentPatientId.set(patientId);
       const generation = ++this.loadGeneration;
@@ -759,7 +775,8 @@ export class AmbulanzprotokollPage implements OnDestroy {
   }
 
   ngOnDestroy(): void {
-    window.clearTimeout(this.autosaveTimer);
+    this.savedSub.unsubscribe();
+    this.loadGeneration++;
     this.loadSub?.unsubscribe();
     this.routeSub.unsubscribe();
   }
@@ -935,47 +952,46 @@ export class AmbulanzprotokollPage implements OnDestroy {
     if (status === 'finalized' && !this.finalizedAt()) {
       this.finalizedAt.set(new Date().toISOString());
     }
-    const patientId = this.patientId();
-    const formState = this.form();
-    const body = {
-      status,
-      formState: formState as unknown as Record<string, never>,
-      clientUpdatedAt: new Date().toISOString(),
-    };
-    this.saveLocal(patientId, status, formState);
-    this.persistRemote(patientId, body, this.loadGeneration);
+    this.persistSnapshot(true);
   }
 
-  private persistRemote(
-    patientId: number,
-    body: { status: Status; formState: Record<string, never>; clientUpdatedAt: string },
-    generation: number,
-  ): void {
-    this.api.saveProtokollPage1(patientId, body).subscribe({
-      next: (record) => {
-        if (generation !== this.loadGeneration || patientId !== this.patientId()) return;
-        this.status.set(record.status);
-        this.finalizedAt.set(record.finalizedAt ?? this.finalizedAt());
-        this.warnings.set(record.warnings);
-        this.saveState.set(`server ${new Date(record.updatedAt).toLocaleTimeString()}`);
-      },
-      error: () => {
-        this.offlineQueue
-          .queueProtocol(patientId, body)
-          .then(() => {
-            if (generation === this.loadGeneration && patientId === this.patientId())
-              this.saveState.set('local-only, sync pending');
-          })
-          .catch(() => {
-            if (generation !== this.loadGeneration || patientId !== this.patientId()) return;
-            this.saveState.set('local-only, queue failed');
-            this.warnings.update((warnings) => [
-              ...warnings,
-              'Lokale Sync-Warteschlange konnte nicht gespeichert werden.',
-            ]);
-          });
-      },
-    });
+  private persistSnapshot(flush = false): void {
+    const patientId = this.patientId();
+    const generation = this.loadGeneration;
+    const version = ++this.editVersion;
+    this.currentWriteId = undefined;
+    const body = {
+      status: this.status(),
+      formState: this.form() as unknown as Record<string, never>,
+      clientUpdatedAt: new Date().toISOString(),
+    };
+    this.saveState.set('lokal wird gespeichert');
+    this.offlineQueue
+      .queueProtocol(patientId, body, {
+        sceneId: this.responderState.scene()?.id,
+        finalizedAt: body.status === 'finalized' ? this.finalizedAt() : null,
+      })
+      .then((writeId) => {
+        if (
+          generation === this.loadGeneration &&
+          patientId === this.patientId() &&
+          version === this.editVersion
+        ) {
+          this.currentWriteId = writeId;
+          this.saveState.set('local-only, sync pending');
+        }
+        if (flush) void this.offlineQueue.flush(true).catch(() => undefined);
+      })
+      .catch(() => {
+        if (
+          generation !== this.loadGeneration ||
+          patientId !== this.patientId() ||
+          version !== this.editVersion
+        )
+          return;
+        this.saveState.set('local-only, queue failed');
+        this.warnings.set(['Lokale Sync-Warteschlange konnte nicht gespeichert werden.']);
+      });
   }
 
   protected downloadExport(): void {
@@ -990,7 +1006,8 @@ export class AmbulanzprotokollPage implements OnDestroy {
         link.click();
         URL.revokeObjectURL(url);
       },
-      error: () => this.warnings.set(['JSON Export konnte nicht geladen werden.']),
+      error: (error: unknown) =>
+        this.warnings.set([apiErrorMessage(error, 'JSON Export konnte nicht geladen werden.')]),
     });
   }
 
@@ -1004,10 +1021,19 @@ export class AmbulanzprotokollPage implements OnDestroy {
     // the older real-ID draft a few milliseconds before the newer provisional draft moves over.
     await this.offlineQueue.whenReady();
     if (generation !== this.loadGeneration || patientId !== this.patientId()) return;
-    const local = await this.drafts.get(patientId);
+    const version = this.editVersion;
+    const [cached, pending] = await Promise.all([
+      this.drafts.get(patientId).catch(() => null),
+      this.offlineQueue.pendingProtocol(patientId),
+    ]);
+    if (version !== this.editVersion) return;
+    // An older upload can be acknowledged after a newer edit; server time cannot order intent.
+    const local = pending ?? cached;
+    this.currentWriteId = pending?.writeId;
     if (generation !== this.loadGeneration || patientId !== this.patientId()) return;
     if (local) {
-      this.form.set(local.formState as FormState);
+      this.form.set(mergeState(defaultState(), local.formState as Partial<FormState>));
+      this.warnings.set(local.warnings ?? []);
       this.status.set(local.status);
       this.finalizedAt.set(local.finalizedAt ?? null);
       this.saveState.set(`lokal ${new Date(local.updatedAt).toLocaleTimeString()}`);
@@ -1016,7 +1042,13 @@ export class AmbulanzprotokollPage implements OnDestroy {
 
     this.loadSub = this.api.getProtokollPage1(patientId).subscribe({
       next: (record) => {
-        if (generation !== this.loadGeneration || patientId !== this.patientId()) return;
+        if (
+          generation !== this.loadGeneration ||
+          patientId !== this.patientId() ||
+          version !== this.editVersion ||
+          pending
+        )
+          return;
         const serverTime = Date.parse(record.updatedAt);
         const localTime = local ? Date.parse(local.updatedAt) : 0;
         if (!local || serverTime >= localTime) {
@@ -1032,33 +1064,7 @@ export class AmbulanzprotokollPage implements OnDestroy {
   }
 
   private queueAutosave(): void {
-    const patientId = this.patientId();
-    const generation = this.loadGeneration;
-    this.saveLocal(patientId, this.status(), this.form());
-    window.clearTimeout(this.autosaveTimer);
-    this.autosaveTimer = window.setTimeout(() => {
-      const body = {
-        status: this.status(),
-        formState: this.form() as unknown as Record<string, never>,
-        clientUpdatedAt: new Date().toISOString(),
-      };
-      this.persistRemote(patientId, body, generation);
-    }, 800);
-  }
-
-  private saveLocal(patientId: number, status: Status, formState: FormState): void {
-    const record: ProtokollDraftRecord = {
-      patientId,
-      sceneId: this.responderState.scene()?.id,
-      status,
-      updatedAt: new Date().toISOString(),
-      finalizedAt: status === 'finalized' ? (this.finalizedAt() ?? new Date().toISOString()) : null,
-      formState,
-    };
-    this.drafts.put(record).then(() => {
-      if (patientId === this.patientId())
-        this.saveState.set(`lokal ${new Date(record.updatedAt).toLocaleTimeString()}`);
-    });
+    this.persistSnapshot();
   }
 
   private computeGcs(): void {

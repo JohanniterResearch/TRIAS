@@ -363,8 +363,8 @@ export interface paths {
         put?: never;
         post?: never;
         /**
-         * Delete an EMPTY scene. Policy AdminOnly. 409 while patients are linked (OD-02 default) — deactivate instead.
-         * @description Deletes an empty operation scene; scenes with linked patients remain protected.
+         * Delete an EMPTY scene. Policy AdminOnly. Deactivate scenes with linked records instead.
+         * @description Deletes an empty operation scene; linked patients, sub-sites, and assigned user accounts (including revoked accounts) block deletion so account scope is preserved.
          */
         delete: operations["deleteOperationScene"];
         options?: never;
@@ -1695,12 +1695,14 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
-            /** @description Patients linked; deletion blocked. */
+            /** @description Linked patients, sub-sites, or assigned user accounts (including revoked accounts); deletion blocked. */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };

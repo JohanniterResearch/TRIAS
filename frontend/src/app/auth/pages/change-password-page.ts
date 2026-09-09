@@ -2,7 +2,7 @@ import { Component, inject } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router } from '@angular/router';
 
-import { ApiClient } from '../../api/api-client';
+import { apiErrorMessage, ApiClient } from '../../api/api-client';
 import { AuthStore } from '../auth.store';
 
 @Component({
@@ -59,9 +59,9 @@ export class ChangePasswordPage {
         this.auth.clear();
         this.router.navigateByUrl('/admin/login');
       },
-      error: () => {
+      error: (error: unknown) => {
         this.busy = false;
-        this.error = 'Passwort konnte nicht geändert werden.';
+        this.error = apiErrorMessage(error, 'Passwort konnte nicht geändert werden.');
       },
     });
   }

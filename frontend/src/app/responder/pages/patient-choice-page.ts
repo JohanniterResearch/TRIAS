@@ -2,7 +2,7 @@ import { Component, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 
-import { ApiClient } from '../../api/api-client';
+import { apiErrorMessage, ApiClient } from '../../api/api-client';
 import { MyAccess } from '../../auth/components/my-access';
 import { QrScanner } from '../../shared/qr-scanner';
 import { ResponderStateStore } from '../services/responder-state';
@@ -80,9 +80,9 @@ export class PatientChoicePage {
         this.busy.set(false);
         this.message.set('QR Code wurde ersetzt.');
       },
-      error: () => {
+      error: (error: unknown) => {
         this.busy.set(false);
-        this.error.set('QR Code konnte nicht ersetzt werden.');
+        this.error.set(apiErrorMessage(error, 'QR Code konnte nicht ersetzt werden.'));
       },
     });
   }

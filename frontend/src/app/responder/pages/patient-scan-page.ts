@@ -2,7 +2,7 @@ import { Component, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 
-import { ApiClient } from '../../api/api-client';
+import { apiErrorMessage, ApiClient } from '../../api/api-client';
 import { MyAccess } from '../../auth/components/my-access';
 import { QrScanner } from '../../shared/qr-scanner';
 import { OfflineQueueService } from '../../sync/offline-queue.service';
@@ -87,8 +87,13 @@ export class PatientScanPage {
         await this.captureLocation(result.patient.id);
         this.router.navigateByUrl(`/patient/${result.patient.id}`);
       },
-      error: () =>
-        this.fail('Patient QR Code ist unbekannt oder kann offline nicht geprüft werden.'),
+      error: (error: unknown) =>
+        this.fail(
+          apiErrorMessage(
+            error,
+            'Patient QR Code ist unbekannt oder kann offline nicht geprüft werden.',
+          ),
+        ),
     });
   }
 
@@ -112,9 +117,9 @@ export class PatientScanPage {
           await this.captureLocation(patient.id);
           this.router.navigateByUrl(`/patient/${patient.id}`);
         },
-        error: () =>
+        error: (error: unknown) =>
           navigator.onLine
-            ? this.fail('Patient konnte nicht angelegt werden.')
+            ? this.fail(apiErrorMessage(error, 'Patient konnte nicht angelegt werden.'))
             : this.createManualOffline(clientGeneratedId),
       });
   }

@@ -2,7 +2,7 @@ import { Component, inject } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 
-import { ApiClient } from '../../api/api-client';
+import { apiErrorMessage, ApiClient } from '../../api/api-client';
 import { OfflineQueueService } from '../../sync/offline-queue.service';
 import { QrScanner } from '../../shared/qr-scanner';
 import { AuthStore } from '../auth.store';
@@ -91,7 +91,8 @@ export class LoginPage {
           this.offlineQueue.flush().catch(() => undefined);
           this.router.navigateByUrl(homeRouteForToken('qr'));
         },
-        error: () => this.fail('QR Code ist ungültig oder abgelaufen.'),
+        error: (error: unknown) =>
+          this.fail(apiErrorMessage(error, 'QR Code ist ungültig oder abgelaufen.')),
       }),
     );
   }

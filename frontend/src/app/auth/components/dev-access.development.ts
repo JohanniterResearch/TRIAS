@@ -1,7 +1,7 @@
 import { Component, inject, input } from '@angular/core';
 import { Router } from '@angular/router';
 
-import { ApiClient } from '../../api/api-client';
+import { apiErrorMessage, ApiClient } from '../../api/api-client';
 import { AuthStore } from '../auth.store';
 import { homeRouteForToken } from '../auth.rules';
 
@@ -51,9 +51,9 @@ export class DevAccess {
           this.router.navigateByUrl(homeRouteForToken('user', result.requiresPasswordChange));
         }
       },
-      error: () => {
+      error: (error: unknown) => {
         this.busy = false;
-        this.error = 'DEV Login ist nicht verfügbar.';
+        this.error = apiErrorMessage(error, 'DEV Login ist nicht verfügbar.');
       },
     });
   }

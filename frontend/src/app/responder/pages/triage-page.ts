@@ -3,6 +3,7 @@ import {
   AfterViewInit,
   Component,
   ElementRef,
+  effect,
   inject,
   OnDestroy,
   signal,
@@ -12,10 +13,11 @@ import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import * as L from 'leaflet';
 
-import { ApiClient } from '../../api/api-client';
+import { apiErrorMessage, ApiClient } from '../../api/api-client';
 import type { components } from '../../api/openapi-types';
 import { MyAccess } from '../../auth/components/my-access';
 import { OfflineQueueService } from '../../sync/offline-queue.service';
+import { SyncStatusService } from '../../sync/sync-status.service';
 import { ResponderStateStore } from '../services/responder-state';
 import { TriageDraftStore } from '../services/triage-draft-store';
 
@@ -55,7 +57,11 @@ type TriageColor = components['schemas']['TriageColor'];
         <form [formGroup]="flagsForm" class="flag-grid">
           @for (flag of flags; track flag.name) {
             <label>
-              <input type="checkbox" [formControlName]="flag.name" (change)="saveFlags()" />
+              <input
+                type="checkbox"
+                [formControlName]="flag.name"
+                (change)="saveFlags(flag.name)"
+              />
               {{ flag.label }}
             </label>
           }
@@ -119,12 +125,12 @@ export class TriagePage implements AfterViewInit, OnDestroy {
   protected readonly error = signal('');
   protected readonly pendingProtocol = signal(history.state.pendingProtocol === true);
   protected readonly flagsForm = inject(FormBuilder).nonNullable.group({
-    respiration: [false],
-    blutung: [false],
-    radialispuls: [false],
-    transport: [false],
-    dringend: [false],
-    kontaminiert: [false],
+    respiration: [null as boolean | null],
+    blutung: [null as boolean | null],
+    radialispuls: [null as boolean | null],
+    transport: [null as boolean | null],
+    dringend: [null as boolean | null],
+    kontaminiert: [null as boolean | null],
   });
   protected readonly locationForm = inject(FormBuilder).nonNullable.group({
     lat: [null as number | null],
@@ -150,17 +156,24 @@ export class TriagePage implements AfterViewInit, OnDestroy {
   private readonly router = inject(Router);
   private readonly drafts = inject(TriageDraftStore);
   private readonly offlineQueue = inject(OfflineQueueService);
+  private readonly syncStatus = inject(SyncStatusService);
   private readonly locationMap = viewChild<ElementRef<HTMLDivElement>>('locationMap');
   private map: L.Map | null = null;
   private marker: L.CircleMarker | null = null;
+  private flagsRevision = 0;
 
   constructor() {
+    effect(() => {
+      this.syncStatus.lastSuccessfulQueueFlush();
+      this.syncStatus.pendingCount();
+      const patient = this.state.patient();
+      if (patient) void this.restoreFlags(patient);
+    });
     const patient = this.state.patient();
     if (!patient) {
       return;
     }
     const draft = this.drafts.get(patient.id);
-    this.flagsForm.patchValue(draft);
     this.locationForm.patchValue(draft);
   }
 
@@ -194,8 +207,27 @@ export class TriagePage implements AfterViewInit, OnDestroy {
     this.map?.remove();
   }
 
-  protected saveFlags(): void {
-    this.save(this.flagsForm.getRawValue());
+  protected saveFlags(flag: (typeof this.flags)[number]['name']): void {
+    this.save({ [flag]: this.flagsForm.controls[flag].value });
+  }
+
+  private async restoreFlags(patient: components['schemas']['Patient']): Promise<void> {
+    const revision = ++this.flagsRevision;
+    this.flagsForm.patchValue({
+      respiration: patient.atmung ?? null,
+      blutung: patient.blutung ?? null,
+      radialispuls: patient.radialispuls ?? null,
+      transport: patient.transport ?? null,
+      dringend: patient.dringend ?? null,
+      kontaminiert: patient.kontaminiert ?? null,
+    });
+    try {
+      const pending = await this.offlineQueue.pendingTriage(patient.id);
+      if (revision !== this.flagsRevision || this.state.patient()?.id !== patient.id) return;
+      for (const intent of pending) this.flagsForm.patchValue(intent);
+    } catch {
+      this.error.set('Lokale Triage-Änderungen konnten nicht geladen werden.');
+    }
   }
 
   protected save(body: object): void {
@@ -205,14 +237,19 @@ export class TriagePage implements AfterViewInit, OnDestroy {
     }
 
     const queuedBody = { ...body, clientUpdatedAt: new Date().toISOString() };
-    this.drafts.merge(patient.id, queuedBody);
+    ++this.flagsRevision;
     this.error.set('');
     this.api.updateTriage(patient.id, queuedBody).subscribe({
       next: (updated) => {
         this.state.setPatient(updated);
         this.message.set('Gespeichert.');
       },
-      error: () => {
+      error: (error: unknown) => {
+        const message = apiErrorMessage(error, '');
+        if (message) {
+          this.error.set(message);
+          return;
+        }
         this.offlineQueue
           .queueTriage(patient.id, queuedBody)
           .then(() => this.message.set('Lokal gespeichert, Sync ausstehend.'))
@@ -244,7 +281,8 @@ export class TriagePage implements AfterViewInit, OnDestroy {
           this.state.setPatient(updated);
           this.message.set('Position gespeichert.');
         },
-        error: () => this.error.set('Position konnte nicht gespeichert werden.'),
+        error: (error: unknown) =>
+          this.error.set(apiErrorMessage(error, 'Position konnte nicht gespeichert werden.')),
       });
   }
 

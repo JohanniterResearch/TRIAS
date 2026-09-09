@@ -1,7 +1,7 @@
 import { Component, inject, signal } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 
-import { ApiClient } from '../../api/api-client';
+import { apiErrorMessage, ApiClient } from '../../api/api-client';
 import type { components } from '../../api/openapi-types';
 import { MyAccess } from '../../auth/components/my-access';
 import { ResponderStateStore } from '../services/responder-state';
@@ -68,8 +68,8 @@ export class RoleSelectionPage {
         this.scenes.set(scenes.filter((scene) => scene.active));
         this.busy.set(false);
       },
-      error: () => {
-        this.error.set('Szenen konnten nicht geladen werden.');
+      error: (error: unknown) => {
+        this.error.set(apiErrorMessage(error, 'Szenen konnten nicht geladen werden.'));
         this.busy.set(false);
       },
     });

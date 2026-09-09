@@ -16,7 +16,7 @@ import { Router, RouterLink } from '@angular/router';
 import * as L from 'leaflet';
 import { Subscription, interval, switchMap } from 'rxjs';
 
-import { ApiClient } from '../../api/api-client';
+import { apiErrorMessage, ApiClient } from '../../api/api-client';
 import type { components } from '../../api/openapi-types';
 import { MyAccess } from '../../auth/components/my-access';
 import { ResponderStateStore } from '../../responder/services/responder-state';
@@ -282,9 +282,9 @@ export class SituationRoomPage implements AfterViewInit, OnDestroy {
             this.patients.set(patients);
             this.renderMarkers();
           },
-          error: () =>
+          error: (error: unknown) =>
             this.isCurrent(sceneId, sceneGeneration, refreshGeneration, realtimeRevision) &&
-            this.error.set('Patienten konnten nicht geladen werden.'),
+            this.error.set(apiErrorMessage(error, 'Patienten konnten nicht geladen werden.')),
         }),
     );
     this.refreshSub.add(
@@ -326,10 +326,10 @@ export class SituationRoomPage implements AfterViewInit, OnDestroy {
           if (sceneGeneration === this.sceneGeneration && this.selectedPatient()?.id === patientId)
             this.history.set(history);
         },
-        error: () =>
+        error: (error: unknown) =>
           sceneGeneration === this.sceneGeneration &&
           this.selectedPatient()?.id === patientId &&
-          this.error.set('Triage-Historie konnte nicht geladen werden.'),
+          this.error.set(apiErrorMessage(error, 'Triage-Historie konnte nicht geladen werden.')),
       });
   }
 
@@ -348,10 +348,10 @@ export class SituationRoomPage implements AfterViewInit, OnDestroy {
           this.upsertTeam(team);
           this.teamForm.reset({ name: '' });
         },
-        error: () =>
+        error: (error: unknown) =>
           generation === this.sceneGeneration &&
           this.sceneId() === sceneId &&
-          this.error.set('Team konnte nicht angelegt werden.'),
+          this.error.set(apiErrorMessage(error, 'Team konnte nicht angelegt werden.')),
       });
   }
 
@@ -371,10 +371,10 @@ export class SituationRoomPage implements AfterViewInit, OnDestroy {
           if (generation === this.sceneGeneration && this.sceneId() === sceneId)
             this.upsertTeam(updated);
         },
-        error: () =>
+        error: (error: unknown) =>
           generation === this.sceneGeneration &&
           this.sceneId() === sceneId &&
-          this.error.set('Team konnte nicht aktualisiert werden.'),
+          this.error.set(apiErrorMessage(error, 'Team konnte nicht aktualisiert werden.')),
       });
   }
 

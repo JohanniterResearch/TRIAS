@@ -10,7 +10,11 @@ const refreshLeadTimeMs = 2 * 60 * 1000;
 export class SessionRefreshService {
   private readonly api = inject(ApiClient);
   private readonly auth = inject(AuthStore);
-  private inFlight: { ownerRefreshToken: string; operation: Observable<void> } | null = null;
+  private inFlight: {
+    ownerRefreshToken: string;
+    ownerIdentity: object;
+    operation: Observable<void>;
+  } | null = null;
 
   constructor() {
     effect((onCleanup) => {
@@ -20,9 +24,10 @@ export class SessionRefreshService {
         return;
       }
 
+      const ownerIdentity = this.auth.sessionIdentity();
       const action = session.refreshToken
-        ? () => this.triggerRefresh()
-        : () => this.expireSession();
+        ? () => this.triggerRefresh(session.refreshToken, ownerIdentity)
+        : () => this.expireSession(ownerIdentity);
       const leadTime = session.refreshToken ? refreshLeadTimeMs : 0;
       const timer = window.setTimeout(action, Math.max(0, expiresAt - Date.now() - leadTime));
       onCleanup(() => window.clearTimeout(timer));
@@ -32,10 +37,14 @@ export class SessionRefreshService {
 
   refreshSession(): Observable<void> {
     const ownerRefreshToken = this.auth.activeSession()?.refreshToken;
+    const ownerIdentity = this.auth.sessionIdentity();
     if (!ownerRefreshToken) {
       return this.api.refreshSession();
     }
-    if (this.inFlight?.ownerRefreshToken === ownerRefreshToken) {
+    if (
+      this.inFlight?.ownerRefreshToken === ownerRefreshToken &&
+      this.inFlight.ownerIdentity === ownerIdentity
+    ) {
       return this.inFlight.operation;
     }
 
@@ -47,7 +56,7 @@ export class SessionRefreshService {
       }),
       shareReplay({ bufferSize: 1, refCount: false }),
     );
-    this.inFlight = { ownerRefreshToken, operation };
+    this.inFlight = { ownerRefreshToken, ownerIdentity, operation };
     return operation;
   }
 
@@ -61,29 +70,37 @@ export class SessionRefreshService {
     }
   }
 
-  private triggerRefresh(ownerRefreshToken = this.auth.activeSession()?.refreshToken): void {
+  private triggerRefresh(
+    ownerRefreshToken = this.auth.activeSession()?.refreshToken,
+    ownerIdentity = this.auth.sessionIdentity(),
+  ): void {
     if (
       !navigator.onLine ||
       !ownerRefreshToken ||
+      this.auth.sessionIdentity() !== ownerIdentity ||
       this.auth.activeSession()?.refreshToken !== ownerRefreshToken
     ) {
       return;
     }
     this.refreshSession().subscribe({
       error: (error) => {
-        if (this.auth.activeSession()?.refreshToken !== ownerRefreshToken) {
+        if (
+          this.auth.sessionIdentity() !== ownerIdentity ||
+          this.auth.activeSession()?.refreshToken !== ownerRefreshToken
+        ) {
           return;
         }
         if (isAuthFailure(error)) {
           this.expireSession();
         } else {
-          window.setTimeout(() => this.triggerRefresh(ownerRefreshToken), 30_000);
+          window.setTimeout(() => this.triggerRefresh(ownerRefreshToken, ownerIdentity), 30_000);
         }
       },
     });
   }
 
-  private expireSession(): void {
+  private expireSession(ownerIdentity = this.auth.sessionIdentity()): void {
+    if (this.auth.sessionIdentity() !== ownerIdentity) return;
     const session = this.auth.activeSession();
     this.auth.markExpired();
     location.assign(

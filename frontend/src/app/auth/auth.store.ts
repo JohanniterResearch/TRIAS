@@ -26,6 +26,8 @@ const emptyState: AuthState = { admin: null, responder: null };
 @Injectable({ providedIn: 'root' })
 export class AuthStore {
   private readonly state = signal<AuthState>(this.load());
+  private readonly identity = signal<object>({});
+  readonly sessionIdentity = this.identity.asReadonly();
 
   readonly adminSession = computed(() => this.state().admin);
   readonly responderSession = computed(() => this.state().responder);
@@ -78,6 +80,7 @@ export class AuthStore {
       active.tokenType === 'admin' || active.tokenType === 'leitstelle'
         ? { admin: refreshed, responder: null }
         : { admin: null, responder: refreshed },
+      false,
     );
   }
 
@@ -112,7 +115,8 @@ export class AuthStore {
     return expiresAt !== null && expiresAt <= Date.now();
   }
 
-  private save(state: AuthState): void {
+  private save(state: AuthState, replaceIdentity = true): void {
+    if (replaceIdentity) this.identity.set({});
     this.state.set(state);
     localStorage.setItem(storageKey, JSON.stringify(state));
   }

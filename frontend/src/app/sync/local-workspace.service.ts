@@ -13,7 +13,8 @@ export class LocalWorkspaceService {
   private readonly protocolDrafts = inject(ProtokollDraftStore);
 
   async clear(): Promise<void> {
-    await Promise.all([this.offlineQueue.clear(), this.protocolDrafts.clear()]);
+    await this.offlineQueue.clear();
+    await this.protocolDrafts.clear();
     this.responderState.clear();
     this.triageDrafts.clear();
   }

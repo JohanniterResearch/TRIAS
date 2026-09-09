@@ -1,9 +1,9 @@
 import { Component, inject } from '@angular/core';
 import { Router } from '@angular/router';
 
-import { ApiClient } from '../../api/api-client';
+import { apiErrorMessage, ApiClient } from '../../api/api-client';
 import { LocalWorkspaceService } from '../../sync/local-workspace.service';
-import { SyncStatusService } from '../../sync/sync-status.service';
+import { OfflineQueueService } from '../../sync/offline-queue.service';
 import { AuthStore } from '../auth.store';
 
 @Component({
@@ -15,17 +15,16 @@ import { AuthStore } from '../auth.store';
           <strong>{{ label(session.tokenType) }}</strong>
           <span>{{ session.username || 'QR Sitzung' }}</span>
         </div>
-        <button
-          type="button"
-          (click)="selfCancel()"
-          [disabled]="busy || !sync.queueReady() || sync.pendingCount() > 0"
-        >
+        <button type="button" (click)="selfCancel()" [disabled]="busy || queue.hasPendingWork()">
           {{ busy ? 'Beende...' : 'Zugang beenden' }}
         </button>
-        @if (sync.pendingCount() > 0) {
+        @if (queue.hasPendingWork()) {
           <p class="form-error" role="alert" aria-live="assertive">
             Zugang kann erst nach dem Abschluss der Synchronisierung beendet werden.
           </p>
+        }
+        @if (error) {
+          <p class="form-error" role="alert" aria-live="assertive">{{ error }}</p>
         }
       </aside>
     }
@@ -33,18 +32,29 @@ import { AuthStore } from '../auth.store';
 })
 export class MyAccess {
   protected readonly auth = inject(AuthStore);
-  protected readonly sync = inject(SyncStatusService);
+  protected readonly queue = inject(OfflineQueueService);
   protected busy = false;
+  protected error = '';
 
   private readonly api = inject(ApiClient);
   private readonly router = inject(Router);
   private readonly localWorkspace = inject(LocalWorkspaceService);
 
   protected selfCancel(): void {
+    if (this.busy || this.queue.hasPendingWork()) return;
     this.busy = true;
+    this.error = '';
     this.api.selfCancel().subscribe({
       next: () => this.finish(),
-      error: () => this.finish(),
+      error: (error: unknown) => {
+        const message = apiErrorMessage(error, '');
+        if (message) {
+          this.busy = false;
+          this.error = message;
+          return;
+        }
+        this.finish();
+      },
     });
   }
 
@@ -53,8 +63,14 @@ export class MyAccess {
   }
 
   private async finish(): Promise<void> {
-    await this.localWorkspace.clear();
-    this.auth.clear();
-    await this.router.navigateByUrl('/login');
+    try {
+      await this.localWorkspace.clear();
+      this.auth.clear();
+      await this.router.navigateByUrl('/login');
+    } catch {
+      // Pending work must keep its session and workspace when clearing is refused.
+    } finally {
+      this.busy = false;
+    }
   }
 }

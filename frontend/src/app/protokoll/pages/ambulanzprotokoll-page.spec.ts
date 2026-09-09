@@ -39,7 +39,7 @@ describe('AmbulanzprotokollPage route reuse', () => {
         },
         {
           provide: OfflineQueueService,
-          useValue: { queueProtocol: vi.fn(), whenReady: () => Promise.resolve() },
+          useValue: queue(),
         },
         { provide: ResponderStateStore, useValue: { patient: () => null, scene: () => null } },
       ],
@@ -56,7 +56,46 @@ describe('AmbulanzprotokollPage route reuse', () => {
     expect((page as any).form().patient.vorname).toBe('B');
   });
 
-  it('displays warnings returned only by the protocol PUT response', async () => {
+  it('keeps pending intent ahead of an older acknowledgement with a later server timestamp', async () => {
+    const offline = queue();
+    offline.pendingProtocol.mockResolvedValue({
+      ...record('Pending'),
+      patientId: 1,
+      writeId: 'pending',
+    });
+    TestBed.configureTestingModule({
+      providers: [
+        {
+          provide: ActivatedRoute,
+          useValue: { paramMap: new BehaviorSubject(convertToParamMap({ patientId: '1' })) },
+        },
+        { provide: Router, useValue: { navigateByUrl: vi.fn() } },
+        {
+          provide: ApiClient,
+          useValue: {
+            getProtokollPage1: () =>
+              of({ ...record('Acknowledged'), updatedAt: '2026-01-01T12:00:00Z' }),
+          },
+        },
+        {
+          provide: ProtokollDraftStore,
+          useValue: {
+            get: () =>
+              Promise.resolve({ ...record('Acknowledged'), updatedAt: '2026-01-01T12:00:00Z' }),
+          },
+        },
+        { provide: OfflineQueueService, useValue: offline },
+        { provide: ResponderStateStore, useValue: { patient: () => null, scene: () => null } },
+      ],
+    });
+    const page = TestBed.runInInjectionContext(() => new AmbulanzprotokollPage());
+    await tick();
+    expect((page as any).form().patient.vorname).toBe('Pending');
+    page.ngOnDestroy();
+  });
+
+  it('displays matching queue acknowledgements and ignores superseded results', async () => {
+    const offline = queue();
     const params = new BehaviorSubject(convertToParamMap({ patientId: '1' }));
     TestBed.configureTestingModule({
       providers: [
@@ -75,7 +114,7 @@ describe('AmbulanzprotokollPage route reuse', () => {
         },
         {
           provide: OfflineQueueService,
-          useValue: { queueProtocol: vi.fn(), whenReady: () => Promise.resolve() },
+          useValue: offline,
         },
         { provide: ResponderStateStore, useValue: { patient: () => null, scene: () => null } },
       ],
@@ -84,8 +123,40 @@ describe('AmbulanzprotokollPage route reuse', () => {
     await tick();
 
     (page as any).save('finalized');
-
+    await tick();
+    offline.protocolSaved.next({
+      patientId: 1,
+      writeId: 'superseded',
+      record: { ...record('A'), warnings: ['Wrong'] },
+    });
+    expect((page as any).warnings()).not.toContain('Wrong');
+    offline.protocolSaved.next({
+      patientId: 1,
+      writeId: 'write-1',
+      record: {
+        ...record('A'),
+        status: 'finalized',
+        finalizedAt: '2026-01-01T12:00:00Z',
+        warnings: ['Server-only warning.'],
+      },
+    });
     expect((page as any).warnings()).toContain('Server-only warning.');
+    expect((page as any).status()).toBe('finalized');
+    expect((page as any).finalizedAt()).toBe('2026-01-01T12:00:00Z');
+    expect(offline.flush).toHaveBeenCalledWith(true);
+    (page as any).setValue('patient.vorname', 'Newest');
+    expect(offline.queueProtocol).toHaveBeenLastCalledWith(
+      1,
+      expect.objectContaining({
+        formState: expect.objectContaining({
+          patient: expect.objectContaining({ vorname: 'Newest' }),
+        }),
+      }),
+      expect.anything(),
+    );
+    page.ngOnDestroy();
+    await tick();
+    expect(offline.queueProtocol).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -100,4 +171,14 @@ function record(name: string): any {
 
 function tick(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve));
+}
+
+function queue() {
+  return {
+    queueProtocol: vi.fn().mockResolvedValue('write-1'),
+    whenReady: () => Promise.resolve(),
+    pendingProtocol: vi.fn().mockResolvedValue(null),
+    protocolSaved: new Subject<any>(),
+    flush: vi.fn().mockResolvedValue(undefined),
+  };
 }

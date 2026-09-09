@@ -8,6 +8,25 @@ describe('AuthStore session matching', () => {
     TestBed.configureTestingModule({});
   });
 
+  it('retains in-memory identity across rotation, replacing it on install, expiry and clear', () => {
+    const auth = TestBed.inject(AuthStore);
+    const initial = auth.sessionIdentity();
+    auth.setResponderSession({ token: 'first', refreshToken: 'first-refresh', tokenType: 'user' });
+    const installed = auth.sessionIdentity();
+    expect(installed).not.toBe(initial);
+    auth.refreshTokens('second', 'second-refresh');
+    expect(auth.sessionIdentity()).toBe(installed);
+    expect(localStorage.getItem('ambulanzsystem.auth.v1')).not.toContain('identity');
+    auth.markExpired();
+    const expired = auth.sessionIdentity();
+    expect(expired).not.toBe(installed);
+    auth.setAdminSession({ token: 'admin', tokenType: 'admin' });
+    const replaced = auth.sessionIdentity();
+    expect(replaced).not.toBe(expired);
+    auth.clear();
+    expect(auth.sessionIdentity()).not.toBe(replaced);
+  });
+
   it.each(['user', 'qr'] as const)(
     'rejects an unflagged expired %s JWT for responder/QR access',
     (tokenType) => {

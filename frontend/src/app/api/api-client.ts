@@ -20,6 +20,21 @@ export function isAuthFailure(error: unknown): error is ApiRequestError {
   return error instanceof ApiRequestError && (error.status === 401 || error.status === 403);
 }
 
+export function apiErrorMessage(error: unknown, fallback: string): string {
+  if (!(error instanceof ApiRequestError) || !isErrorBody(error.body)) return fallback;
+  return error.body.message;
+}
+
+function isErrorBody(value: unknown): value is { message: string } {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'message' in value &&
+    typeof value.message === 'string' &&
+    value.message.length > 0
+  );
+}
+
 type QrLoginRequest = paths['/api/qr-login']['post']['requestBody']['content']['application/json'];
 type QrLoginResponse =
   paths['/api/qr-login']['post']['responses'][200]['content']['application/json'];
@@ -141,13 +156,17 @@ export class ApiClient {
 
   refreshSession(): Observable<void> {
     const refreshToken = this.auth.activeSession()?.refreshToken;
+    const owner = this.auth.sessionIdentity();
     if (!refreshToken) {
       return throwError(() => new Error('session cannot be refreshed'));
     }
 
     return this.unwrap(this.client.POST('/api/refresh-token', { body: { refreshToken } })).pipe(
       tap((tokens: RefreshTokenResponse) => {
-        if (this.auth.activeSession()?.refreshToken !== refreshToken) {
+        if (
+          this.auth.sessionIdentity() !== owner ||
+          this.auth.activeSession()?.refreshToken !== refreshToken
+        ) {
           throw new Error('active session changed while refresh was in flight');
         }
         this.auth.refreshTokens(tokens.token, tokens.refreshToken);

@@ -25,14 +25,23 @@ export function requireSession(
     const activeSession = auth.activeSession();
     const activeType = activeSession?.tokenType;
     const sessionRefreshToken = activeSession?.refreshToken;
-    const sessionOwner = sessionRefreshToken ?? activeSession?.token;
-    const sessionOwnerKey = sessionOwner ?? activeSession;
+    const sessionOwnerKey = auth.sessionIdentity();
     let refreshFailed = false;
-    const sessionStillOwned = () => {
-      const session = auth.activeSession();
-      return !!session && (session.refreshToken ?? session.token) === sessionOwner;
-    };
+    const sessionStillOwned = () =>
+      !!auth.activeSession() && auth.sessionIdentity() === sessionOwnerKey;
     const staleOutcome = () => of(router.createUrlTree([loginRoute(requirement, activeType)]));
+    const validateCurrentToken = (): ReturnType<ApiClient['validateToken']> => {
+      const token = auth.activeSession()?.token;
+      return api
+        .validateToken()
+        .pipe(
+          catchError((error) =>
+            isAuthFailure(error) && sessionStillOwned() && auth.activeSession()?.token !== token
+              ? validateCurrentToken()
+              : throwError(() => error),
+          ),
+        );
+    };
     const retryValidation = (delay = validationRetryDelayMs) => {
       if (validationRetryTimers.has(sessionOwnerKey)) {
         return;
@@ -42,7 +51,7 @@ export function requireSession(
           validationRetryTimers.delete(sessionOwnerKey);
           return;
         }
-        api.validateToken().subscribe({
+        validateCurrentToken().subscribe({
           next: (result) => {
             validationRetryTimers.delete(sessionOwnerKey);
             if (
@@ -86,7 +95,7 @@ export function requireSession(
     const validate = () =>
       !sessionStillOwned()
         ? staleOutcome()
-        : api.validateToken().pipe(
+        : validateCurrentToken().pipe(
             map((result) => {
               if (!sessionStillOwned()) {
                 return router.createUrlTree([loginRoute(requirement, activeType)]);

@@ -7,6 +7,7 @@ export interface ProtokollDraftRecord {
   updatedAt: string;
   finalizedAt?: string | null;
   formState: unknown;
+  warnings?: string[];
 }
 
 const dbName = 'ambulanzsystem-protokoll';
@@ -50,7 +51,14 @@ export class ProtokollDraftStore {
   ): Promise<T> {
     const db = await this.open();
     try {
-      return await work(db.transaction(storeName, mode).objectStore(storeName));
+      const transaction = db.transaction(storeName, mode);
+      const completed = new Promise<void>((resolve, reject) => {
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
+        transaction.onabort = () => reject(transaction.error);
+      });
+      const [result] = await Promise.all([work(transaction.objectStore(storeName)), completed]);
+      return result;
     } finally {
       db.close();
     }

@@ -2,7 +2,7 @@ import { Component, inject, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { EMPTY, Subject, catchError, concatMap, tap } from 'rxjs';
 
-import { ApiClient } from '../../api/api-client';
+import { apiErrorMessage, ApiClient } from '../../api/api-client';
 import { MyAccess } from '../../auth/components/my-access';
 import { ResponderStateStore } from '../services/responder-state';
 
@@ -110,13 +110,15 @@ export class BodyMapPage {
                 this.bodyPartsRevision++;
                 this.applyServerBody(body.bodyParts);
               }),
-              catchError(() => {
+              catchError((error: unknown) => {
                 const revision = ++this.bodyPartsRevision;
                 if (this.latestIntent.get(intent.region)?.generation === intent.generation) {
                   this.latestIntent.delete(intent.region);
                   this.updateDisplay();
                 }
-                this.error.set('Körpermarkierung konnte nicht gespeichert werden.');
+                this.error.set(
+                  apiErrorMessage(error, 'Körpermarkierung konnte nicht gespeichert werden.'),
+                );
                 return this.api.getBodyParts(intent.patientId).pipe(
                   tap((body) => {
                     if (this.bodyPartsRevision === revision) {
@@ -217,7 +219,7 @@ export class BodyMapPage {
           this.applyServerBody(body.bodyParts);
         }
       },
-      error: () => {
+      error: (error: unknown) => {
         if (this.bodyPartsRevision !== revision) {
           return;
         }
@@ -225,6 +227,7 @@ export class BodyMapPage {
           this.regionList().map((region) => [region, 0]),
         );
         this.updateDisplay();
+        this.error.set(apiErrorMessage(error, 'Körperkarte konnte nicht geladen werden.'));
       },
     });
   }

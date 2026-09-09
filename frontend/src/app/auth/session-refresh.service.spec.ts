@@ -7,6 +7,7 @@ import { SessionRefreshService } from './session-refresh.service';
 
 describe('SessionRefreshService', () => {
   it('shares one in-flight token rotation with all callers', () => {
+    const identity = {};
     const response = new Subject<void>();
     const api = { refreshSession: vi.fn(() => response.asObservable()) };
     TestBed.configureTestingModule({
@@ -18,6 +19,7 @@ describe('SessionRefreshService', () => {
           useValue: {
             activeSession: () => ({ refreshToken: 'refresh-a', tokenType: 'user' }),
             tokenExpiresAt: () => null,
+            sessionIdentity: () => identity,
             markExpired: vi.fn(),
           },
         },
@@ -36,6 +38,7 @@ describe('SessionRefreshService', () => {
   });
 
   it('starts an independent refresh when the active session changes', () => {
+    const identity = {};
     const firstResponse = new Subject<void>();
     const secondResponse = new Subject<void>();
     const api = {
@@ -54,6 +57,7 @@ describe('SessionRefreshService', () => {
           useValue: {
             activeSession: () => session,
             tokenExpiresAt: () => null,
+            sessionIdentity: () => identity,
             markExpired: vi.fn(),
           },
         },
@@ -72,13 +76,37 @@ describe('SessionRefreshService', () => {
     secondResponse.complete();
   });
 
+  it('ignores token-only expiry owned by an earlier session', () => {
+    const auth = {
+      activeSession: () => ({ tokenType: 'qr' }),
+      tokenExpiresAt: () => null,
+      sessionIdentity: () => currentIdentity,
+      markExpired: vi.fn(),
+    };
+    let currentIdentity = {};
+    const previousIdentity = currentIdentity;
+    TestBed.configureTestingModule({
+      providers: [
+        SessionRefreshService,
+        { provide: ApiClient, useValue: {} },
+        { provide: AuthStore, useValue: auth },
+      ],
+    });
+    const service = TestBed.inject(SessionRefreshService);
+    currentIdentity = {};
+    (service as any).expireSession(previousIdentity);
+    expect(auth.markExpired).not.toHaveBeenCalled();
+  });
+
   it('does not expire or redirect a replacement session after a stale refresh 401', () => {
+    const identity = {};
     const response = new Subject<void>();
     const api = { refreshSession: vi.fn(() => response.asObservable()) };
     let session = { refreshToken: 'refresh-a', tokenType: 'user' };
     const auth = {
       activeSession: () => session,
       tokenExpiresAt: () => null,
+      sessionIdentity: () => identity,
       markExpired: vi.fn(),
     };
     const assign = vi.fn();
