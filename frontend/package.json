@@ -1,0 +1,53 @@
+{
+  "name": "ambulanzsystem-frontend",
+  "version": "0.0.0",
+  "scripts": {
+    "ng": "ng",
+    "prestart": "node scripts/copy-body-regions.mjs",
+    "start": "ng serve",
+    "prebuild": "node scripts/copy-body-regions.mjs",
+    "build": "ng build",
+    "postbuild": "node scripts/generate-shell-manifest.mjs",
+    "check:auth": "node scripts/check-auth-rules.mjs",
+    "check:protocol": "node scripts/check-protocol-form.mjs",
+    "check:production": "node scripts/check-production-bundle.mjs",
+    "check:types": "tsc -p tsconfig.app.json --noEmit",
+    "format": "prettier --write \"src/**/*.{ts,html,css}\" \"tests/**/*.ts\" \"scripts/**/*.{js,mjs,ts}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,html,css}\" \"tests/**/*.ts\" \"scripts/**/*.{js,mjs,ts}\"",
+    "watch": "ng build --watch --configuration development",
+    "test": "npm run test:unit && npm run test:accessibility && npm run check:auth && npm run check:protocol",
+    "test:unit": "ng test --watch=false",
+    "test:unit:watch": "ng test",
+    "test:accessibility": "node scripts/check-live-regions.mjs",
+    "test:e2e": "bash scripts/run-e2e.sh",
+    "test:offline": "npm run build && playwright test --config playwright.offline.config.ts"
+  },
+  "private": true,
+  "packageManager": "npm@11.11.0",
+  "dependencies": {
+    "@angular/common": "^22.0.0",
+    "@angular/compiler": "^22.0.0",
+    "@angular/core": "^22.0.0",
+    "@angular/forms": "^22.0.0",
+    "@angular/platform-browser": "^22.0.0",
+    "@angular/router": "^22.0.0",
+    "@microsoft/signalr": "^10.0.0",
+    "leaflet": "^1.9.4",
+    "openapi-fetch": "^0.17.0",
+    "qrcode": "^1.5.4",
+    "rxjs": "~7.8.0",
+    "tslib": "^2.3.0"
+  },
+  "devDependencies": {
+    "@angular/build": "^22.0.5",
+    "@angular/cli": "^22.0.5",
+    "@angular/compiler-cli": "^22.0.0",
+    "@playwright/test": "^1.61.1",
+    "@types/leaflet": "^1.9.21",
+    "@types/qrcode": "^1.5.6",
+    "jsdom": "^26.1.0",
+    "prettier": "^3.8.1",
+    "typescript": "~6.0.2",
+    "vitest": "^4.0.8"
+  }
+}

@@ -1,0 +1,257 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "ambulanzprotokoll-page1.schema.json",
+  "title": "Johanniter Ambulanzprotokoll Seite 1 — formState",
+  "description": "Field-for-field contract for the page-1 form state. This is both the PUT payload shape and the JSON-export payload shape. Draft saves may contain any subset; the server merges missing branches with the default state. Stored values use ASCII (D5); UI may display diacritics.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "incident": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ambulanzort": { "type": "string" },
+        "datum": { "type": ["string", "null"], "description": "ISO date (visual: T T M M J J)" },
+        "uhrzeit_beginn": { "type": ["string", "null"], "pattern": "^\\d{2}:\\d{2}$" },
+        "dnr_san_1": { "type": "string" },
+        "dnr_san_2": { "type": "string" },
+        "dnr_san_3": { "type": "string" },
+        "dnr_na": { "type": "string" },
+        "pls_nummer": { "type": "string" },
+        "funkrufname": { "type": "string" }
+      }
+    },
+    "patient": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "familienname": { "type": "string" },
+        "vorname": { "type": "string" },
+        "geschlecht": { "type": ["string", "null"], "enum": ["d", "m", "w", null] },
+        "vers_nr": { "type": "string" },
+        "geburtsdatum": { "type": ["string", "null"] },
+        "adresse": { "type": "string" },
+        "staat": { "type": "string" },
+        "telefon": { "type": "string" },
+        "arbeitgeber": { "type": "string" },
+        "versicherungstraeger": { "type": "string" },
+        "familienstand": { "type": "string" }
+      }
+    },
+    "assessment_primary": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "naca": {
+          "type": "array",
+          "items": { "enum": ["I", "II", "III", "IV", "V", "VI", "VII"] },
+          "maxItems": 1,
+          "description": "Array for checkbox-group uniformity; at most one NACA score."
+        },
+        "atemweg": {
+          "type": "array",
+          "items": { "enum": ["frei", "gefaehrdet", "verlegt"] }
+        },
+        "atmung": {
+          "type": "array",
+          "items": {
+            "enum": ["Apnoe", "Schnappatmung", "Zyanose", "unauffaellig", "Dyspnoe", "Atemgeraeusche", "andere Atemstoerungen"]
+          }
+        },
+        "kreislauf": {
+          "type": "array",
+          "items": {
+            "enum": ["Puls peripher tastbar", "Tachykardie", "Bradykardie", "blass", "kalt", "unauffaellig", "Starke Blutung", "geroetet", "schweissig", "erwaermt"]
+          }
+        },
+        "bewusstsein": {
+          "type": "array",
+          "items": { "enum": ["Wach", "Getruebt", "Bewusstlos", "Agitiert"] }
+        },
+        "angen_notfallzeit": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "zeit": { "type": ["string", "null"], "pattern": "^\\d{2}:\\d{2}$" },
+            "gt24h": { "type": "boolean" },
+            "unbekannt": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "assessment_secondary": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "anamnese_text": { "type": "string" },
+        "bodymap": {
+          "type": "array",
+          "description": "Coordinate-based typed markers — independent of the triage region-toggle body map (OD-05).",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["view", "marker", "x", "y"],
+            "properties": {
+              "view": { "enum": ["front", "back"] },
+              "marker": { "enum": ["wunde", "fraktur", "schmerz", "prellung", "amputation", "verbrennung", "luxation"] },
+              "x": { "type": "number", "minimum": 0, "maximum": 100, "description": "Percent of silhouette width." },
+              "y": { "type": "number", "minimum": 0, "maximum": 100, "description": "Percent of silhouette height." }
+            }
+          }
+        }
+      }
+    },
+    "medications_administered": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "medikament": { "type": "string" },
+          "dosis": { "type": "string" },
+          "art": { "type": "string" },
+          "uhrzeit": { "type": ["string", "null"], "pattern": "^\\d{2}:\\d{2}$" }
+        }
+      }
+    },
+    "vitals": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "pupillen": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "R": { "$ref": "#/$defs/pupilChecks" },
+            "L": { "$ref": "#/$defs/pupilChecks" }
+          }
+        },
+        "schmerz": { "type": ["integer", "null"], "minimum": 0, "maximum": 10 },
+        "schmerz_nicht_beurteilbar": { "type": "boolean" },
+        "gcs_augenoeffnen": { "type": ["integer", "null"], "minimum": 1, "maximum": 4 },
+        "gcs_verbale_reaktion": { "type": ["integer", "null"], "minimum": 1, "maximum": 5 },
+        "gcs_motorische_reaktion": { "type": ["integer", "null"], "minimum": 1, "maximum": 6 },
+        "gcs_summe": { "type": ["integer", "null"], "minimum": 3, "maximum": 15, "description": "Auto-computed eyes+verbal+motor when all three present." },
+        "keine": { "type": "boolean" },
+        "rr": { "type": "string" },
+        "puls": { "type": "string" },
+        "puls_rhythmus": { "type": "array", "items": { "enum": ["rhy.", "arrhy."] } },
+        "af": { "type": "string" },
+        "temp": { "type": "string" },
+        "bz": { "type": "string" },
+        "etco2": { "type": "string" },
+        "spo2": { "type": "string" },
+        "o2_l_min": { "type": "string" },
+        "o2_beatmung_l_min": { "type": "string" }
+      }
+    },
+    "measures": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "herz_kreislauf": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "massnahmen": {
+              "type": "array",
+              "items": {
+                "enum": ["peripherven. Zugang / IO Zugang", "Herzdruckmassage", "Defibrillation/Kardiov.", "Schrittmacher extern"]
+              }
+            },
+            "dnr": { "type": "string" },
+            "anzahl": { "type": "string" },
+            "letzte_joule": { "type": "string" },
+            "freq": { "type": "string" },
+            "mv": { "type": "string" }
+          }
+        },
+        "atmung": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "massnahmen": {
+              "type": "array",
+              "items": {
+                "enum": ["Absaugen", "oral", "nasal", "endotracheal", "Intubation", "Wendltubus", "Guedeltubus", "Larynxtubus", "endotracheal (oral)", "endotracheal (nasal)", "Beatmung", "assistiert", "kontrolliert", "manuell", "maschinell"]
+              }
+            },
+            "dnr": { "type": "string" },
+            "af": { "type": "string" },
+            "amv": { "type": "string" },
+            "peep": { "type": "string" }
+          }
+        },
+        "weitere_massnahmen": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "massnahmen": {
+              "type": "array",
+              "items": {
+                "enum": ["Verband", "Blutstillung", "Abbinden", "Lagerung", "12-Abl.-EKG", "Monitoring", "HF", "RR", "SpO2", "4-Abl.-EKG", "etCO2", "Schienung", "HWS", "Spineboard", "Vakuummatratze", "Extremitaet"]
+              }
+            },
+            "abbinden_zeit": { "type": ["string", "null"], "pattern": "^\\d{2}:\\d{2}$" },
+            "lagerung_art": { "type": "string" }
+          }
+        }
+      }
+    },
+    "history": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "allergien": { "type": "string" },
+        "medikamente": { "type": "string" },
+        "patientengeschichte_vorerkrankungen": { "type": "string" },
+        "letzte_orale_aufnahme": { "type": "string" },
+        "ereignisse_zuvor": { "type": "string" },
+        "risikofaktoren": { "type": "string" }
+      }
+    },
+    "disposition": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "abschlussart": {
+          "type": "array",
+          "items": { "enum": ["Uebergabe:", "Revers (Ruecks.)", "Belassung", "Entf. selbstst. o. Revers"] }
+        },
+        "klinischer_zustand": {
+          "type": "array",
+          "items": { "enum": ["verbessert", "gleich", "verschlechtert"] },
+          "maxItems": 1
+        },
+        "uhrzeit_ende": { "type": ["string", "null"], "pattern": "^\\d{2}:\\d{2}$" },
+        "org": { "type": "string" },
+        "typ": { "type": "string" },
+        "kennung": { "type": "string" },
+        "angehoerige_in_kenntnis": {
+          "type": "array",
+          "items": { "enum": ["durch RD", "durch Polizei", "durch Pat/andere"] }
+        },
+        "kontaktdaten": { "type": "string" }
+      }
+    },
+    "signatures": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "entlass_san_na": {
+          "type": ["string", "null"],
+          "description": "PNG data URL from the signature pad. Present because the paper form has it; never required (FR-DOC-13)."
+        }
+      }
+    }
+  },
+  "$defs": {
+    "pupilChecks": {
+      "type": "array",
+      "items": {
+        "enum": ["eng", "mittel", "weit", "entrundet", "prompte Lichtreflexe", "verlangsamte Lichtreflexe", "lichtstarr"]
+      }
+    }
+  }
+}

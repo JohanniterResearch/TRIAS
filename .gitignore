@@ -1,0 +1,19 @@
+/.git
+node_modules/
+dist/
+bin/
+obj/
+.env
+**/.*/
+**/MISTAKES.md
+**/AGENTS.md
+scripts/__pycache__/
+/backend/.idea/
+/ruvector.db
+
+# ignore /docs contents (not the dir itself, or the pilot negation below can never match)
+/docs/*
+# pilot handoff deliverables are shared via the repo, unlike the rest of /docs
+!/docs/pilot/
+!/docs/KnownIssues.md
+!/docs/remediationPlan.md

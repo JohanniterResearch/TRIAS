@@ -1,0 +1,43 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ambulanzsystem
+      POSTGRES_USER: pls
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-dev-only-password}
+    ports:
+      # Host port 5434: 5432/5433 were already in use by unrelated local projects.
+      - "127.0.0.1:${DB_HOST_PORT:-5434}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pls -d ambulanzsystem"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Prod profile only (`docker compose --profile prod up`) — dev runs the backend via
+  # `dotnet run` against this same db service instead.
+  backend:
+    profiles: ["prod"]
+    image: ${BACKEND_IMAGE:-ambulanzsystem-backend:local}
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__Default: Host=db;Database=ambulanzsystem;Username=pls;Password=${DB_PASSWORD:-dev-only-password}
+      # The app's StartupValidation fails fast on missing/empty values. The immutable backup
+      # identity is additionally Compose-required to prevent a deployment from being started
+      # without its operator-selected identity.
+      Jwt__Secret: ${JWT_SECRET:-}
+      Bootstrap__AdminPassword: ${BOOTSTRAP_ADMIN_PASSWORD:-}
+      PLS_ALLOWED_ORIGINS: ${PLS_ALLOWED_ORIGINS:-}
+      BACKUP_EXPECTED_DEPLOYMENT_ID: ${BACKUP_EXPECTED_DEPLOYMENT_ID:-}
+    ports:
+      - "127.0.0.1:${APP_HOST_PORT:-5000}:8080"
+
+volumes:
+  pgdata:

@@ -1,0 +1,1329 @@
+openapi: 3.1.0
+info:
+  title: Ambulanzsystem V1 API
+  version: 0.1.0
+  contact:
+    name: Ambulanzsystem API maintainers
+  description: |
+    Frozen Stage-0 contract for the Ambulanzsystem V1 (see docs/plan/master-plan.md).
+    Locked decisions D1-D8 apply. JSON property names are serialized exactly as
+    written here (no automatic camelCase transformation server-side).
+
+    Auth token types (JWT `type` claim): `admin`, `leitstelle`, `user`, `qr`.
+    Policies referenced below:
+    - AdminOnly: type=admin
+    - LeitstelleOrAdmin: type in (admin, leitstelle)
+    - AuthenticatedUser: type in (admin, leitstelle, user)
+    - TriageWrite: type in (admin, leitstelle, user, qr)
+
+    Canonical triage output values: rot | gelb | gruen | schwarz (ASCII, D5).
+    Unicode `grün` is accepted as an input alias and normalized to `gruen`; `blau` is rejected.
+servers:
+  - url: http://localhost:5042
+    description: local backend
+  - url: http://localhost:4010
+    description: Prism mock server
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: auth
+  - name: users
+  - name: login-qr-codes
+  - name: patient-qr-codes
+  - name: operation-scenes
+  - name: organisations
+  - name: teams
+  - name: persons
+  - name: ambulanzprotokoll
+  - name: body-parts
+  - name: audit
+  - name: ops
+
+paths:
+  # ---------------------------------------------------------------- auth
+  /api/qr-login:
+    post:
+      tags: [auth]
+      operationId: qrLogin
+      description: Exchanges an active responder login QR token for a short-lived event-scoped access token.
+      summary: Responder QR login (online-only). Short-lived token, no refresh token.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [qr_code]
+              properties:
+                qr_code: { type: string, maxLength: 128 }
+      responses:
+        "200":
+          description: Logged in. Token has type=qr, scoped to the event scene subtree.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, token]
+                properties:
+                  status: { type: string, const: ok }
+                  token: { type: string }
+                  eventSceneId: { type: integer, description: Top-level scene this QR grants access to. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /api/user-login:
+    post:
+      tags: [auth]
+      operationId: userLogin
+      description: Authenticates a responder username and password and returns an access and refresh token pair.
+      summary: Responder username/password login (token type=user).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CredentialsRequest" }
+      responses:
+        "200":
+          description: Logged in.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, token, refreshToken]
+                properties:
+                  status: { type: string, const: ok }
+                  token: { type: string }
+                  refreshToken: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /api/admin-login:
+    post:
+      tags: [auth]
+      operationId: adminLogin
+      description: Authenticates an Admin or Leitstelle account and returns its role-specific token pair.
+      summary: Admin or Leitstelle login. Token type reflects the user's role.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CredentialsRequest" }
+      responses:
+        "200":
+          description: Logged in.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, token, refreshToken, requiresPasswordChange, role]
+                properties:
+                  status: { type: string, const: ok }
+                  token: { type: string }
+                  refreshToken: { type: string }
+                  requiresPasswordChange: { type: boolean }
+                  role: { $ref: "#/components/schemas/Role" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /api/refresh-token:
+    post:
+      tags: [auth]
+      operationId: refreshToken
+      description: Consumes one valid refresh token and rotates it into a new access and refresh token pair.
+      summary: Rotate a refresh token (old is revoked, new pair issued).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string }
+      responses:
+        "200":
+          description: New token pair.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [token, refreshToken]
+                properties:
+                  token: { type: string }
+                  refreshToken: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /api/logout:
+    post:
+      tags: [auth]
+      operationId: logout
+      description: Revokes the submitted refresh token for the authenticated session.
+      summary: Revoke the given refresh token. Policy AuthenticatedUser.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string }
+      responses:
+        "204": { description: Revoked. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/validate-token:
+    post:
+      tags: [auth]
+      operationId: validateToken
+      description: Confirms that the current bearer token is valid and returns its effective role.
+      summary: Route-guard check. Policy TriageWrite (any authenticated session).
+      responses:
+        "200":
+          description: Token valid.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [isValid]
+                properties:
+                  isValid: { type: boolean, const: true }
+                  role: { type: string, enum: [admin, leitstelle, user, qr] }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/dev-login:
+    post:
+      tags: [auth]
+      operationId: developmentLogin
+      description: Creates a non-refreshable seeded-account token when the explicit development-login feature is enabled.
+      summary: DEV ONLY. Password-free login for seeded accounts. 404 unless Development env AND Features__EnableDevLogin.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [role]
+              properties:
+                role: { type: string, enum: [admin, user] }
+      responses:
+        "200":
+          description: Logged in with a development-bypass token. It is intentionally non-refreshable and requiresPasswordChange is always false.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [status, token, username, requiresPasswordChange]
+                properties:
+                  status: { type: string, const: ok }
+                  token: { type: string }
+                  username: { type: string, description: Username of the real seeded account represented by the token. }
+                  requiresPasswordChange: { type: boolean, const: false }
+                  refreshToken: { type: string, description: Optional for compatibility; omitted for development-bypass sessions. }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { description: Not available (any non-dev configuration). }
+
+  # ---------------------------------------------------------------- users
+  /api/users:
+    get:
+      tags: [users]
+      operationId: listUsers
+      description: Returns the users visible in the Admin account-revocation view.
+      summary: List users for the Admin revocation view. Policy AdminOnly.
+      responses:
+        "200":
+          description: Users.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+    post:
+      tags: [users]
+      operationId: createUser
+      description: Creates an Admin, Leitstelle, or responder account with the requested scope.
+      summary: Create a user (admin, leitstelle, or responder). Policy AdminOnly. New admin/leitstelle users get requiresPasswordChange=true.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password, role]
+              properties:
+                username: { type: string, maxLength: 255 }
+                password: { type: string, minLength: 8 }
+                role: { $ref: "#/components/schemas/Role" }
+                accountType: { type: string, enum: [permanent, event], default: permanent }
+                eventSceneId:
+                  type: integer
+                  description: Required when accountType=event; access is scoped to this top-level scene's subtree and its access window.
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { description: Username already exists. }
+
+  /api/users/change-password:
+    post:
+      tags: [users]
+      operationId: changePassword
+      description: Changes the caller's password and invalidates its existing access and refresh tokens.
+      summary: Change own password. Verifies current password, regenerates security stamp (invalidates all live tokens), revokes all refresh tokens. Policy AuthenticatedUser.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password, newPassword]
+              properties:
+                username: { type: string }
+                password: { type: string }
+                newPassword: { type: string, minLength: 8 }
+      responses:
+        "204": { description: Changed. All outstanding sessions for this user are now invalid. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/users/{id}/revoke:
+    post:
+      tags: [users]
+      operationId: revokeUser
+      description: Ends access for the authorized target account identified by the path ID.
+      summary: End a user's access early. Policy LeitstelleOrAdmin. Blocks new actions/reads; no forced client logout.
+      parameters: [{ $ref: "#/components/parameters/idPath" }]
+      responses:
+        "204": { description: Revoked. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/users/self-cancel:
+    post:
+      tags: [users]
+      operationId: cancelOwnAccess
+      description: Ends the authenticated responder or QR session's own access.
+      summary: A responder/session ends its own access by choice. Policy TriageWrite.
+      responses:
+        "204": { description: Access ended. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  # ---------------------------------------------------- login QR codes
+  /api/login-qr-codes/generate:
+    post:
+      tags: [login-qr-codes]
+      operationId: generateLoginQrCodes
+      description: Generates the requested number of responder login QR codes for an authorized top-level event.
+      summary: Bulk-generate responder login QR codes for an event. Policy LeitstelleOrAdmin.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [number, eventSceneId]
+              properties:
+                number: { type: integer, minimum: 1, maximum: 500 }
+                eventSceneId: { type: integer, description: Top-level scene (event) the codes grant access to. }
+                expiresInHours: { type: number, default: 12, description: Access window from first login (FR-AUTH-08). }
+      responses:
+        "201":
+          description: Generated codes.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/LoginQrCode" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/login-qr-codes:
+    get:
+      tags: [login-qr-codes]
+      operationId: listLoginQrCodes
+      description: Lists responder login QR codes within the caller's authorized event scope and optional filters.
+      summary: List login QR codes. Policy LeitstelleOrAdmin.
+      parameters:
+        - name: eventSceneId
+          in: query
+          schema: { type: integer }
+        - name: unusedOnly
+          in: query
+          schema: { type: boolean, default: false }
+      responses:
+        "200":
+          description: Codes.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/LoginQrCode" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/login-qr-codes/{id}/revoke:
+    post:
+      tags: [login-qr-codes]
+      operationId: revokeLoginQrCode
+      description: Revokes one responder login QR code within the caller's authorized event scope.
+      summary: Revoke a login QR code early. Policy LeitstelleOrAdmin.
+      parameters: [{ $ref: "#/components/parameters/idPath" }]
+      responses:
+        "204": { description: Revoked. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # -------------------------------------------------- patient QR codes
+  /api/patient-qr-codes/generate:
+    post:
+      tags: [patient-qr-codes]
+      operationId: generatePatientQrCodes
+      description: Generates unbound random patient QR tokens for later printing and assignment.
+      summary: Bulk-generate unbound patient QR codes (64-char random tokens). Policy AdminOnly.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [number]
+              properties:
+                number: { type: integer, minimum: 1, maximum: 1000 }
+      responses:
+        "201":
+          description: Generated codes.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { type: string, description: QR token. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/patient-qr-codes/unused:
+    get:
+      tags: [patient-qr-codes]
+      operationId: listUnusedPatientQrCodes
+      description: Returns patient QR tokens that are not currently bound to a patient.
+      summary: List codes not yet bound to a patient (for printing). Policy LeitstelleOrAdmin.
+      responses:
+        "200":
+          description: Unbound codes.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  # -------------------------------------------------- operation scenes
+  /api/operation-scenes:
+    post:
+      tags: [operation-scenes]
+      operationId: saveOperationScene
+      description: Creates a scene or updates the existing scene identified in the request within the caller's authorized scope.
+      summary: Create or update a scene (upsert by optional id). Policy LeitstelleOrAdmin. parentSceneId marks a sub-site; max one nesting level, cycles rejected.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                id: { type: integer, description: Present = update, absent = create. }
+                name: { type: string, maxLength: 255 }
+                description: { type: string }
+                organisationId: { type: integer }
+                parentSceneId: { type: integer, description: "Parent = the event (D6). Null = this scene IS the event." }
+                accessWindowStart: { type: string, format: date-time }
+                accessWindowEnd: { type: string, format: date-time }
+                active: { type: boolean, default: true }
+      responses:
+        "200":
+          description: Saved scene.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OperationScene" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+    get:
+      tags: [operation-scenes]
+      operationId: listOperationScenes
+      description: Lists the operation scenes visible to the current session and its event scope.
+      summary: List scenes visible to the session (admin/leitstelle = all current, responder/qr = authorized event subtree within access window). Policy TriageWrite.
+      responses:
+        "200":
+          description: Scenes.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/OperationScene" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/operation-scenes/{id}:
+    delete:
+      tags: [operation-scenes]
+      operationId: deleteOperationScene
+      description: Deletes an empty operation scene; linked patients, sub-sites, and assigned user accounts (including revoked accounts) block deletion so account scope is preserved.
+      summary: Delete an EMPTY scene. Policy AdminOnly. Deactivate scenes with linked records instead.
+      parameters: [{ $ref: "#/components/parameters/idPath" }]
+      responses:
+        "204": { description: Deleted. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Linked patients, sub-sites, or assigned user accounts (including revoked accounts); deletion blocked.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  # ----------------------------------------------------- organisations
+  /api/organisations:
+    get:
+      tags: [organisations]
+      operationId: listOrganisations
+      description: Lists organisations available for operation-scene administration.
+      summary: List organisations. Policy AdminOnly.
+      responses:
+        "200":
+          description: Organisations.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Organisation" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [organisations]
+      operationId: createOrganisation
+      description: Creates an organisation for later assignment to operation scenes.
+      summary: Create an organisation. Policy AdminOnly.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, maxLength: 255 }
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Organisation" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  # ------------------------------------------------------------- teams
+  /api/teams:
+    post:
+      tags: [teams]
+      operationId: createTeam
+      description: Creates a coordination team in an authorized operation scene.
+      summary: Create a team in a scene. Policy LeitstelleOrAdmin.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [operationSceneId, name]
+              properties:
+                operationSceneId: { type: integer }
+                name: { type: string, description: Name or radio call sign. }
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Team" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    get:
+      tags: [teams]
+      operationId: listTeams
+      description: Lists the coordination teams assigned to the requested operation scene.
+      summary: List teams for a scene. Policy TriageWrite.
+      parameters:
+        - name: operationSceneId
+          in: query
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Teams.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Team" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/teams/{id}:
+    put:
+      tags: [teams]
+      operationId: updateTeam
+      description: >
+        Updates the supplied coordination fields for the identified team. Team coordination is
+        online-only in V1: requests carry no client timestamp, disjoint fields are updated
+        independently, and concurrent writes to the same field use database-arrival order.
+      summary: Update any subset of optional coordination fields (FR-TEAM-07 — every field independently optional/clearable). Policy TriageWrite.
+      parameters: [{ $ref: "#/components/parameters/idPath" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                status:
+                  type: [string, "null"]
+                  enum: [free, busy, unavailable, null]
+                assignedPatientId: { type: [integer, "null"] }
+                assignedLocation: { type: [string, "null"] }
+                contactInfo: { type: [string, "null"] }
+      responses:
+        "200":
+          description: Updated team.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Team" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ----------------------------------------------------------- persons
+  /api/persons:
+    get:
+      tags: [persons]
+      operationId: listPersons
+      description: Lists patients linked to the requested visible operation scene and records the read in the audit log.
+      summary: List patients linked to a scene (situation room + patient overview). Policy TriageWrite. Every request is read-audit-logged (D7).
+      parameters:
+        - name: operationSceneId
+          in: query
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Patients.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Patient" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/verify-patient-qr-code:
+    post:
+      tags: [persons]
+      operationId: verifyPatientQrCode
+      description: Resolves a patient QR token, creating and binding a patient when the token is still unbound.
+      summary: >
+        Scan a patient QR tag. Unknown token -> 404. Unbound -> creates Patient +
+        fully-seeded Body, binds code, links scene (201). Bound -> returns existing
+        patient, refreshes scene link (200). Concurrency-safe (row lock) — parallel
+        scans of the same code yield the same patient. Online-only. Policy TriageWrite.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [qr_code, operationSceneId]
+              properties:
+                qr_code: { type: string, maxLength: 128 }
+                operationSceneId: { type: integer }
+      responses:
+        "200":
+          description: Existing patient returned.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VerifyQrResult" }
+        "201":
+          description: New patient created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VerifyQrResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Unknown QR token — rejected (UC-04). }
+
+  /api/persons/manual:
+    post:
+      tags: [persons]
+      operationId: createManualPatient
+      description: Creates an untagged patient idempotently from the caller-provided client generation ID.
+      summary: >
+        Create a patient without a QR code. Idempotent on clientGeneratedId (D3):
+        replaying the same UUID returns the already-created patient (200) instead of
+        a duplicate (201 on first create). Server generates humanReadableId
+        (no patient-identifying content). Policy TriageWrite.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [operationSceneId]
+              properties:
+                operationSceneId: { type: integer }
+                name: { type: string }
+                clientGeneratedId: { type: string, format: uuid, description: Offline idempotency key generated by the client. }
+      responses:
+        "200":
+          description: Idempotent replay — patient already existed for this clientGeneratedId.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Patient" }
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Patient" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/persons/{id}/update-triage-color:
+    post:
+      tags: [persons]
+      operationId: updatePatientTriage
+      description: Updates supplied START triage fields and emits the resulting audit and realtime records.
+      summary: >
+        Record-only START triage write (D1). triageColor validated against
+        rot|gelb|gruen|schwarz (shared normalize helper maps 'grün'->'gruen', trims,
+        lowercases; everything else incl. 'blau' -> 400). Field-level LWW merge using
+        clientUpdatedAt when supplied (NFR-SAFE-08/09). Audit-logged with
+        before/after. Publishes realtime update. Policy TriageWrite.
+      parameters: [{ $ref: "#/components/parameters/idPath" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                triageColor: { $ref: "#/components/schemas/TriageColorInput" }
+                respiration: { type: boolean }
+                blutung: { type: boolean }
+                radialispuls: { type: boolean }
+                transport: { type: boolean }
+                dringend: { type: boolean }
+                kontaminiert: { type: boolean }
+                clientUpdatedAt: { type: string, format: date-time, description: Client-side write timestamp for offline replay merge; must not be more than five minutes ahead of server UTC. Older timestamps remain valid. }
+      responses:
+        "200":
+          description: Updated patient.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Patient" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/persons/{id}/respiration:
+    post:
+      tags: [persons]
+      operationId: updatePatientRespiration
+      description: Updates the patient's breathing-sufficient flag and publishes the resulting patient state.
+      summary: Set the breathing-sufficient flag. Publishes realtime update. Policy TriageWrite.
+      parameters: [{ $ref: "#/components/parameters/idPath" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [respiration]
+              properties:
+                respiration: { type: boolean }
+                clientUpdatedAt: { type: string, format: date-time, description: Must not be more than five minutes ahead of server UTC. Older timestamps remain valid. }
+      responses:
+        "200":
+          description: Updated patient.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Patient" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/persons/{id}/location:
+    post:
+      tags: [persons]
+      operationId: updatePatientLocation
+      description: Updates the patient's validated GPS or manually corrected location and publishes the new state.
+      summary: Update patient position (auto-captured device GPS or manual correction, FR-LOC-05/06). Publishes realtime update. Policy TriageWrite.
+      parameters: [{ $ref: "#/components/parameters/idPath" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [lat, lng]
+              properties:
+                lat: { type: number, minimum: -90, maximum: 90, description: "WGS84 latitude, inclusive range -90 through 90." }
+                lng: { type: number, minimum: -180, maximum: 180, description: "WGS84 longitude, inclusive range -180 through 180." }
+                source: { type: string, enum: [gps, manual], default: gps, description: Only device GPS or explicit manual correction is accepted. }
+                accuracyMeters: { type: number, minimum: 0, description: "Finite, non-negative reported GPS accuracy; UI flags >10m as unreliable (FR-LOC-07)." }
+                indoorLocation: { type: string, description: "Optional free text: tent/sector/room/floor/treatment bay (FR-LOC-08)." }
+                clientUpdatedAt: { type: string, format: date-time, description: Client-side write timestamp for offline replay merge (NFR-SAFE-08/09); must not be more than five minutes ahead of server UTC. Older timestamps remain valid. }
+      responses:
+        "200":
+          description: Updated patient.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Patient" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/persons/{id}/reassign-qr-code:
+    post:
+      tags: [persons]
+      operationId: reassignPatientQrCode
+      description: Replaces the patient's current QR binding with the supplied unbound patient QR token.
+      summary: Unbind the patient's current QR code and bind the given UNBOUND code (mis-attached tag correction, FR-QR-07). Policy TriageWrite.
+      parameters: [{ $ref: "#/components/parameters/idPath" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [qr_code]
+              properties:
+                qr_code: { type: string, maxLength: 128 }
+      responses:
+        "200":
+          description: Updated patient with new QR binding.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Patient" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: Given code is already bound to another patient. }
+
+  /api/persons/{id}/triage-history:
+    get:
+      tags: [persons]
+      operationId: getPatientTriageHistory
+      description: Returns the patient's triage changes in chronological order from the audit log.
+      summary: Triage change history for a patient, sourced from the audit log (FR-SIT-08). Policy LeitstelleOrAdmin.
+      parameters: [{ $ref: "#/components/parameters/idPath" }]
+      responses:
+        "200":
+          description: Chronological triage changes.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/TriageHistoryEntry" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ------------------------------------------------- ambulanzprotokoll
+  /api/persons/{patientId}/ambulanzprotokoll-page1:
+    get:
+      tags: [ambulanzprotokoll]
+      operationId: getAmbulanzprotokollPage1
+      description: Returns the saved page-one protocol or a default-shaped draft for the requested patient.
+      summary: Get the page-1 record, or a default-shaped empty draft if none saved yet. Read-audit-logged. Policy TriageWrite.
+      parameters: [{ $ref: "#/components/parameters/patientIdPath" }]
+      responses:
+        "200":
+          description: Form record (formState conforms to schemas/ambulanzprotokoll-page1.schema.json).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProtokollRecord" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Patient does not exist. }
+    put:
+      tags: [ambulanzprotokoll]
+      operationId: saveAmbulanzprotokollPage1
+      description: Merges and saves page-one protocol data and returns the persisted record with any server validation warnings.
+      summary: >
+        Upsert the page-1 record. Draft accepts any partial data; missing branches
+        are merged with the default state; concurrent saves merge field-level LWW
+        (older non-empty values survive empty newer fields, NFR-SAFE-09).
+        status=finalized stamps finalizedAt and returns soft-validation warnings —
+        never a hard block for empty fields. Post-finalize saves stay allowed
+        (Leitstelle/Admin any form; responder their own records); all audit-logged.
+        Policy TriageWrite.
+      parameters: [{ $ref: "#/components/parameters/patientIdPath" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [status, formState]
+              properties:
+                status: { type: string, enum: [draft, finalized] }
+                formState:
+                  $ref: "#/components/schemas/ProtokollFormState"
+                clientUpdatedAt: { type: string, format: date-time, description: Local edit timestamp for newer-wins comparison; must not be more than five minutes ahead of server UTC. Older timestamps remain valid. }
+      responses:
+        "200":
+          description: Saved record (merged server state) plus any finalize warnings.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ProtokollRecord"
+                  - type: object
+                    required: [warnings]
+                    properties:
+                      warnings:
+                        type: array
+                        items: { type: string }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Patient does not exist. }
+
+  /api/persons/{patientId}/ambulanzprotokoll-page1/export:
+    get:
+      tags: [ambulanzprotokoll]
+      operationId: exportAmbulanzprotokollPage1
+      description: Generates, archives, and audit-logs the authorized JSON export for the requested patient's protocol.
+      summary: >
+        JSON export (V1 export format, FR-DOC-09). Wraps formState with
+        patient/event metadata, generation timestamp, and an actor watermark
+        (NFR-SEC-10). The export is persisted server-side (long-term archive,
+        FR-DOC-14) and the action is audit-logged. Admin and Leitstelle may export
+        authorized patients; a named responder may export only a patient they own.
+        Anonymous QR sessions and cross-owner responders receive 403, with no archive
+        or success audit created.
+      parameters: [{ $ref: "#/components/parameters/patientIdPath" }]
+      responses:
+        "200":
+          description: Export document.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProtokollExport" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # -------------------------------------------------------- body parts
+  /api/body-parts:
+    get:
+      tags: [body-parts]
+      operationId: getBodyParts
+      description: Returns the complete canonical body-region marker state for the requested patient.
+      summary: Full region-toggle body state for a patient (all canonical keys always present). Policy TriageWrite.
+      parameters:
+        - name: idpatient
+          in: query
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Region-state map, one entry per key in contract/body-regions.json.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BodyParts" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [body-parts]
+      operationId: updateBodyPart
+      description: Sets one validated body-region marker and returns the patient's complete updated marker state.
+      summary: Toggle one region's marker. bodyPartId validated against the canonical key list. Publishes realtime update. Policy TriageWrite.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [idpatient, bodyPartId, isClicked]
+              properties:
+                idpatient: { type: integer }
+                bodyPartId: { type: string, description: One key from contract/body-regions.json. }
+                isClicked: { type: boolean }
+      responses:
+        "200":
+          description: Updated full body state.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BodyParts" }
+        "400": { description: Unknown bodyPartId. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ------------------------------------------------------------- audit
+  /api/audit:
+    get:
+      tags: [audit]
+      operationId: queryAuditLog
+      description: Queries append-only audit entries using the supplied patient, action, entity type, time, and paging filters.
+      summary: Query the append-only audit log (D7). Policy AdminOnly.
+      parameters:
+        - { name: patientId, in: query, schema: { type: integer } }
+        - { name: action, in: query, schema: { type: string, enum: [read, write, export, login, revoke] } }
+        - name: entityType
+          in: query
+          description: Exact audited entity category, for example `patient` or `scene_snapshot`.
+          schema: { type: string }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: pageSize, in: query, schema: { type: integer, default: 100, maximum: 500 } }
+      responses:
+        "200":
+          description: Audit entries, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [total, entries]
+                properties:
+                  total: { type: integer }
+                  entries:
+                    type: array
+                    items: { $ref: "#/components/schemas/AuditEntry" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  # --------------------------------------------------------------- ops
+  /api/metrics:
+    get:
+      tags: [ops]
+      operationId: getMetrics
+      description: Returns process-local request, authentication, database, and realtime counters for operators.
+      summary: In-process operational counters (reset on restart). Policy AdminOnly.
+      responses:
+        "200":
+          description: Counters.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalRequests: { type: integer }
+                  authFailures: { type: integer }
+                  dbErrors: { type: integer }
+                  realtimeConnected: { type: boolean }
+                  realtimePendingQueue: { type: integer }
+                  realtimeDroppedMessages: { type: integer }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /health:
+    get:
+      tags: [ops]
+      operationId: getHealth
+      description: Reports unauthenticated database and realtime readiness. Database or realtime dispatcher unavailable is unhealthy (HTTP 503).
+      summary: Health endpoint (NFR-OPS-01). Unauthenticated. A realtime publish queue backlog is degraded.
+      security: []
+      responses:
+        "200":
+          description: Healthy or degraded health report.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { type: string, enum: [healthy, degraded] }
+                  database: { type: string, const: healthy }
+                  realtime: { type: string, enum: [healthy, degraded] }
+        "503":
+          description: Unhealthy.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, database, realtime]
+                properties:
+                  status: { type: string, const: unhealthy }
+                  database: { type: string, enum: [healthy, unhealthy] }
+                  realtime: { type: string, enum: [healthy, degraded, unhealthy] }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    idPath:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer }
+    patientIdPath:
+      name: patientId
+      in: path
+      required: true
+      schema: { type: integer }
+
+  responses:
+    Unauthorized:
+      description: Missing, invalid, expired, or live-revoked credentials. Revocation returns 401 immediately and blocks new actions and reads (FR-AUTH-09).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Forbidden:
+      description: Authenticated but not permitted, including role denial and an existing resource outside the session's event scene boundary (NFR-SEC-02).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: Entity not found.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    BadRequest:
+      description: Validation failure.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    RateLimited:
+      description: Login or refresh-token rate limit exceeded (fixed window 10/60s per IP, NFR-SEC-05).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Error:
+      type: object
+      required: [status, message]
+      properties:
+        status: { type: string, const: error }
+        message: { type: string }
+
+    Role:
+      type: string
+      enum: [admin, leitstelle, responder]
+
+    TriageColor:
+      type: string
+      enum: [rot, gelb, gruen, schwarz]
+      description: Canonical output uses ASCII `gruen` (D5); input `grün` is accepted as an alias and normalized to `gruen`. `blau` is invalid in V1.
+
+    TriageColorInput:
+      type: string
+      enum: [rot, gelb, gruen, grün, schwarz]
+      description: Accepts Unicode `grün` as an input alias; responses always serialize the canonical ASCII value `gruen`.
+
+    CredentialsRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string }
+        password: { type: string }
+
+    User:
+      type: object
+      required: [id, username, role, accountType, createdAt, updatedAt]
+      properties:
+        id: { type: integer }
+        username: { type: string }
+        role: { $ref: "#/components/schemas/Role" }
+        accountType: { type: string, enum: [permanent, event] }
+        eventSceneId: { type: [integer, "null"] }
+        requiresPasswordChange: { type: boolean }
+        revokedAt: { type: [string, "null"], format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    LoginQrCode:
+      type: object
+      required: [id, qrToken, eventSceneId, createdAt]
+      properties:
+        id: { type: integer }
+        qrToken: { type: string }
+        eventSceneId: { type: integer }
+        firstLogin: { type: [string, "null"], format: date-time }
+        expiresAt: { type: [string, "null"], format: date-time, description: Null until first login; then firstLogin + configured window. }
+        expiresInHours: { type: number }
+        revokedAt: { type: [string, "null"], format: date-time }
+        createdAt: { type: string, format: date-time }
+
+    OperationScene:
+      type: object
+      required: [id, name, active, createdAt, updatedAt]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        description: { type: [string, "null"] }
+        organisationId: { type: [integer, "null"] }
+        parentSceneId: { type: [integer, "null"], description: Null = top-level scene = the event (D6). }
+        accessWindowStart: { type: [string, "null"], format: date-time }
+        accessWindowEnd: { type: [string, "null"], format: date-time }
+        active: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    Organisation:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    Team:
+      type: object
+      required: [id, operationSceneId, name, createdAt, updatedAt]
+      properties:
+        id: { type: integer }
+        operationSceneId: { type: integer }
+        name: { type: string }
+        status:
+          type: [string, "null"]
+          enum: [free, busy, unavailable, null]
+        assignedPatientId: { type: [integer, "null"] }
+        assignedLocation: { type: [string, "null"] }
+        contactInfo: { type: [string, "null"] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    Patient:
+      type: object
+      required: [id, operationSceneId, createdAt, updatedAt]
+      properties:
+        id: { type: integer }
+        humanReadableId: { type: [string, "null"], description: Set for manually created patients; no patient-identifying content (FR-PAT-07). }
+        clientGeneratedId: { type: [string, "null"], format: uuid }
+        name: { type: [string, "null"] }
+        triagefarbe:
+          oneOf:
+            - $ref: "#/components/schemas/TriageColor"
+            - type: "null"
+        atmung: { type: [boolean, "null"] }
+        blutung: { type: [boolean, "null"] }
+        radialispuls: { type: [boolean, "null"] }
+        transport: { type: [boolean, "null"] }
+        dringend: { type: [boolean, "null"] }
+        kontaminiert: { type: [boolean, "null"] }
+        longitudePatient: { type: [number, "null"] }
+        latitudePatient: { type: [number, "null"] }
+        locationSource: { type: [string, "null"], enum: [gps, manual, null] }
+        locationAccuracyMeters: { type: [number, "null"] }
+        indoorLocation: { type: [string, "null"] }
+        locationUpdatedAt: { type: [string, "null"], format: date-time }
+        operationSceneId: { type: integer }
+        qrCodeBound: { type: boolean, description: Whether a patient QR tag is currently bound. }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    VerifyQrResult:
+      type: object
+      required: [patient, created]
+      properties:
+        patient: { $ref: "#/components/schemas/Patient" }
+        created: { type: boolean, description: True when this scan created the patient. }
+
+    TriageHistoryEntry:
+      type: object
+      required: [timestamp, actorId, field, before, after]
+      properties:
+        timestamp: { type: string, format: date-time }
+        actorId: { type: integer }
+        actorRole: { type: string, enum: [admin, leitstelle, user, qr] }
+        field: { type: string, description: e.g. triagefarbe, atmung, blutung. }
+        before: { type: [string, "null"] }
+        after: { type: [string, "null"] }
+
+    BodyParts:
+      type: object
+      required: [idpatient, bodyParts]
+      properties:
+        idpatient: { type: integer }
+        bodyParts:
+          type: object
+          description: One entry per key in contract/body-regions.json; 0 = unmarked, non-zero = marked.
+          additionalProperties: { type: integer }
+        updatedAt: { type: string, format: date-time }
+
+    ProtokollRecord:
+      type: object
+      required: [patientId, status, formState, updatedAt]
+      properties:
+        patientId: { type: integer }
+        status: { type: string, enum: [draft, finalized] }
+        formState:
+          $ref: "#/components/schemas/ProtokollFormState"
+        updatedAt: { type: string, format: date-time }
+        finalizedAt: { type: [string, "null"], format: date-time }
+
+    ProtokollFormState:
+      type: object
+      additionalProperties: false
+      description: Canonical page-1 state; every branch references the Draft 2020-12 source schema.
+      properties:
+        incident: { $ref: "./schemas/ambulanzprotokoll-page1.schema.json#/properties/incident" }
+        patient: { $ref: "./schemas/ambulanzprotokoll-page1.schema.json#/properties/patient" }
+        assessment_primary: { $ref: "./schemas/ambulanzprotokoll-page1.schema.json#/properties/assessment_primary" }
+        assessment_secondary: { $ref: "./schemas/ambulanzprotokoll-page1.schema.json#/properties/assessment_secondary" }
+        medications_administered: { $ref: "./schemas/ambulanzprotokoll-page1.schema.json#/properties/medications_administered" }
+        vitals: { $ref: "./schemas/ambulanzprotokoll-page1.schema.json#/properties/vitals" }
+        measures: { $ref: "./schemas/ambulanzprotokoll-page1.schema.json#/properties/measures" }
+        history: { $ref: "./schemas/ambulanzprotokoll-page1.schema.json#/properties/history" }
+        disposition: { $ref: "./schemas/ambulanzprotokoll-page1.schema.json#/properties/disposition" }
+        signatures: { $ref: "./schemas/ambulanzprotokoll-page1.schema.json#/properties/signatures" }
+
+    ProtokollExport:
+      type: object
+      required: [metadata, protokoll]
+      properties:
+        metadata:
+          type: object
+          required: [patientId, operationSceneId, generatedAt, watermark]
+          properties:
+            patientId: { type: integer }
+            humanReadableId: { type: [string, "null"] }
+            operationSceneId: { type: integer }
+            operationSceneName: { type: string }
+            eventSceneId: { type: integer }
+            generatedAt: { type: string, format: date-time }
+            watermark: { type: string, description: Identifies the exporting actor (NFR-SEC-10). }
+            schemaVersion: { type: string }
+        protokoll: { $ref: "#/components/schemas/ProtokollRecord" }
+
+    AuditEntry:
+      type: object
+      required: [id, timestamp, actorId, actorRole, action, entityType]
+      properties:
+        id: { type: integer }
+        timestamp: { type: string, format: date-time }
+        actorId: { type: [integer, "null"], description: Null for audit events without an authenticated database user. }
+        actorRole: { type: string, enum: [admin, leitstelle, user, qr] }
+        action: { type: string, enum: [read, write, export, login, revoke] }
+        entityType: { type: string }
+        entityId: { type: [integer, "null"] }
+        patientId: { type: [integer, "null"] }
+        changedFields:
+          type: [array, "null"]
+          items: { type: string }
+        before: { type: [string, "null"], description: JSON-encoded value before the action, or null when no prior value applies. }
+        after: { type: [string, "null"], description: JSON-encoded value after the action, or null when no resulting value applies. }
