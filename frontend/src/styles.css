@@ -759,7 +759,7 @@ button:disabled {
 .situation-layout {
   display: grid;
   gap: 1rem;
-  grid-template-columns: minmax(18rem, 1fr) minmax(28rem, 1.3fr) minmax(16rem, 0.8fr);
+  grid-template-columns: minmax(18rem, 1fr) minmax(28rem, 1.3fr);
 }
 
 .situation-map {
@@ -769,8 +769,7 @@ button:disabled {
   overflow: hidden;
 }
 
-.patient-panel,
-.team-panel {
+.patient-panel {
   background: #ffffff;
   border: 1px solid #d7dde5;
   border-radius: 0.5rem;
@@ -780,10 +779,60 @@ button:disabled {
   padding: 1rem;
 }
 
+.team-panel {
+  background: #ffffff;
+  border: 1px solid #d7dde5;
+  border-radius: 0.5rem;
+  padding: 1rem;
+}
+
+.team-panel summary {
+  cursor: pointer;
+  display: block;
+  list-style: none;
+  margin: -1rem;
+  padding: 1rem;
+}
+
+.team-panel summary::-webkit-details-marker {
+  display: none;
+}
+
+.team-panel summary::before {
+  content: '▸';
+  display: inline-block;
+  margin-right: 0.5rem;
+}
+
+.team-panel[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.team-panel summary:focus-visible {
+  outline: 2px solid #075fa8;
+  outline-offset: -2px;
+}
+
+.team-heading {
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.team-content {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
 .patient-table {
   border-collapse: collapse;
   min-width: 54rem;
   width: 100%;
+}
+
+.patient-panel > .row-actions > button {
+  min-height: 2.25rem;
+  padding: 0.4rem 0.75rem;
 }
 
 .patient-table th,

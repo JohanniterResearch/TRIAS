@@ -128,9 +128,15 @@ type TriageColor = components['schemas']['TriageColor'];
             </div>
           }
         </section>
+      </div>
 
-        <section class="team-panel">
-          <h2>Teams</h2>
+      <details class="team-panel">
+        <summary>
+          <span class="team-heading" role="heading" aria-level="2"
+            >Teams ({{ teams().length }})</span
+          >
+        </summary>
+        <div class="team-content">
           <form [formGroup]="teamForm" (ngSubmit)="createTeam()" class="auth-form">
             <label>
               Name / Funkruf
@@ -179,8 +185,8 @@ type TriageColor = components['schemas']['TriageColor'];
               </label>
             </article>
           }
-        </section>
-      </div>
+        </div>
+      </details>
     </section>
   `,
 })
