@@ -370,6 +370,19 @@ describe('route guard failure modes', () => {
     expect(api.validateToken).not.toHaveBeenCalled();
   });
 
+  it('marks a JWT-expired stored session and allows its login route', async () => {
+    let session: any = { tokenType: 'user' };
+    auth.activeSession.mockImplementation(() => session);
+    auth.sessionMatches.mockReturnValue(false);
+    auth.markExpired.mockImplementation(() => (session = { ...session, expired: true }));
+    const rootGuard = routes.find((route) => route.path === '')!.canActivate![0] as CanActivateFn;
+    const loginGuard = routes.find((route) => route.path === 'login')!.canActivate![0] as CanActivateFn;
+
+    expect(await run(rootGuard, '/')).toEqual({ redirect: '/login' });
+    expect(auth.markExpired).toHaveBeenCalledOnce();
+    expect(await run(loginGuard, '/login')).toBe(true);
+  });
+
   it.each(['admin', 'leitstelle'] as const)('denies an offline %s route', async (tokenType) => {
     vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
     auth.activeSession.mockReturnValue({ tokenType });

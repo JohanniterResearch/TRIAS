@@ -1,12 +1,5 @@
 import { Component, ElementRef, input, OnDestroy, output, signal, viewChild } from '@angular/core';
-
-declare const BarcodeDetector:
-  | undefined
-  | {
-      new (options?: { formats?: string[] }): {
-        detect(source: CanvasImageSource): Promise<Array<{ rawValue: string }>>;
-      };
-    };
+import jsQR from 'jsqr';
 
 @Component({
   selector: 'app-qr-scanner',
@@ -32,17 +25,14 @@ export class QrScanner implements OnDestroy {
   private readonly video = viewChild<ElementRef<HTMLVideoElement>>('video');
   private stream: MediaStream | null = null;
   private scanTimer = 0;
+  private canvas: HTMLCanvasElement | null = null;
+  private canvasContext: CanvasRenderingContext2D | null = null;
 
   ngOnDestroy(): void {
     this.stop();
   }
 
   protected async start(): Promise<void> {
-    if (!BarcodeDetector) {
-      this.error.set('QR Scan wird von diesem Browser nicht unterstützt. QR Code bitte eintippen.');
-      return;
-    }
-
     try {
       this.stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'environment' },
@@ -55,12 +45,11 @@ export class QrScanner implements OnDestroy {
 
       video.srcObject = this.stream;
       this.scanning.set(true);
-      const detector = new BarcodeDetector({ formats: ['qr_code'] });
-      const scan = async () => {
-        const [code] = await detector.detect(video);
-        if (code?.rawValue) {
+      const scan = () => {
+        const code = this.decodeFrame(video);
+        if (code) {
           this.stop();
-          this.scanned.emit(code.rawValue);
+          this.scanned.emit(code);
           return;
         }
         this.scanTimer = window.setTimeout(scan, 500);
@@ -70,6 +59,23 @@ export class QrScanner implements OnDestroy {
       this.stop();
       this.error.set('Kamera konnte nicht gestartet werden. QR Code bitte eintippen.');
     }
+  }
+
+  private decodeFrame(video: HTMLVideoElement): string | null {
+    const { videoWidth: width, videoHeight: height } = video;
+    if (!width || !height) {
+      return null;
+    }
+    this.canvas ??= document.createElement('canvas');
+    this.canvasContext ??= this.canvas.getContext('2d', { willReadFrequently: true });
+    if (!this.canvasContext) {
+      return null;
+    }
+    this.canvas.width = width;
+    this.canvas.height = height;
+    this.canvasContext.drawImage(video, 0, 0, width, height);
+    const { data } = this.canvasContext.getImageData(0, 0, width, height);
+    return jsQR(data, width, height, { inversionAttempts: 'dontInvert' })?.data ?? null;
   }
 
   private stop(): void {

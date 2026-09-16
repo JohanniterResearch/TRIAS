@@ -32,6 +32,7 @@
     "@angular/platform-browser": "^22.0.0",
     "@angular/router": "^22.0.0",
     "@microsoft/signalr": "^10.0.0",
+    "jsqr": "^1.4.0",
     "leaflet": "^1.9.4",
     "openapi-fetch": "^0.17.0",
     "qrcode": "^1.5.4",

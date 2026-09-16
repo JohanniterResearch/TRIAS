@@ -148,11 +148,10 @@ export const guestOnly: CanActivateFn = (_route, state) => {
   if (!session) {
     return true;
   }
-  if (session.expired) {
-    const requiredLogin =
-      session.tokenType === 'admin' || session.tokenType === 'leitstelle'
-        ? '/admin/login'
-        : '/login';
+  const requiredLogin =
+    session.tokenType === 'admin' || session.tokenType === 'leitstelle' ? '/admin/login' : '/login';
+  if (session.expired || !auth.sessionMatches(session, 'authenticated')) {
+    if (!session.expired) auth.markExpired();
     return state.url === requiredLogin ? true : router.createUrlTree([requiredLogin]);
   }
   return router.createUrlTree([
