@@ -44,6 +44,14 @@ export class AuthStore {
     return token ? this.jwtExpiresAt(token) : null;
   }
 
+  eventSceneId(): number | null {
+    const session = this.activeSession();
+    if (!session || session.expired) return null;
+    if (session.eventSceneId !== undefined) return session.eventSceneId;
+    const sceneId = this.jwtPayload(session.token)?.['scene_id'];
+    return typeof sceneId === 'string' && /^\d+$/.test(sceneId) ? Number(sceneId) : null;
+  }
+
   setAdminSession(session: Omit<Session, 'savedAt'>): void {
     this.save({ admin: this.withSavedAt(session), responder: null });
   }
@@ -101,10 +109,14 @@ export class AuthStore {
   }
 
   private jwtExpiresAt(token: string): number | null {
+    const expiresAt = this.jwtPayload(token)?.['exp'];
+    return typeof expiresAt === 'number' ? expiresAt * 1000 : null;
+  }
+
+  private jwtPayload(token: string): Record<string, unknown> | null {
     try {
       const encoded = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-      const payload = JSON.parse(atob(encoded.padEnd(Math.ceil(encoded.length / 4) * 4, '=')));
-      return typeof payload.exp === 'number' ? payload.exp * 1000 : null;
+      return JSON.parse(atob(encoded.padEnd(Math.ceil(encoded.length / 4) * 4, '=')));
     } catch {
       return null;
     }

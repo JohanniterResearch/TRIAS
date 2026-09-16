@@ -18,6 +18,7 @@ import { Subscription, interval, switchMap } from 'rxjs';
 
 import { apiErrorMessage, ApiClient } from '../../api/api-client';
 import type { components } from '../../api/openapi-types';
+import { AuthStore } from '../../auth/auth.store';
 import { MyAccess } from '../../auth/components/my-access';
 import { ResponderStateStore } from '../../responder/services/responder-state';
 import { SceneRealtimeService } from '../services/scene-realtime.service';
@@ -37,11 +38,38 @@ type TriageColor = components['schemas']['TriageColor'];
           <h1>Situation Room</h1>
         </div>
         <form [formGroup]="sceneForm" (ngSubmit)="setScene()" class="scene-select">
-          <label>
-            Szene ID
-            <input formControlName="sceneId" type="number" />
-          </label>
-          <button type="submit" [disabled]="sceneForm.invalid">Öffnen</button>
+          @if (leitstelle()) {
+            @if (eventScopedLeitstelle()) {
+              @if (accessibleEvents().length === 1) {
+                <span>Szene: {{ accessibleEvents()[0].name }}</span>
+              } @else if (sceneLoadFailed()) {
+                <button type="button" (click)="loadAccessibleScenes()">Erneut laden</button>
+              } @else {
+                <span>Szenen werden geladen.</span>
+              }
+            } @else {
+              <label>
+                Szene ID oder Name
+                <input
+                  list="leitstelle-scenes"
+                  placeholder="ID eingeben oder nach Szenenname suchen"
+                  (input)="selectAccessibleScene($event)"
+                />
+                <datalist id="leitstelle-scenes">
+                  @for (scene of accessibleEvents(); track scene.id) {
+                    <option [value]="scene.name + ' (ID ' + scene.id + ')'"></option>
+                  }
+                </datalist>
+              </label>
+              <button type="submit" [disabled]="sceneForm.invalid">Öffnen</button>
+            }
+          } @else {
+            <label>
+              Szene ID
+              <input formControlName="sceneId" type="number" />
+            </label>
+            <button type="submit" [disabled]="sceneForm.invalid">Öffnen</button>
+          }
         </form>
       </header>
 
@@ -198,6 +226,17 @@ export class SituationRoomPage implements AfterViewInit, OnDestroy {
   protected readonly showHistory = signal(false);
   protected readonly error = signal('');
   protected readonly realtimeState = signal('nicht verbunden');
+  protected readonly accessibleScenes = signal<components['schemas']['OperationScene'][]>([]);
+  protected readonly sceneLoadFailed = signal(false);
+  protected readonly leitstelle = computed(
+    () => this.auth.activeSession()?.tokenType === 'leitstelle',
+  );
+  protected readonly accessibleEvents = computed(() =>
+    this.accessibleScenes().filter((scene) => scene.parentSceneId == null),
+  );
+  protected readonly eventScopedLeitstelle = computed(
+    () => this.leitstelle() && this.auth.eventSceneId() !== null,
+  );
   protected readonly triageCounts = computed(() => {
     const counts = new Map<string, number>([
       ['rot', 0],
@@ -232,6 +271,7 @@ export class SituationRoomPage implements AfterViewInit, OnDestroy {
   });
 
   private readonly api = inject(ApiClient);
+  private readonly auth = inject(AuthStore);
   private readonly destroyRef = inject(DestroyRef);
   private readonly router = inject(Router);
   private readonly realtime = inject(SceneRealtimeService);
@@ -248,7 +288,9 @@ export class SituationRoomPage implements AfterViewInit, OnDestroy {
 
   ngAfterViewInit(): void {
     this.initMap();
-    if (this.sceneId()) {
+    if (this.leitstelle()) {
+      this.loadAccessibleScenes();
+    } else if (this.sceneId()) {
       this.connect();
     }
   }
@@ -264,6 +306,20 @@ export class SituationRoomPage implements AfterViewInit, OnDestroy {
 
   protected setScene(): void {
     this.connect();
+  }
+
+  protected selectAccessibleScene(event: Event): void {
+    const value = (event.target as HTMLInputElement).value;
+    const sceneId = /^\d+$/.test(value) ? Number(value) : null;
+    const scene = this.accessibleEvents().find(
+      (candidate) => candidate.id === sceneId || `${candidate.name} (ID ${candidate.id})` === value,
+    );
+    if (!scene) {
+      this.sceneForm.controls.sceneId.setValue(null);
+      return;
+    }
+    this.error.set('');
+    this.sceneForm.controls.sceneId.setValue(scene.id);
   }
 
   protected refresh(): void {
@@ -476,6 +532,36 @@ export class SituationRoomPage implements AfterViewInit, OnDestroy {
           this.renderMarkers();
         },
         error: () => this.error.set('Live-Verbindung und Aktualisierung sind unterbrochen.'),
+      });
+  }
+
+  protected loadAccessibleScenes(): void {
+    this.sceneLoadFailed.set(false);
+    this.api
+      .listScenes()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (scenes) => {
+          this.accessibleScenes.set(scenes);
+          const eventSceneId = this.auth.eventSceneId();
+          const event = this.accessibleEvents().find((scene) => scene.id === eventSceneId);
+          if (this.eventScopedLeitstelle() && event) {
+            this.sceneForm.controls.sceneId.setValue(event.id);
+            this.connect();
+          } else {
+            this.sceneForm.controls.sceneId.setValue(null);
+            if (this.eventScopedLeitstelle()) {
+              this.sceneLoadFailed.set(true);
+              this.error.set('Die zugewiesene Szene ist nicht verfügbar.');
+            }
+          }
+        },
+        error: (error: unknown) => {
+          this.sceneLoadFailed.set(true);
+          this.error.set(
+            apiErrorMessage(error, 'Zugängliche Szenen konnten nicht geladen werden.'),
+          );
+        },
       });
   }
 

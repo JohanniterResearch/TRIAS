@@ -78,6 +78,7 @@ export class AdminLoginPage {
           token: result.token,
           refreshToken: result.refreshToken,
           tokenType: result.role,
+          eventSceneId: result.eventSceneId ?? undefined,
           username: credentials.username,
           requiresPasswordChange: result.requiresPasswordChange,
         });

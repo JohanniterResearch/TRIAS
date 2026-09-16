@@ -127,6 +127,10 @@ paths:
                   refreshToken: { type: string }
                   requiresPasswordChange: { type: boolean }
                   role: { $ref: "#/components/schemas/Role" }
+                  eventSceneId:
+                    type: integer
+                    nullable: true
+                    description: Assigned top-level event for an event-scoped account; null for a permanent account.
         "401": { $ref: "#/components/responses/Unauthorized" }
         "429": { $ref: "#/components/responses/RateLimited" }
 

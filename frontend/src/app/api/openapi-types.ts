@@ -1213,6 +1213,8 @@ export interface operations {
                         refreshToken: string;
                         requiresPasswordChange: boolean;
                         role: components["schemas"]["Role"];
+                        /** @description Assigned top-level event for an event-scoped account; null for a permanent account. */
+                        eventSceneId?: number | null;
                     };
                 };
             };

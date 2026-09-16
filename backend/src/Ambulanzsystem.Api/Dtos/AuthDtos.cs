@@ -12,7 +12,8 @@ public record AdminLoginResponse(
     string token,
     string refreshToken,
     bool requiresPasswordChange,
-    string role);
+    string role,
+    int? eventSceneId);
 
 public record RefreshTokenRequest(string RefreshToken);
 public record RefreshTokenResponse(string token, string refreshToken);

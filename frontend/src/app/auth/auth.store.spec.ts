@@ -39,10 +39,34 @@ describe('AuthStore session matching', () => {
       expect(auth.hasPersistedSession('responder-or-qr')).toBe(false);
     },
   );
+
+  it('uses the explicit event scene ID saved for a Leitstelle session', () => {
+    const auth = TestBed.inject(AuthStore);
+    auth.setAdminSession({ token: 'token', tokenType: 'leitstelle', eventSceneId: 4 });
+
+    expect(auth.eventSceneId()).toBe(4);
+  });
+
+  it('reads an event scene ID from a legacy saved JWT session', () => {
+    const token = jwtWithPayload({ scene_id: '4' });
+    localStorage.setItem(
+      'ambulanzsystem.auth.v1',
+      JSON.stringify({
+        admin: { token, tokenType: 'leitstelle', savedAt: '2026-01-01T00:00:00Z' },
+        responder: null,
+      }),
+    );
+
+    expect(TestBed.inject(AuthStore).eventSceneId()).toBe(4);
+  });
 });
 
 function jwtWithExpiry(expiresAt: number): string {
-  const encoded = btoa(JSON.stringify({ exp: Math.floor(expiresAt / 1_000) }))
+  return jwtWithPayload({ exp: Math.floor(expiresAt / 1_000) });
+}
+
+function jwtWithPayload(payload: object): string {
+  const encoded = btoa(JSON.stringify(payload))
     .replace(/\+/g, '-')
     .replace(/\//g, '_')
     .replace(/=+$/, '');

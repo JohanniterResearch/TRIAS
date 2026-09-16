@@ -93,7 +93,7 @@ public class AuthController(
         if (asAdminResponse)
         {
             var role = user.Role == Role.Admin ? TokenTypes.Admin : TokenTypes.Leitstelle;
-            return Ok(new AdminLoginResponse("ok", issued.Token, refresh.RawToken, user.RequiresPasswordChange, role));
+            return Ok(new AdminLoginResponse("ok", issued.Token, refresh.RawToken, user.RequiresPasswordChange, role, user.EventSceneId));
         }
 
         return Ok(new UserLoginResponse("ok", issued.Token, refresh.RawToken));
