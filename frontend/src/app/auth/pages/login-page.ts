@@ -112,9 +112,10 @@ export class LoginPage {
             refreshToken: result.refreshToken,
             tokenType: 'user',
             username,
+            requiresPasswordChange: result.requiresPasswordChange,
           });
           this.offlineQueue.flush().catch(() => undefined);
-          this.router.navigateByUrl(homeRouteForToken('user'));
+          this.router.navigateByUrl(homeRouteForToken('user', result.requiresPasswordChange));
         },
         error: () => this.fail('Benutzername oder Passwort ist ungültig.'),
       }),

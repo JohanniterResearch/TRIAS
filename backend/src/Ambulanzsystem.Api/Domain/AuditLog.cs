@@ -18,4 +18,5 @@ public class AuditLog
     public string? ChangedFieldsJson { get; set; } // jsonb array of field names
     public string? BeforeJson { get; set; } // jsonb: field name -> value before write
     public string? AfterJson { get; set; } // jsonb: field name -> value after write
+    public string? Reason { get; set; }
 }

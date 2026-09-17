@@ -144,6 +144,182 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search Responder and Leitstelle accounts. Policy AdminOnly.
+         * @description Returns a paged directory of non-Admin accounts.
+         */
+        get: operations["adminUsers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/users/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** @description Updates a Responder or Leitstelle account and invalidates sessions when scope or role changes. */
+        put: operations["updateAdminUser"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/users/{id}/reset-password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Replaces a non-Admin password and requires a password change on next login. */
+        post: operations["resetAdminUserPassword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/users/{id}/reactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Restores a revoked non-Admin account with a temporary password. */
+        post: operations["reactivateAdminUser"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/patients": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Global patient search; at least one search or filter is required. Policy AdminOnly.
+         * @description Searches global patient records without permitting unfiltered enumeration.
+         */
+        get: operations["adminPatients"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/patients/{reference}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** @description Applies an administrative clinical correction with an audit reason where required. */
+        put: operations["updateAdminPatient"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/patients/{reference}/details": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Returns operational and clinical correction data for one patient through its opaque edit reference; primary keys and secrets are omitted. */
+        get: operations["getAdminPatientDetails"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/patients/{reference}/body-parts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** @description Replaces the complete validated canonical body-map state as an administrative clinical correction. */
+        put: operations["updateAdminPatientBodyParts"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/patient-qr-codes/available": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Returns a paged list of unused patient QR references. Tokens and database IDs are never returned. */
+        get: operations["availableAdminPatientQrCodes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/patients/{reference}/assign-qr-code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Atomically assigns either an unused opaque QR reference or a new QR code. A newly generated token is returned only for one-time printing. */
+        post: operations["assignAdminPatientQrCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/users": {
         parameters: {
             query?: never;
@@ -768,6 +944,108 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
+        AdminUserPage: {
+            total: number;
+            items: components["schemas"]["User"][];
+        };
+        UpdateAdminUser: {
+            username: string;
+            /** @enum {string} */
+            role: "responder" | "leitstelle";
+            /** @enum {string} */
+            accountType: "permanent" | "event";
+            eventSceneId?: number | null;
+        };
+        TemporaryPassword: {
+            temporaryPassword: string;
+        };
+        AdminPatient: {
+            /** @description Opaque reference retained only to submit a subsequent administrative update. */
+            editReference: string;
+            humanReadableId?: string | null;
+            name?: string | null;
+            /** @enum {string|null} */
+            triagefarbe?: "rot" | "gelb" | "gruen" | "schwarz" | null;
+            atmung?: boolean | null;
+            blutung?: boolean | null;
+            radialispuls?: boolean | null;
+            transport?: boolean | null;
+            dringend?: boolean | null;
+            kontaminiert?: boolean | null;
+            longitudePatient?: number | null;
+            latitudePatient?: number | null;
+            locationSource?: string | null;
+            locationAccuracyMeters?: number | null;
+            indoorLocation?: string | null;
+            operationSceneId: number;
+            /** @enum {string} */
+            protocolStatus: "draft" | "finalized";
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        AdminPatientPage: {
+            total: number;
+            items: components["schemas"]["AdminPatient"][];
+        };
+        AdminPatientAuditEntry: {
+            /** Format: date-time */
+            timestamp: string;
+            actorRole: string;
+            action: string;
+            entityType: string;
+            changedFields?: string[] | null;
+            reason?: string | null;
+        };
+        AdminProtocol: {
+            /** @enum {string} */
+            status: "draft" | "finalized";
+            formState: components["schemas"]["ProtokollFormState"];
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: date-time */
+            finalizedAt?: string | null;
+            warnings?: string[];
+        };
+        AdminPatientDetails: {
+            patient: components["schemas"]["AdminPatient"];
+            bodyParts: {
+                [key: string]: number;
+            };
+            protocol: components["schemas"]["AdminProtocol"];
+            qrCodeBound: boolean;
+            auditEntries: components["schemas"]["AdminPatientAuditEntry"][];
+        };
+        AdminBodyPartsUpdate: {
+            bodyParts: {
+                [key: string]: number;
+            };
+            correctionReason: string;
+        };
+        AvailablePatientQrCode: {
+            /** @description Opaque Admin-only QR reference */
+            reference: string;
+            /** @description Safe generation-time label. */
+            label: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        AvailablePatientQrCodePage: {
+            total: number;
+            items: components["schemas"]["AvailablePatientQrCode"][];
+        };
+        AssignAdminPatientQrCode: {
+            /** @enum {string} */
+            source: "existing" | "new";
+            /** @description Required only when source is existing. */
+            qrReference?: string;
+        };
+        AssignAdminPatientQrCodeResponse: {
+            patient: components["schemas"]["AdminPatient"];
+            /** @description Present only for source new and intended solely for the one-time print preview. */
+            printableQrToken?: string | null;
+        };
         LoginQrCode: {
             id: number;
             qrToken: string;
@@ -935,6 +1213,8 @@ export interface components {
             before?: string | null;
             /** @description JSON-encoded value after the action */
             after?: string | null;
+            /** @description Required justification for an administrative clinical correction. */
+            reason?: string | null;
         };
         incident: {
             ambulanzort?: string;
@@ -1115,6 +1395,8 @@ export interface components {
     parameters: {
         idPath: number;
         patientIdPath: number;
+        /** @description Opaque, Admin-only reference returned by the patient search; it is not a patient primary key. */
+        adminPatientReferencePath: string;
     };
     requestBodies: never;
     headers: never;
@@ -1180,6 +1462,7 @@ export interface operations {
                         status: "ok";
                         token: string;
                         refreshToken: string;
+                        requiresPasswordChange: boolean;
                     };
                 };
             };
@@ -1342,6 +1625,292 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             /** @description Not available (any non-dev configuration). */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    adminUsers: {
+        parameters: {
+            query?: {
+                search?: string;
+                role?: "responder" | "leitstelle";
+                accountType?: "permanent" | "event";
+                status?: "active" | "revoked";
+                page?: number;
+                pageSize?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    updateAdminUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["idPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateAdminUser"];
+            };
+        };
+        responses: {
+            /** @description Updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            403: components["responses"]["Forbidden"];
+            /** @description Duplicate username. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    resetAdminUserPassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["idPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TemporaryPassword"];
+            };
+        };
+        responses: {
+            /** @description Reset; next login must change password. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    reactivateAdminUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["idPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TemporaryPassword"];
+            };
+        };
+        responses: {
+            /** @description Reactivated; next login must change password. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    adminPatients: {
+        parameters: {
+            query?: {
+                search?: string;
+                operationSceneId?: number;
+                status?: "draft" | "finalized";
+                page?: number;
+                pageSize?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Page */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminPatientPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    updateAdminPatient: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Opaque, Admin-only reference returned by the patient search; it is not a patient primary key. */
+                reference: components["parameters"]["adminPatientReferencePath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminPatient"];
+                };
+            };
+            /** @description Assigned team blocks scene move. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getAdminPatientDetails: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Opaque, Admin-only reference returned by the patient search; it is not a patient primary key. */
+                reference: components["parameters"]["adminPatientReferencePath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Detailed patient record */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminPatientDetails"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateAdminPatientBodyParts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Opaque, Admin-only reference returned by the patient search; it is not a patient primary key. */
+                reference: components["parameters"]["adminPatientReferencePath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminBodyPartsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Updated detailed record */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminPatientDetails"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    availableAdminPatientQrCodes: {
+        parameters: {
+            query?: {
+                page?: number;
+                pageSize?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Available QR codes */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AvailablePatientQrCodePage"];
+                };
+            };
+        };
+    };
+    assignAdminPatientQrCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Opaque, Admin-only reference returned by the patient search; it is not a patient primary key. */
+                reference: components["parameters"]["adminPatientReferencePath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssignAdminPatientQrCode"];
+            };
+        };
+        responses: {
+            /** @description Assigned */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssignAdminPatientQrCodeResponse"];
+                };
+            };
+            /** @description QR code is already bound. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2190,6 +2759,8 @@ export interface operations {
                      * @description Local edit timestamp for newer-wins comparison; must not be more than five minutes ahead of server UTC. Older timestamps remain valid.
                      */
                     clientUpdatedAt?: string;
+                    /** @description Required when correcting an already-finalized protocol. */
+                    correctionReason?: string;
                 };
             };
         };

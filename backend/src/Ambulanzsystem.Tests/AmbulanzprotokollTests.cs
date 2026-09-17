@@ -161,7 +161,7 @@ public class AmbulanzprotokollTests(WebApplicationFactory<Program> factory) : IC
         // Same responder owns the patient it created — must be able to correct its own
         // finalized record, not just Admin/Leitstelle (FR-DOC-11/12).
         var correction = await responder.PutAsJsonAsync($"/api/persons/{patientId}/ambulanzprotokoll-page1",
-            new { status = "finalized", formState = new { patient = new { familienname = "Corrected" } } });
+            new { status = "finalized", formState = new { patient = new { familienname = "Corrected" } }, correctionReason = "Name correction" });
 
         Assert.Equal(HttpStatusCode.OK, correction.StatusCode);
     }
@@ -222,7 +222,7 @@ public class AmbulanzprotokollTests(WebApplicationFactory<Program> factory) : IC
         Assert.Equal(HttpStatusCode.Forbidden, qrAttempt.StatusCode);
 
         var adminCorrection = await admin.PutAsJsonAsync($"/api/persons/{patientId}/ambulanzprotokoll-page1",
-            new { status = "finalized", formState = new { patient = new { familienname = "Corrected" } } });
+            new { status = "finalized", formState = new { patient = new { familienname = "Corrected" } }, correctionReason = "Name correction" });
         Assert.Equal(HttpStatusCode.OK, adminCorrection.StatusCode);
     }
 

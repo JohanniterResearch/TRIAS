@@ -99,6 +99,24 @@ type TeamUpdateRequest =
   paths['/api/teams/{id}']['put']['requestBody']['content']['application/json'];
 type TriageHistoryEntry =
   paths['/api/persons/{id}/triage-history']['get']['responses'][200]['content']['application/json'][number];
+type AdminUserPage =
+  paths['/api/admin/users']['get']['responses'][200]['content']['application/json'];
+type AdminPatientPage =
+  paths['/api/admin/patients']['get']['responses'][200]['content']['application/json'];
+type UpdateAdminUser =
+  paths['/api/admin/users/{id}']['put']['requestBody']['content']['application/json'];
+type UpdateAdminPatient =
+  paths['/api/admin/patients/{reference}']['put']['requestBody']['content']['application/json'];
+type AdminPatientDetails =
+  paths['/api/admin/patients/{reference}/details']['get']['responses'][200]['content']['application/json'];
+type UpdateAdminBodyParts =
+  paths['/api/admin/patients/{reference}/body-parts']['put']['requestBody']['content']['application/json'];
+type AvailableAdminPatientQrCodes =
+  paths['/api/admin/patient-qr-codes/available']['get']['responses'][200]['content']['application/json'];
+type AssignAdminPatientQrCode =
+  paths['/api/admin/patients/{reference}/assign-qr-code']['post']['requestBody']['content']['application/json'];
+type AssignAdminPatientQrCodeResponse =
+  paths['/api/admin/patients/{reference}/assign-qr-code']['post']['responses'][200]['content']['application/json'];
 
 @Injectable({ providedIn: 'root' })
 export class ApiClient {
@@ -221,6 +239,98 @@ export class ApiClient {
     return this.unwrap(
       this.client.POST('/api/users/{id}/revoke', {
         params: { path: { id } },
+      }),
+    );
+  }
+
+  adminUsers(
+    search?: string,
+    role?: 'responder' | 'leitstelle',
+    accountType?: 'permanent' | 'event',
+    status?: 'active' | 'revoked',
+  ): Observable<AdminUserPage> {
+    return this.unwrap(
+      this.client.GET('/api/admin/users', { params: { query: { search, role, accountType, status } } }),
+    );
+  }
+
+  updateAdminUser(id: number, body: UpdateAdminUser): Observable<User> {
+    return this.unwrap(
+      this.client.PUT('/api/admin/users/{id}', { params: { path: { id } }, body }),
+    );
+  }
+
+  resetAdminUserPassword(id: number, temporaryPassword: string): Observable<void> {
+    return this.unwrap(
+      this.client.POST('/api/admin/users/{id}/reset-password', {
+        params: { path: { id } },
+        body: { temporaryPassword },
+      }),
+    );
+  }
+
+  reactivateAdminUser(id: number, temporaryPassword: string): Observable<void> {
+    return this.unwrap(
+      this.client.POST('/api/admin/users/{id}/reactivate', {
+        params: { path: { id } },
+        body: { temporaryPassword },
+      }),
+    );
+  }
+
+  adminPatients(
+    search: string,
+    operationSceneId?: number,
+    status?: 'draft' | 'finalized',
+  ): Observable<AdminPatientPage> {
+    return this.unwrap(
+      this.client.GET('/api/admin/patients', {
+        params: { query: { search: search || undefined, operationSceneId, status } },
+      }),
+    );
+  }
+
+  updateAdminPatient(
+    reference: string,
+    body: UpdateAdminPatient,
+  ): Observable<AdminPatientPage['items'][number]> {
+    return this.unwrap(
+      this.client.PUT('/api/admin/patients/{reference}', { params: { path: { reference } }, body }),
+    );
+  }
+
+  adminPatientDetails(reference: string): Observable<AdminPatientDetails> {
+    return this.unwrap(
+      this.client.GET('/api/admin/patients/{reference}/details', { params: { path: { reference } } }),
+    );
+  }
+
+  updateAdminPatientBodyParts(
+    reference: string,
+    body: UpdateAdminBodyParts,
+  ): Observable<AdminPatientDetails> {
+    return this.unwrap(
+      this.client.PUT('/api/admin/patients/{reference}/body-parts', {
+        params: { path: { reference } },
+        body,
+      }),
+    );
+  }
+
+  availableAdminPatientQrCodes(): Observable<AvailableAdminPatientQrCodes> {
+    return this.unwrap(
+      this.client.GET('/api/admin/patient-qr-codes/available'),
+    );
+  }
+
+  assignAdminPatientQrCode(
+    reference: string,
+    body: AssignAdminPatientQrCode,
+  ): Observable<AssignAdminPatientQrCodeResponse> {
+    return this.unwrap(
+      this.client.POST('/api/admin/patients/{reference}/assign-qr-code', {
+        params: { path: { reference } },
+        body,
       }),
     );
   }

@@ -5,7 +5,7 @@ public record QrLoginResponse(string status, string token, int eventSceneId);
 
 public record CredentialsRequest(string Username, string Password);
 
-public record UserLoginResponse(string status, string token, string refreshToken);
+public record UserLoginResponse(string status, string token, string refreshToken, bool requiresPasswordChange);
 
 public record AdminLoginResponse(
     string status,
