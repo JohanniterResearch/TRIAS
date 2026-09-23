@@ -628,13 +628,13 @@ export class AdminDashboard {
     operationSceneId: [null as number | null, Validators.required],
     correctionReason: [
       '',
-      [Validators.required, Validators.minLength(1), Validators.maxLength(500)],
+      [Validators.maxLength(500)],
     ],
     atmung: [false], blutung: [false], radialispuls: [false], transport: [false], dringend: [false], kontaminiert: [false],
     latitudePatient: [null as number | null], longitudePatient: [null as number | null],
     locationSource: [''], locationAccuracyMeters: [null as number | null], indoorLocation: [''],
   });
-  protected readonly managedBodyPartsForm = this.fb.group({ correctionReason: ['', [Validators.required, Validators.minLength(1), Validators.maxLength(500)]] });
+  protected readonly managedBodyPartsForm = this.fb.group({ correctionReason: ['', Validators.maxLength(500)] });
   protected readonly managedQrForm = this.fb.group({ qrReference: ['', Validators.required] });
 
   protected loadScenes(): void {
@@ -1040,7 +1040,8 @@ export class AdminDashboard {
   protected saveManagedBodyParts(): void {
     const patient = this.managedPatient(); const details = this.managedPatientDetails();
     if (!patient || !details) return;
-    this.run(() => this.api.updateAdminPatientBodyParts(patient.editReference, { bodyParts: details.bodyParts, correctionReason: this.managedBodyPartsForm.controls.correctionReason.value! }).subscribe({
+    const correctionReason = this.managedBodyPartsForm.controls.correctionReason.value;
+    this.run(() => this.api.updateAdminPatientBodyParts(patient.editReference, { bodyParts: details.bodyParts, ...(correctionReason ? { correctionReason } : {}) }).subscribe({
       next: (updated) => this.done(() => { this.managedPatientDetails.set(updated); this.managedBodyPartsForm.reset({ correctionReason: '' }); }, 'Körperkarte korrigiert.'),
       error: (error: unknown) => this.fail(apiErrorMessage(error, 'Körperkarte konnte nicht korrigiert werden.')),
     }));

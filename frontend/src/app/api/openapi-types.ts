@@ -1021,7 +1021,7 @@ export interface components {
             bodyParts: {
                 [key: string]: number;
             };
-            correctionReason: string;
+            correctionReason?: string;
         };
         AvailablePatientQrCode: {
             /** @description Opaque Admin-only QR reference */

@@ -184,6 +184,19 @@ describe('AdminDashboard management search', () => {
 });
 
 describe('AdminDashboard detailed patient display', () => {
+  it('allows detailed corrections without a reason', () => {
+    const updateAdminPatientBodyParts = vi.fn().mockReturnValue(of({}));
+    TestBed.configureTestingModule({ providers: [{ provide: ApiClient, useValue: { updateAdminPatientBodyParts } }] });
+    const dashboard = TestBed.runInInjectionContext(() => new AdminDashboard());
+    dashboard['managedPatient'].set({ editReference: 'opaque', operationSceneId: 3, protocolStatus: 'draft', createdAt: '', updatedAt: '' });
+    dashboard['managedPatientDetails'].set({ bodyParts: { kopf_vorne: 0 } } as never);
+
+    expect(dashboard['managedPatientForm'].controls.correctionReason.valid).toBe(true);
+    expect(dashboard['managedBodyPartsForm'].controls.correctionReason.valid).toBe(true);
+    dashboard['saveManagedBodyParts']();
+    expect(updateAdminPatientBodyParts).toHaveBeenCalledWith('opaque', { bodyParts: { kopf_vorne: 0 } });
+  });
+
   it('saves the yes/no stammdaten as checkbox booleans', () => {
     const updateAdminPatient = vi.fn().mockReturnValue(of({ editReference: 'opaque', operationSceneId: 3, protocolStatus: 'draft', createdAt: '', updatedAt: '' }));
     TestBed.configureTestingModule({ providers: [{ provide: ApiClient, useValue: { updateAdminPatient } }] });
@@ -194,7 +207,7 @@ describe('AdminDashboard detailed patient display', () => {
 
     dashboard['saveManagedPatient']();
 
-    expect(updateAdminPatient).toHaveBeenCalledWith('opaque', expect.objectContaining({ atmung: true, blutung: false }));
+    expect(updateAdminPatient).toHaveBeenCalledWith('opaque', expect.objectContaining({ correctionReason: '', atmung: true, blutung: false }));
   });
 
   it('does not overwrite unknown yes/no values when another correction is saved', () => {
