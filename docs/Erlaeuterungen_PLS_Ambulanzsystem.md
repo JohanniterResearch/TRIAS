@@ -2,7 +2,7 @@ Erläuterungen zum Arbeitsauftrag: PLS und Ambulanzsystem
 
 Hier findet ihr die ausführlicheren Hinweise zum [Arbeitsauftrag]. Sie sollen euch den Einstieg erleichtern und später beim Umsetzen helfen. Geht dabei bitte stufenweise vor; ein gleichzeitiger Umbau beider Anwendungen ist nicht vorgesehen.
 
-Die Anwendungen verwenden künftig eine gemeinsame Identität, behalten zunächst aber ihre getrennten Datenbanken. Änderungen werden asynchron abgeglichen, also auch zeitversetzt, sobald eine Verbindung besteht. 
+Die Anwendungen verwenden künftig eine gemeinsame Identität, behalten zunächst aber ihre getrennten Datenbanken. Änderungen werden asynchron abgeglichen, also auch zeitversetzt, sobald eine Verbindung besteht.
 
 1. Zielbild
 
