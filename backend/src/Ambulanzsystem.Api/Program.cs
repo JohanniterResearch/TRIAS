@@ -147,6 +147,9 @@ if (File.Exists(spaIndex))
             context.Response.StatusCode = StatusCodes.Status404NotFound;
             return;
         }
+        // SendFileAsync sets no Content-Type; with the nosniff header browsers would download the
+        // page or show it as text. This fallback also serves "/" (it wins over UseDefaultFiles).
+        context.Response.ContentType = "text/html; charset=utf-8";
         await context.Response.SendFileAsync(spaIndex);
     });
 }
