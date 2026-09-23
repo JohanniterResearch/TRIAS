@@ -135,6 +135,27 @@ namespace Ambulanzsystem.Api.Data.Migrations
                     b.ToTable("ambulanzprotokoll_page1s", (string)null);
                 });
 
+            modelBuilder.Entity("Ambulanzsystem.Api.Domain.AmbulanzprotokollRevision", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<int?>("ActorId").HasColumnType("integer").HasColumnName("actor_id");
+                    b.Property<string>("ActorRole").IsRequired().HasMaxLength(32).HasColumnType("character varying(32)").HasColumnName("actor_role");
+                    b.Property<string>("CorrectionReason").HasMaxLength(500).HasColumnType("character varying(500)").HasColumnName("correction_reason");
+                    b.Property<DateTime>("FinalizedAt").HasColumnType("timestamp with time zone").HasColumnName("finalized_at");
+                    b.Property<string>("FormStateSnapshotJson").IsRequired().HasColumnType("jsonb").HasColumnName("form_state_snapshot");
+                    b.Property<int>("PatientId").HasColumnType("integer").HasColumnName("patient_id");
+                    b.Property<int>("Version").HasColumnType("integer").HasColumnName("version");
+                    b.HasKey("Id").HasName("pk_ambulanzprotokoll_revisions");
+                    b.HasIndex("PatientId", "Version").IsUnique().HasDatabaseName("ix_ambulanzprotokoll_revisions_patient_id_version");
+                    b.ToTable("ambulanzprotokoll_revisions", (string)null);
+                });
+
             modelBuilder.Entity("Ambulanzsystem.Api.Domain.AuditLog", b =>
                 {
                     b.Property<long>("Id")
@@ -170,6 +191,11 @@ namespace Ambulanzsystem.Api.Data.Migrations
                         .HasColumnType("jsonb")
                         .HasColumnName("changed_fields");
 
+                    b.Property<string>("Reason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("reason");
+
                     b.Property<int?>("EntityId")
                         .HasColumnType("integer")
                         .HasColumnName("entity_id");
@@ -197,6 +223,16 @@ namespace Ambulanzsystem.Api.Data.Migrations
                         .HasDatabaseName("ix_audit_logs_timestamp");
 
                     b.ToTable("audit_logs", (string)null);
+                });
+
+            modelBuilder.Entity("Ambulanzsystem.Api.Domain.AmbulanzprotokollRevision", b =>
+                {
+                    b.HasOne("Ambulanzsystem.Api.Domain.Patient", null)
+                        .WithMany()
+                        .HasForeignKey("PatientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_ambulanzprotokoll_revisions_patients_patient_id");
                 });
 
             modelBuilder.Entity("Ambulanzsystem.Api.Domain.Body", b =>

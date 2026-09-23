@@ -16,6 +16,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<AmbulanzprotokollPage1> AmbulanzprotokollPage1s => Set<AmbulanzprotokollPage1>();
     public DbSet<AmbulanzprotokollExport> AmbulanzprotokollExports => Set<AmbulanzprotokollExport>();
+    public DbSet<AmbulanzprotokollRevision> AmbulanzprotokollRevisions => Set<AmbulanzprotokollRevision>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
     protected override void OnModelCreating(ModelBuilder b)
@@ -125,11 +126,21 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             // Archive rows are never updated or deleted (FR-DOC-14) — no update path exists in code.
         });
 
+        b.Entity<AmbulanzprotokollRevision>(e =>
+        {
+            e.Property(x => x.FormStateSnapshotJson).HasColumnType("jsonb").HasColumnName("form_state_snapshot");
+            e.Property(x => x.ActorRole).HasMaxLength(32);
+            e.Property(x => x.CorrectionReason).HasMaxLength(500);
+            e.HasIndex(x => new { x.PatientId, x.Version }).IsUnique();
+            e.HasOne<Patient>().WithMany().HasForeignKey(x => x.PatientId).OnDelete(DeleteBehavior.Cascade);
+        });
+
         b.Entity<AuditLog>(e =>
         {
             e.Property(x => x.ChangedFieldsJson).HasColumnType("jsonb").HasColumnName("changed_fields");
             e.Property(x => x.BeforeJson).HasColumnType("jsonb").HasColumnName("before");
             e.Property(x => x.AfterJson).HasColumnType("jsonb").HasColumnName("after");
+            e.Property(x => x.Reason).HasMaxLength(500);
             e.HasIndex(x => x.PatientId);
             e.HasIndex(x => x.Timestamp);
             // Append-only (D7): no delete/update path is ever wired up in application code.

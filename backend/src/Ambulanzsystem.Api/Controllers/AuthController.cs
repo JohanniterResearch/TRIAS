@@ -96,7 +96,7 @@ public class AuthController(
             return Ok(new AdminLoginResponse("ok", issued.Token, refresh.RawToken, user.RequiresPasswordChange, role, user.EventSceneId));
         }
 
-        return Ok(new UserLoginResponse("ok", issued.Token, refresh.RawToken));
+        return Ok(new UserLoginResponse("ok", issued.Token, refresh.RawToken, user.RequiresPasswordChange));
     }
 
     private static string RoleClaim(Role role) => role switch

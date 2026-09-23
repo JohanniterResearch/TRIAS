@@ -26,12 +26,12 @@ public class AuditService(AppDbContext db)
     // {"vitals.pulse": 92}, rather than a single generic field name. Always logs — even zero
     // changes — so every authenticated write on these endpoints still produces exactly one audit
     // row (D7 requirement 2), matching the always-log behavior of the single-field writes above.
-    public void LogFieldsWrite(ClaimsPrincipal actor, string entityType, int? entityId, int? patientId, IReadOnlyDictionary<string, (object? Before, object? After)> changes)
+    public void LogFieldsWrite(ClaimsPrincipal actor, string entityType, int? entityId, int? patientId, IReadOnlyDictionary<string, (object? Before, object? After)> changes, string? reason = null)
     {
         var fields = changes.Keys.OrderBy(k => k, StringComparer.Ordinal).ToArray();
         var before = fields.ToDictionary(f => f, f => changes[f].Before);
         var after = fields.ToDictionary(f => f, f => changes[f].After);
-        LogEvent(actor.SubjectId(), actor.TokenType() ?? "unknown", "write", entityType, entityId, patientId, fields, before, after);
+        LogEvent(actor.SubjectId(), actor.TokenType() ?? "unknown", "write", entityType, entityId, patientId, fields, before, after, reason);
     }
 
     // FR-DOC-09/14: a real export event, distinct from the "write" that persists the export
@@ -47,7 +47,7 @@ public class AuditService(AppDbContext db)
     public void LogRevoke(ClaimsPrincipal? actor, int? actorId, string actorRole, string entityType, int entityId) =>
         LogEvent(actor?.SubjectId() ?? actorId, actor?.TokenType() ?? actorRole, "revoke", entityType, entityId, null, null, null, null);
 
-    private void LogEvent(int? actorId, string actorRole, string action, string entityType, int? entityId, int? patientId, string[]? fields, object? before, object? after)
+    private void LogEvent(int? actorId, string actorRole, string action, string entityType, int? entityId, int? patientId, string[]? fields, object? before, object? after, string? reason = null)
     {
         db.AuditLogs.Add(new AuditLog
         {
@@ -61,6 +61,7 @@ public class AuditService(AppDbContext db)
             ChangedFieldsJson = fields is null ? null : JsonSerializer.Serialize(fields),
             BeforeJson = before is null ? null : JsonSerializer.Serialize(before),
             AfterJson = after is null ? null : JsonSerializer.Serialize(after),
+            Reason = reason,
         });
     }
 }

@@ -72,6 +72,10 @@ public class AmbulanzprotokollController(AppDbContext db, AuditService audit, Sc
         {
             return Forbid();
         }
+        if (wasFinalized && (string.IsNullOrWhiteSpace(request.CorrectionReason) || request.CorrectionReason.Length > 500))
+        {
+            return BadRequest(new ErrorResponse("correctionReason must be 1 to 500 characters for finalized protocol corrections."));
+        }
 
         record ??= new AmbulanzprotokollPage1 { PatientId = patientId };
         var isNew = record.Id == 0;
@@ -124,9 +128,25 @@ public class AmbulanzprotokollController(AppDbContext db, AuditService audit, Sc
         {
             diffs["status"] = (oldStatus, record.Status);
         }
-        audit.LogFieldsWrite(User, "ambulanzprotokoll", record.Id, patientId, diffs);
+        audit.LogFieldsWrite(User, "ambulanzprotokoll", record.Id, patientId, diffs, wasFinalized ? request.CorrectionReason : null);
 
         await db.SaveChangesAsync();
+
+        if (record.Status == "finalized")
+        {
+            var version = await db.AmbulanzprotokollRevisions.Where(r => r.PatientId == patientId).Select(r => (int?)r.Version).MaxAsync() ?? 0;
+            db.AmbulanzprotokollRevisions.Add(new AmbulanzprotokollRevision
+            {
+                PatientId = patientId,
+                Version = version + 1,
+                FormStateSnapshotJson = FormStateMerge.WithDefaults(record.FormStateJson),
+                FinalizedAt = record.FinalizedAt ?? now,
+                ActorId = User.SubjectId(),
+                ActorRole = User.TokenType() ?? "unknown",
+                CorrectionReason = wasFinalized ? request.CorrectionReason : null,
+            });
+            await db.SaveChangesAsync();
+        }
         await tx.CommitAsync();
 
         var bodyPartsJson = await db.Bodies.Where(b => b.PatientId == patientId).Select(b => b.BodyPartsJson).FirstOrDefaultAsync();
@@ -232,7 +252,7 @@ public class AmbulanzprotokollController(AppDbContext db, AuditService audit, Sc
 
     // "GCS-Summe... computed as eyes + verbal + motor when all are present" (rebuild spec) — the
     // server recomputes it authoritatively rather than trusting whatever the client sent.
-    private static string ApplyGcsAutoSum(string formStateJson)
+    public static string ApplyGcsAutoSum(string formStateJson)
     {
         var root = JsonNode.Parse(formStateJson) as JsonObject ?? [];
         var vitals = root["vitals"] as JsonObject;

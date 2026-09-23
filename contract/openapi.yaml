@@ -28,6 +28,8 @@ security:
   - bearerAuth: []
 
 tags:
+  - name: admin
+    description: Administrative management operations.
   - name: auth
   - name: users
   - name: login-qr-codes
@@ -93,11 +95,12 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [status, token, refreshToken]
+                required: [status, token, refreshToken, requiresPasswordChange]
                 properties:
                   status: { type: string, const: ok }
                   token: { type: string }
                   refreshToken: { type: string }
+                  requiresPasswordChange: { type: boolean }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
@@ -236,6 +239,119 @@ paths:
                   refreshToken: { type: string, description: Optional for compatibility; omitted for development-bypass sessions. }
         "400": { $ref: "#/components/responses/BadRequest" }
         "404": { description: Not available (any non-dev configuration). }
+
+  # ------------------------------------------------------ admin management
+  /api/admin/users:
+    get:
+      tags: [admin]
+      operationId: adminUsers
+      description: Returns a paged directory of non-Admin accounts.
+      summary: Search Responder and Leitstelle accounts. Policy AdminOnly.
+      parameters:
+        - { name: search, in: query, schema: { type: string } }
+        - { name: role, in: query, schema: { type: string, enum: [responder, leitstelle] } }
+        - { name: accountType, in: query, schema: { type: string, enum: [permanent, event] } }
+        - { name: status, in: query, schema: { type: string, enum: [active, revoked] } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1 } }
+        - { name: pageSize, in: query, schema: { type: integer, minimum: 1, maximum: 100 } }
+      responses:
+        "200": { description: Page, content: { application/json: { schema: { $ref: "#/components/schemas/AdminUserPage" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/admin/users/{id}:
+    put:
+      tags: [admin]
+      operationId: updateAdminUser
+      description: Updates a Responder or Leitstelle account and invalidates sessions when scope or role changes.
+      parameters: [{ $ref: "#/components/parameters/idPath" }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/UpdateAdminUser" } } } }
+      responses:
+        "200": { description: Updated, content: { application/json: { schema: { $ref: "#/components/schemas/User" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { description: Duplicate username. }
+  /api/admin/users/{id}/reset-password:
+    post:
+      tags: [admin]
+      operationId: resetAdminUserPassword
+      description: Replaces a non-Admin password and requires a password change on next login.
+      parameters: [{ $ref: "#/components/parameters/idPath" }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/TemporaryPassword" } } } }
+      responses: { "204": { description: Reset; next login must change password. } }
+  /api/admin/users/{id}/reactivate:
+    post:
+      tags: [admin]
+      operationId: reactivateAdminUser
+      description: Restores a revoked non-Admin account with a temporary password.
+      parameters: [{ $ref: "#/components/parameters/idPath" }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/TemporaryPassword" } } } }
+      responses: { "204": { description: Reactivated; next login must change password. } }
+  /api/admin/patients:
+    get:
+      tags: [admin]
+      operationId: adminPatients
+      description: Searches global patient records without permitting unfiltered enumeration.
+      summary: Global patient search; at least one search or filter is required. Policy AdminOnly.
+      parameters:
+        - { name: search, in: query, schema: { type: string } }
+        - { name: operationSceneId, in: query, schema: { type: integer } }
+        - { name: status, in: query, schema: { type: string, enum: [draft, finalized] } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1 } }
+        - { name: pageSize, in: query, schema: { type: integer, minimum: 1, maximum: 100 } }
+      responses:
+        "200": { description: Page, content: { application/json: { schema: { $ref: "#/components/schemas/AdminPatientPage" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/admin/patients/{reference}:
+    put:
+      tags: [admin]
+      operationId: updateAdminPatient
+      description: Applies an administrative clinical correction with an audit reason where required.
+      parameters: [{ $ref: "#/components/parameters/adminPatientReferencePath" }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
+      responses:
+        "200": { description: Updated, content: { application/json: { schema: { $ref: "#/components/schemas/AdminPatient" } } } }
+        "409": { description: Assigned team blocks scene move. }
+  /api/admin/patients/{reference}/details:
+    get:
+      tags: [admin]
+      operationId: getAdminPatientDetails
+      description: Returns operational and clinical correction data for one patient through its opaque edit reference; primary keys and secrets are omitted.
+      parameters: [{ $ref: "#/components/parameters/adminPatientReferencePath" }]
+      responses:
+        "200": { description: Detailed patient record, content: { application/json: { schema: { $ref: "#/components/schemas/AdminPatientDetails" } } } }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/admin/patients/{reference}/body-parts:
+    put:
+      tags: [admin]
+      operationId: updateAdminPatientBodyParts
+      description: Replaces the complete validated canonical body-map state as an administrative clinical correction.
+      parameters: [{ $ref: "#/components/parameters/adminPatientReferencePath" }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/AdminBodyPartsUpdate" } } } }
+      responses:
+        "200": { description: Updated detailed record, content: { application/json: { schema: { $ref: "#/components/schemas/AdminPatientDetails" } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /api/admin/patient-qr-codes/available:
+    get:
+      tags: [admin]
+      operationId: availableAdminPatientQrCodes
+      description: Returns a paged list of unused patient QR references. Tokens and database IDs are never returned.
+      parameters:
+        - { name: page, in: query, schema: { type: integer, minimum: 1 } }
+        - { name: pageSize, in: query, schema: { type: integer, minimum: 1, maximum: 100 } }
+      responses:
+        "200": { description: Available QR codes, content: { application/json: { schema: { $ref: "#/components/schemas/AvailablePatientQrCodePage" } } } }
+  /api/admin/patients/{reference}/assign-qr-code:
+    post:
+      tags: [admin]
+      operationId: assignAdminPatientQrCode
+      description: Atomically assigns either an unused opaque QR reference or a new QR code. A newly generated token is returned only for one-time printing.
+      parameters: [{ $ref: "#/components/parameters/adminPatientReferencePath" }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/AssignAdminPatientQrCode" } } } }
+      responses:
+        "200": { description: Assigned, content: { application/json: { schema: { $ref: "#/components/schemas/AssignAdminPatientQrCodeResponse" } } } }
+        "409": { description: QR code is already bound. }
 
   # ---------------------------------------------------------------- users
   /api/users:
@@ -892,6 +1008,7 @@ paths:
                 formState:
                   $ref: "#/components/schemas/ProtokollFormState"
                 clientUpdatedAt: { type: string, format: date-time, description: Local edit timestamp for newer-wins comparison; must not be more than five minutes ahead of server UTC. Older timestamps remain valid. }
+                correctionReason: { type: string, minLength: 1, maxLength: 500, description: Required when correcting an already-finalized protocol. }
       responses:
         "200":
           description: Saved record (merged server state) plus any finalize warnings.
@@ -1087,6 +1204,12 @@ components:
       in: path
       required: true
       schema: { type: integer }
+    adminPatientReferencePath:
+      name: reference
+      in: path
+      required: true
+      description: Opaque, Admin-only reference returned by the patient search; it is not a patient primary key.
+      schema: { type: string }
 
   responses:
     Unauthorized:
@@ -1157,6 +1280,114 @@ components:
         revokedAt: { type: [string, "null"], format: date-time }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+
+    AdminUserPage:
+      type: object
+      required: [total, items]
+      properties:
+        total: { type: integer }
+        items: { type: array, items: { $ref: "#/components/schemas/User" } }
+    UpdateAdminUser:
+      type: object
+      required: [username, role, accountType]
+      properties:
+        username: { type: string, maxLength: 255 }
+        role: { type: string, enum: [responder, leitstelle] }
+        accountType: { type: string, enum: [permanent, event] }
+        eventSceneId: { type: [integer, "null"] }
+    TemporaryPassword:
+      type: object
+      required: [temporaryPassword]
+      properties:
+        temporaryPassword: { type: string, minLength: 8 }
+    AdminPatient:
+      type: object
+      required: [editReference, operationSceneId, protocolStatus, createdAt, updatedAt]
+      properties:
+        editReference: { type: string, description: Opaque reference retained only to submit a subsequent administrative update. }
+        humanReadableId: { type: [string, "null"] }
+        name: { type: [string, "null"] }
+        triagefarbe: { type: [string, "null"], enum: [rot, gelb, gruen, schwarz, null] }
+        atmung: { type: [boolean, "null"] }
+        blutung: { type: [boolean, "null"] }
+        radialispuls: { type: [boolean, "null"] }
+        transport: { type: [boolean, "null"] }
+        dringend: { type: [boolean, "null"] }
+        kontaminiert: { type: [boolean, "null"] }
+        longitudePatient: { type: [number, "null"] }
+        latitudePatient: { type: [number, "null"] }
+        locationSource: { type: [string, "null"] }
+        locationAccuracyMeters: { type: [number, "null"] }
+        indoorLocation: { type: [string, "null"] }
+        operationSceneId: { type: integer }
+        protocolStatus: { type: string, enum: [draft, finalized] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    AdminPatientPage:
+      type: object
+      required: [total, items]
+      properties:
+        total: { type: integer }
+        items: { type: array, items: { $ref: "#/components/schemas/AdminPatient" } }
+    AdminPatientAuditEntry:
+      type: object
+      required: [timestamp, actorRole, action, entityType]
+      properties:
+        timestamp: { type: string, format: date-time }
+        actorRole: { type: string }
+        action: { type: string }
+        entityType: { type: string }
+        changedFields: { type: [array, "null"], items: { type: string } }
+        reason: { type: [string, "null"] }
+    AdminProtocol:
+      type: object
+      required: [status, formState, updatedAt]
+      properties:
+        status: { type: string, enum: [draft, finalized] }
+        formState: { $ref: "#/components/schemas/ProtokollFormState" }
+        updatedAt: { type: string, format: date-time }
+        finalizedAt: { type: [string, "null"], format: date-time }
+        warnings: { type: array, items: { type: string } }
+    AdminPatientDetails:
+      type: object
+      required: [patient, bodyParts, protocol, qrCodeBound, auditEntries]
+      properties:
+        patient: { $ref: "#/components/schemas/AdminPatient" }
+        bodyParts: { type: object, additionalProperties: { type: integer } }
+        protocol: { $ref: "#/components/schemas/AdminProtocol" }
+        qrCodeBound: { type: boolean }
+        auditEntries: { type: array, items: { $ref: "#/components/schemas/AdminPatientAuditEntry" } }
+    AdminBodyPartsUpdate:
+      type: object
+      required: [bodyParts]
+      properties:
+        bodyParts: { type: object, additionalProperties: { type: integer } }
+        correctionReason: { type: string, maxLength: 500 }
+    AvailablePatientQrCode:
+      type: object
+      required: [reference, label, createdAt]
+      properties:
+        reference: { type: string, description: Opaque Admin-only QR reference, never a QR database ID or token. }
+        label: { type: string, description: Safe generation-time label. }
+        createdAt: { type: string, format: date-time }
+    AvailablePatientQrCodePage:
+      type: object
+      required: [total, items]
+      properties:
+        total: { type: integer }
+        items: { type: array, items: { $ref: "#/components/schemas/AvailablePatientQrCode" } }
+    AssignAdminPatientQrCode:
+      type: object
+      required: [source]
+      properties:
+        source: { type: string, enum: [existing, new] }
+        qrReference: { type: string, description: Required only when source is existing. }
+    AssignAdminPatientQrCodeResponse:
+      type: object
+      required: [patient]
+      properties:
+        patient: { $ref: "#/components/schemas/AdminPatient" }
+        printableQrToken: { type: [string, "null"], description: Present only for source new and intended solely for the one-time print preview. }
 
     LoginQrCode:
       type: object
@@ -1331,3 +1562,4 @@ components:
           items: { type: string }
         before: { type: [string, "null"], description: JSON-encoded value before the action, or null when no prior value applies. }
         after: { type: [string, "null"], description: JSON-encoded value after the action, or null when no resulting value applies. }
+        reason: { type: [string, "null"], description: Required justification for an administrative clinical correction. }
