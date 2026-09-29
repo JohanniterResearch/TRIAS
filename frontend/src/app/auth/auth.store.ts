@@ -39,6 +39,27 @@ export class AuthStore {
     () => this.activeSession()?.requiresPasswordChange === true,
   );
 
+  constructor() {
+    // Refresh tokens are single-use and the server treats a spent one as theft, revoking every
+    // session of the account. So when another tab rotates or ends the session, adopt its state
+    // instead of later presenting this tab's stale copy.
+    window.addEventListener('storage', (event) => {
+      if (event.key !== storageKey) return;
+      const next = this.load();
+      const current = this.activeSession();
+      const incoming = next.responder ?? next.admin;
+      const sameSession =
+        !!current &&
+        !!incoming &&
+        current.tokenType === incoming.tokenType &&
+        current.username === incoming.username &&
+        current.eventSceneId === incoming.eventSceneId &&
+        !!current.expired === !!incoming.expired;
+      if (!sameSession) this.identity.set({});
+      this.state.set(next);
+    });
+  }
+
   tokenExpiresAt(): number | null {
     const token = this.bearerToken();
     return token ? this.jwtExpiresAt(token) : null;
