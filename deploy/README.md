@@ -101,6 +101,9 @@ Run these commands from the `ambulanzsystem` folder:
 - `sudo docker compose restart` restarts the app. The stack also starts automatically after the
   VM reboots.
 - `sudo bash scripts/backup.sh` creates a verified database backup in `backups/` right away.
+- Login is limited to 10 attempts per minute per client IP. If many devices share one venue
+  NAT or LTE router, set `LOGIN_RATE_LIMIT=<n>` (and `REFRESH_RATE_LIMIT`) in `.env` to the agreed
+  pilot peak (gate G4) and run `sudo docker compose up -d`.
 
 `.env` holds all secrets. Keep it and back it up. Never delete or regenerate it for an
 existing database: the app refuses to start if `BACKUP_EXPECTED_DEPLOYMENT_ID` changes, and

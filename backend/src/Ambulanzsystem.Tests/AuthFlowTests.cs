@@ -212,6 +212,21 @@ public class AuthFlowTests(WebApplicationFactory<Program> factory) : IClassFixtu
     }
 
     [Fact]
+    public async Task LoginRateLimit_IsConfigurable()
+    {
+        await using var limitedFactory = factory.WithWebHostBuilder(builder => builder.UseSetting("RateLimiting:LoginPermitLimit", "2"));
+        var client = limitedFactory.CreateClient();
+
+        for (var request = 0; request < 2; request++)
+        {
+            var response = await client.PostAsJsonAsync("/api/admin-login", new { username = "nobody", password = "wrong-password" });
+            Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        }
+        var limited = await client.PostAsJsonAsync("/api/admin-login", new { username = "nobody", password = "wrong-password" });
+        Assert.Equal(HttpStatusCode.TooManyRequests, limited.StatusCode);
+    }
+
+    [Fact]
     public async Task RefreshToken_RepeatedAbuse_UsesDedicatedRateLimit()
     {
         await using var isolatedFactory = factory.WithWebHostBuilder(_ => { });

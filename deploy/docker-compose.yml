@@ -32,6 +32,9 @@ services:
       Bootstrap__AdminPassword: ${BOOTSTRAP_ADMIN_PASSWORD:?run install.sh first}
       PLS_ALLOWED_ORIGINS: https://${SITE_ADDRESS}
       BACKUP_EXPECTED_DEPLOYMENT_ID: ${BACKUP_EXPECTED_DEPLOYMENT_ID:?run install.sh first}
+      # Logins per minute per client IP. Raise it (in .env) when many devices share one venue NAT.
+      RateLimiting__LoginPermitLimit: ${LOGIN_RATE_LIMIT:-10}
+      RateLimiting__RefreshPermitLimit: ${REFRESH_RATE_LIMIT:-10}
     volumes:
       # AdminManagementController protects patient/QR references with these keys; keep them across upgrades.
       - dpkeys:/root/.aspnet/DataProtection-Keys
