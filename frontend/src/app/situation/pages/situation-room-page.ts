@@ -598,8 +598,11 @@ export class SituationRoomPage implements AfterViewInit, OnDestroy {
       return;
     }
     this.map = L.map(element).setView([48.2082, 16.3738], 13);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    // OSM's tile policy asks browser apps for a Referer; the page-wide no-referrer header would
+    // suppress it, so tiles alone send the origin (never the path, which may hold patient IDs).
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap contributors',
+      referrerPolicy: 'strict-origin-when-cross-origin',
     }).addTo(this.map);
     this.markers.addTo(this.map);
   }

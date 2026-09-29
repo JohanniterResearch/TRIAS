@@ -186,8 +186,11 @@ export class TriagePage implements AfterViewInit, OnDestroy {
     const lat = patient?.latitudePatient ?? 48.2082;
     const lng = patient?.longitudePatient ?? 16.3738;
     this.map = L.map(element).setView([lat, lng], patient?.latitudePatient == null ? 13 : 17);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    // OSM's tile policy asks browser apps for a Referer; the page-wide no-referrer header would
+    // suppress it, so tiles alone send the origin (never the path, which may hold patient IDs).
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap contributors',
+      referrerPolicy: 'strict-origin-when-cross-origin',
     }).addTo(this.map);
     if (patient?.latitudePatient != null && patient.longitudePatient != null) {
       this.setMarker(patient.latitudePatient, patient.longitudePatient);
