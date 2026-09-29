@@ -2,7 +2,7 @@ import { Component, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 
-import { apiErrorMessage, ApiClient } from '../../api/api-client';
+import { apiErrorMessage, ApiClient, ApiRequestError } from '../../api/api-client';
 import { MyAccess } from '../../auth/components/my-access';
 import { QrScanner } from '../../shared/qr-scanner';
 import { OfflineQueueService } from '../../sync/offline-queue.service';
@@ -117,8 +117,10 @@ export class PatientScanPage {
           await this.captureLocation(patient.id);
           this.router.navigateByUrl(`/patient/${patient.id}`);
         },
+        // "Online" Wi-Fi without uplink, or a proxy 5xx, must not lose the intake: queue it with the
+        // same clientGeneratedId, which the server treats idempotently if the request did arrive.
         error: (error: unknown) =>
-          navigator.onLine
+          error instanceof ApiRequestError && error.status < 500
             ? this.fail(apiErrorMessage(error, 'Patient konnte nicht angelegt werden.'))
             : this.createManualOffline(clientGeneratedId),
       });
