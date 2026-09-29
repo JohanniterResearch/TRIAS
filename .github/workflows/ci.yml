@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [main, Dev_RH]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: ambulanzsystem
+          POSTGRES_USER: pls
+          POSTGRES_PASSWORD: dev-only-password
+        ports: ["5434:5432"]
+        options: >-
+          --health-cmd "pg_isready -U pls -d ambulanzsystem"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      # Each test process creates and drops its own database on this server.
+      # The .slnx solution format needs SDK 9+; the test project pulls in the API project.
+      - run: dotnet test backend/src/Ambulanzsystem.Tests/Ambulanzsystem.Tests.csproj
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run format:check
+      - run: npm run check:types
+      - run: npm test
+      - run: npm run build
+      - run: npm run check:production
+
+  contract:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contract
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: contract/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run check:generated
+
+  deploy-scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: for f in deploy/*.sh deploy/scripts/*.sh; do bash -n "$f"; done
