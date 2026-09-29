@@ -66,6 +66,8 @@ public class AuthController(
     public Task<IActionResult> AdminLogin(CredentialsRequest request) =>
         LoginPrivileged(request, allowedRoles: [Role.Admin, Role.Leitstelle], asAdminResponse: true);
 
+    private static readonly string UnknownUserHash = BCrypt.Net.BCrypt.HashPassword(Guid.NewGuid().ToString());
+
     private async Task<IActionResult> LoginPrivileged(CredentialsRequest request, Role[] allowedRoles, bool asAdminResponse)
     {
         var userId = await db.Users.AsNoTracking().Where(u => u.Username == request.Username)
@@ -74,9 +76,11 @@ public class AuthController(
         await using var transaction = await db.Database.BeginTransactionAsync();
         var user = userId is int id ? await RowLocks.UserAsync(db, id) : null;
 
+        // Always pay the bcrypt cost so response time does not reveal whether a username exists.
+        var passwordValid = BCrypt.Net.BCrypt.Verify(request.Password, user?.PasswordHash ?? UnknownUserHash);
         if (user is null || user.RevokedAt is not null || !allowedRoles.Contains(user.Role)
             || (user.AccountType == AccountType.Event && user.EventSceneId is null)
-            || !BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
+            || !passwordValid)
         {
             metrics.IncrementAuthFailures();
             return Unauthorized(new ErrorResponse("Invalid username or password."));

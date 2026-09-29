@@ -12,8 +12,11 @@ public record IssuedRefreshToken(string RawToken, RefreshToken Entity);
 // 64 random bytes, base64-encoded, returned to the client once. Only the SHA-256 hash is ever
 // persisted — a DB read/leak cannot be replayed as a valid refresh token (recreation spec
 // deviation #1, fixing a known hardening gap in the legacy implementation).
-public class RefreshTokenService(AppDbContext db, IOptions<JwtOptions> options)
+public class RefreshTokenService(AppDbContext db, IOptions<JwtOptions> options, AuditService audit)
 {
+    // Two tabs of one browser can race the same refresh; only a later reuse counts as theft.
+    private static readonly TimeSpan ReuseGrace = TimeSpan.FromSeconds(30);
+
     private readonly JwtOptions _options = options.Value;
 
     public Task<IssuedRefreshToken> IssueAsync(int userId)
@@ -34,8 +37,16 @@ public class RefreshTokenService(AppDbContext db, IOptions<JwtOptions> options)
             .Include(t => t.User)
             .FirstOrDefaultAsync(t => t.TokenHash == hash);
 
-        if (existing is null || existing.IsRevoked || existing.ExpiresAt < now)
+        if (existing is null || existing.ExpiresAt < now)
         {
+            return null;
+        }
+        if (existing.IsRevoked)
+        {
+            if (existing.RotatedAt is DateTime rotatedAt && now - rotatedAt > ReuseGrace)
+            {
+                await RevokeAfterReuseAsync(existing.UserId);
+            }
             return null;
         }
 
@@ -51,7 +62,7 @@ public class RefreshTokenService(AppDbContext db, IOptions<JwtOptions> options)
 
         var claimed = await db.RefreshTokens
             .Where(t => t.Id == existing.Id && !t.IsRevoked && t.ExpiresAt >= now)
-            .ExecuteUpdateAsync(update => update.SetProperty(t => t.IsRevoked, true));
+            .ExecuteUpdateAsync(update => update.SetProperty(t => t.IsRevoked, true).SetProperty(t => t.RotatedAt, now));
         if (claimed != 1)
         {
             if (transaction is not null) await transaction.RollbackAsync();
@@ -82,6 +93,19 @@ public class RefreshTokenService(AppDbContext db, IOptions<JwtOptions> options)
             .Where(t => t.UserId == userId && !t.IsRevoked)
             .ToListAsync();
         foreach (var token in activeTokens) token.IsRevoked = true;
+    }
+
+    // A rotated token came back: an attacker or the legitimate user holds a copy. End every session
+    // of the account (refresh tokens and, via the security stamp, live access tokens) so both must
+    // log in again, and record it.
+    private async Task RevokeAfterReuseAsync(int userId)
+    {
+        await db.RefreshTokens.Where(t => t.UserId == userId && !t.IsRevoked)
+            .ExecuteUpdateAsync(update => update.SetProperty(t => t.IsRevoked, true));
+        await db.Users.Where(u => u.Id == userId)
+            .ExecuteUpdateAsync(update => update.SetProperty(u => u.SecurityStamp, Guid.NewGuid().ToString()));
+        audit.LogRevoke(null, null, "system", "refresh_token_reuse", userId);
+        await db.SaveChangesAsync();
     }
 
     private static bool TryHash(string? raw, out string hash)

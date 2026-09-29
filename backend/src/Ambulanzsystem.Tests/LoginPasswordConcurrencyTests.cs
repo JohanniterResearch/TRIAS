@@ -74,7 +74,7 @@ public class LoginPasswordConcurrencyTests(WebApplicationFactory<Program> factor
             .UseSnakeCaseNamingConvention().AddInterceptors(interceptors).Options);
     }
 
-    private RefreshTokenService Refresh(AppDbContext db) => new(db, factory.Services.GetRequiredService<IOptions<JwtOptions>>());
+    private RefreshTokenService Refresh(AppDbContext db) => new(db, factory.Services.GetRequiredService<IOptions<JwtOptions>>(), new AuditService(db));
     private AuthController Login(AppDbContext db) => new(db, factory.Services.GetRequiredService<TokenService>(),
         Refresh(db), new AuditService(db), factory.Services.GetRequiredService<MetricsService>(),
         factory.Services.GetRequiredService<IConfiguration>(), factory.Services.GetRequiredService<IHostEnvironment>());

@@ -406,7 +406,7 @@ public class SessionSecurityGapTests(WebApplicationFactory<Program> factory) : I
         {
             var controller = new UsersController(
                 db,
-                new RefreshTokenService(db, Options.Create(new JwtOptions())),
+                new RefreshTokenService(db, Options.Create(new JwtOptions()), new AuditService(db)),
                 new AuditService(db))
             {
                 ControllerContext = new ControllerContext

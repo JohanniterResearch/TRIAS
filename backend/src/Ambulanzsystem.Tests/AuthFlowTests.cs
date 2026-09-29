@@ -2,6 +2,8 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Xunit;
 
@@ -191,6 +193,35 @@ public class AuthFlowTests(WebApplicationFactory<Program> factory) : IClassFixtu
         Assert.Equal(
             [HttpStatusCode.OK, HttpStatusCode.Unauthorized],
             rotations.Select(response => response.StatusCode).Order().ToArray());
+    }
+
+    [Fact]
+    public async Task RefreshToken_ReuseAfterGrace_EndsEverySessionOfTheAccount()
+    {
+        var admin = Client();
+        admin.DefaultRequestHeaders.Authorization = new("Bearer", await AdminLoginAsync(admin));
+        var username = $"refresh-reuse-{Guid.NewGuid():N}";
+        (await admin.PostAsJsonAsync("/api/users", new { username, password = "somePassword1", role = "responder" }))
+            .EnsureSuccessStatusCode();
+        var login = await Client().PostAsJsonAsync("/api/user-login", new { username, password = "somePassword1" });
+        var stolen = (await login.Content.ReadFromJsonAsync<TokenBearing>())!.refreshToken!;
+        var rotated = await (await Client().PostAsJsonAsync("/api/refresh-token", new { refreshToken = stolen }))
+            .Content.ReadFromJsonAsync<TokenBearing>();
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<Ambulanzsystem.Api.Data.AppDbContext>();
+            await db.RefreshTokens.Where(t => t.RotatedAt != null && t.User.Username == username)
+                .ExecuteUpdateAsync(u => u.SetProperty(t => t.RotatedAt, DateTime.UtcNow.AddMinutes(-1)));
+        }
+
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await Client().PostAsJsonAsync("/api/refresh-token", new { refreshToken = stolen })).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await Client().PostAsJsonAsync("/api/refresh-token", new { refreshToken = rotated!.refreshToken })).StatusCode);
+        var responder = Client();
+        responder.DefaultRequestHeaders.Authorization = new("Bearer", rotated.token);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await responder.PostAsync("/api/validate-token", null)).StatusCode);
     }
 
     [Fact]

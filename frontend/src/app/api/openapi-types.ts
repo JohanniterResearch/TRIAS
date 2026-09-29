@@ -75,7 +75,7 @@ export interface paths {
         put?: never;
         /**
          * Rotate a refresh token (old is revoked, new pair issued).
-         * @description Consumes one valid refresh token and rotates it into a new access and refresh token pair.
+         * @description Consumes one valid refresh token and rotates it into a new access and refresh token pair. Presenting an already rotated token again (after a 30-second grace window) is treated as theft and revokes every session of the account.
          */
         post: operations["refreshToken"];
         delete?: never;
