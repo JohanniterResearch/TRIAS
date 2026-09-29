@@ -328,6 +328,17 @@ export class OfflineQueueService {
     await this.refreshStatus();
   }
 
+  /** Patient IDs (provisional and real) that still have unsent writes on this device. */
+  async pendingPatientIds(): Promise<Set<number>> {
+    const ids = new Set<number>(this.unsavedProtocols.keys());
+    for (const item of await this.items()) {
+      const id = item.type === 'manual-patient' ? item.provisionalId : item.patientId;
+      ids.add(id);
+      ids.add(await this.realPatientId(id));
+    }
+    return ids;
+  }
+
   async retry(id: string): Promise<void> {
     const item = (await this.items()).find((candidate) => candidate.id === id);
     if (!item) return;

@@ -41,6 +41,13 @@ export class ProtokollDraftStore {
     });
   }
 
+  async deleteExcept(keep: Set<number>): Promise<void> {
+    await this.withStore('readwrite', async (store) => {
+      const keys = await request<IDBValidKey[]>(store.getAllKeys());
+      for (const key of keys) if (!keep.has(Number(key))) await request(store.delete(key));
+    });
+  }
+
   async clear(): Promise<void> {
     await this.withStore('readwrite', (store) => request(store.clear()));
   }
