@@ -250,7 +250,9 @@ export class ApiClient {
     status?: 'active' | 'revoked',
   ): Observable<AdminUserPage> {
     return this.unwrap(
-      this.client.GET('/api/admin/users', { params: { query: { search, role, accountType, status } } }),
+      this.client.GET('/api/admin/users', {
+        params: { query: { search, role, accountType, status } },
+      }),
     );
   }
 
@@ -301,7 +303,9 @@ export class ApiClient {
 
   adminPatientDetails(reference: string): Observable<AdminPatientDetails> {
     return this.unwrap(
-      this.client.GET('/api/admin/patients/{reference}/details', { params: { path: { reference } } }),
+      this.client.GET('/api/admin/patients/{reference}/details', {
+        params: { path: { reference } },
+      }),
     );
   }
 
@@ -318,9 +322,7 @@ export class ApiClient {
   }
 
   availableAdminPatientQrCodes(): Observable<AvailableAdminPatientQrCodes> {
-    return this.unwrap(
-      this.client.GET('/api/admin/patient-qr-codes/available'),
-    );
+    return this.unwrap(this.client.GET('/api/admin/patient-qr-codes/available'));
   }
 
   assignAdminPatientQrCode(

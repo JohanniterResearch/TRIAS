@@ -17,3 +17,7 @@ scripts/__pycache__/
 !/docs/pilot/
 !/docs/KnownIssues.md
 !/docs/remediationPlan.md
+
+# ruflo/agentdb tooling state
+/agentdb.rvf
+/agentdb.rvf.lock

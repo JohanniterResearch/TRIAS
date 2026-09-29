@@ -20,7 +20,15 @@ type BodyRegions = { front: string[]; back: string[] };
 
 @Component({
   selector: 'app-admin-dashboard',
-  imports: [DatePipe, MyAccess, PreviewModal, QrCodeImage, QrPreviewModal, ReactiveFormsModule, RouterLink],
+  imports: [
+    DatePipe,
+    MyAccess,
+    PreviewModal,
+    QrCodeImage,
+    QrPreviewModal,
+    ReactiveFormsModule,
+    RouterLink,
+  ],
   template: `
     <section class="admin-page">
       <app-my-access />
@@ -415,90 +423,224 @@ type BodyRegions = { front: string[]; back: string[] };
             (close)="closePatientManagement()"
           >
             @if (managedPatient(); as selected) {
-              <button type="button" (click)="closeManagedPatientDetails(); managedPatient.set(null)">Zurück zur Suche</button>
+              <button
+                type="button"
+                (click)="closeManagedPatientDetails(); managedPatient.set(null)"
+              >
+                Zurück zur Suche
+              </button>
               @if (!managedPatientDetails()) {
-                <button type="button" (click)="openManagedPatientDetails()">Weitere Patientendaten bearbeiten</button>
+                <button type="button" (click)="openManagedPatientDetails()">
+                  Weitere Patientendaten bearbeiten
+                </button>
               }
               @if (managedPatientDetails(); as details) {
-                <button type="button" (click)="closeManagedPatientDetails()">Zurück zur Kurzkorrektur</button>
-                <form [formGroup]="managedPatientForm" (ngSubmit)="saveManagedPatient()" class="auth-form">
+                <button type="button" (click)="closeManagedPatientDetails()">
+                  Zurück zur Kurzkorrektur
+                </button>
+                <form
+                  [formGroup]="managedPatientForm"
+                  (ngSubmit)="saveManagedPatient()"
+                  class="auth-form"
+                >
                   <h3>Stammdaten, Triage und Ort</h3>
                   <label>Name <input formControlName="name" /></label>
-                  <label>Triage <select formControlName="triagefarbe"><option value="">–</option><option value="rot">Rot</option><option value="gelb">Gelb</option><option value="gruen">Grün</option><option value="schwarz">Schwarz</option></select></label>
+                  <label
+                    >Triage
+                    <select formControlName="triagefarbe">
+                      <option value="">–</option>
+                      <option value="rot">Rot</option>
+                      <option value="gelb">Gelb</option>
+                      <option value="gruen">Grün</option>
+                      <option value="schwarz">Schwarz</option>
+                    </select></label
+                  >
                   <div class="body-map-columns">
                     <section>
                       @for (field of triageFieldsLeft; track field.key) {
-                        <label class="check-row"><input type="checkbox" [formControlName]="field.key" />{{ field.label }}</label>
+                        <label class="check-row"
+                          ><input type="checkbox" [formControlName]="field.key" />{{
+                            field.label
+                          }}</label
+                        >
                       }
                     </section>
                     <section>
                       @for (field of triageFieldsRight; track field.key) {
-                        <label class="check-row"><input type="checkbox" [formControlName]="field.key" />{{ field.label }}</label>
+                        <label class="check-row"
+                          ><input type="checkbox" [formControlName]="field.key" />{{
+                            field.label
+                          }}</label
+                        >
                       }
                     </section>
                   </div>
                   <label>Szene ID <input type="number" formControlName="operationSceneId" /></label>
-                  <label>Breitengrad <input type="number" formControlName="latitudePatient" /></label>
-                  <label>Längengrad <input type="number" formControlName="longitudePatient" /></label>
-                  <label>Ortquelle <select formControlName="locationSource"><option value="">–</option><option value="gps">GPS</option><option value="manual">Manuell</option></select></label>
-                  <label>Genauigkeit (m) <input type="number" min="0" formControlName="locationAccuracyMeters" /></label>
+                  <label
+                    >Breitengrad <input type="number" formControlName="latitudePatient"
+                  /></label>
+                  <label
+                    >Längengrad <input type="number" formControlName="longitudePatient"
+                  /></label>
+                  <label
+                    >Ortquelle
+                    <select formControlName="locationSource">
+                      <option value="">–</option>
+                      <option value="gps">GPS</option>
+                      <option value="manual">Manuell</option>
+                    </select></label
+                  >
+                  <label
+                    >Genauigkeit (m)
+                    <input type="number" min="0" formControlName="locationAccuracyMeters"
+                  /></label>
                   <label>Innenraum-Ort <input formControlName="indoorLocation" /></label>
                   <label>Begründung <input formControlName="correctionReason" /></label>
-                  <button type="submit" [disabled]="busy() || managedPatientForm.invalid">Korrektur speichern</button>
+                  <button type="submit" [disabled]="busy() || managedPatientForm.invalid">
+                    Korrektur speichern
+                  </button>
                 </form>
-                <form [formGroup]="managedBodyPartsForm" (ngSubmit)="saveManagedBodyParts()" class="auth-form">
+                <form
+                  [formGroup]="managedBodyPartsForm"
+                  (ngSubmit)="saveManagedBodyParts()"
+                  class="auth-form"
+                >
                   <h3>Körperkarte</h3>
                   <div class="body-map-columns">
-                    <section><h4>Körper vorne</h4>@for (part of bodyRegions().front; track part) {<label class="check-row"><input type="checkbox" [checked]="details.bodyParts[part] === 1" (change)="setManagedBodyPart(part, $any($event.target).checked)" />{{ bodyPartLabel(part) }}</label>}</section>
-                    <section><h4>Körper hinten</h4>@for (part of bodyRegions().back; track part) {<label class="check-row"><input type="checkbox" [checked]="details.bodyParts[part] === 1" (change)="setManagedBodyPart(part, $any($event.target).checked)" />{{ bodyPartLabel(part) }}</label>}</section>
+                    <section>
+                      <h4>Körper vorne</h4>
+                      @for (part of bodyRegions().front; track part) {
+                        <label class="check-row"
+                          ><input
+                            type="checkbox"
+                            [checked]="details.bodyParts[part] === 1"
+                            (change)="setManagedBodyPart(part, $any($event.target).checked)"
+                          />{{ bodyPartLabel(part) }}</label
+                        >
+                      }
+                    </section>
+                    <section>
+                      <h4>Körper hinten</h4>
+                      @for (part of bodyRegions().back; track part) {
+                        <label class="check-row"
+                          ><input
+                            type="checkbox"
+                            [checked]="details.bodyParts[part] === 1"
+                            (change)="setManagedBodyPart(part, $any($event.target).checked)"
+                          />{{ bodyPartLabel(part) }}</label
+                        >
+                      }
+                    </section>
                   </div>
                   <label>Begründung <input formControlName="correctionReason" /></label>
-                  <button type="submit" [disabled]="busy() || managedBodyPartsForm.invalid">Körperkarte speichern</button>
+                  <button type="submit" [disabled]="busy() || managedBodyPartsForm.invalid">
+                    Körperkarte speichern
+                  </button>
                 </form>
                 <section class="auth-form">
                   <h3>Ambulanzblatt</h3>
-                  @if (!protocolSummaryOpen()) {<button type="button" (click)="protocolSummaryOpen.set(true)">Ambulanzblatt anzeigen</button>} @else {
-                    <button type="button" (click)="protocolSummaryOpen.set(false)">Zurück zu den Patientendaten</button>
-                    @for (section of protocolSections(details.protocol); track section.title) { @if (section.entries.length) {<section><h4>{{ section.title }}</h4><dl>@for (entry of section.entries; track entry.label) {<dt>{{ entry.label }}</dt><dd>{{ entry.value }}</dd>}</dl></section>} }
+                  @if (!protocolSummaryOpen()) {
+                    <button type="button" (click)="protocolSummaryOpen.set(true)">
+                      Ambulanzblatt anzeigen
+                    </button>
+                  } @else {
+                    <button type="button" (click)="protocolSummaryOpen.set(false)">
+                      Zurück zu den Patientendaten
+                    </button>
+                    @for (section of protocolSections(details.protocol); track section.title) {
+                      @if (section.entries.length) {
+                        <section>
+                          <h4>{{ section.title }}</h4>
+                          <dl>
+                            @for (entry of section.entries; track entry.label) {
+                              <dt>{{ entry.label }}</dt>
+                              <dd>{{ entry.value }}</dd>
+                            }
+                          </dl>
+                        </section>
+                      }
+                    }
                   }
                 </section>
-                <form [formGroup]="managedQrForm" (ngSubmit)="assignManagedPatientQr('existing')" class="auth-form">
-                  <h3>Patienten-QR</h3><p>{{ details.qrCodeBound ? 'QR zugewiesen' : 'Kein QR zugewiesen' }}</p>
-                  <label>Ungenutzter QR <select formControlName="qrReference"><option value="">Bitte wählen</option>@for (code of availablePatientQrCodes(); track code.reference) {<option [value]="code.reference">{{ code.label }}</option>}</select></label>
-                  <button type="submit" [disabled]="busy() || managedQrForm.invalid">Ausgewählten QR zuweisen</button>
-                  <button type="button" (click)="assignManagedPatientQr('new')" [disabled]="busy()">Neuen QR erzeugen und zuweisen</button>
-                </form>
-                @if (oneTimeQrToken()) {<section class="auth-form"><h3>Neuer Patienten-QR</h3><app-qr-code-image [token]="oneTimeQrToken()!" label="Patienten-QR" /><button type="button" (click)="printOneTimeQr()">Drucken</button><button type="button" (click)="closeOneTimeQrPreview()">Vorschau schließen</button></section>}
-                <section><h3>Letzte Änderungen</h3><div class="admin-list">@for (entry of details.auditEntries; track entry.timestamp + entry.action) {<article><strong>{{ entry.action }}</strong><span>{{ entry.timestamp | date: 'short' }} · {{ entry.actorRole }}</span>@if (entry.reason) {<span>{{ entry.reason }}</span>}</article>}</div></section>
-              } @else {
-              <form
-                [formGroup]="managedPatientForm"
-                (ngSubmit)="saveManagedPatient()"
-                class="auth-form"
-              >
-                <p>
-                  {{ selected.humanReadableId ?? 'Unbenannter Patient' }} ·
-                  {{ selected.protocolStatus }}
-                </p>
-                <label>Name <input formControlName="name" /></label>
-                <label
-                  >Triage
-                  <select formControlName="triagefarbe">
-                    <option value="">–</option>
-                    <option value="rot">Rot</option>
-                    <option value="gelb">Gelb</option>
-                    <option value="gruen">Grün</option>
-                    <option value="schwarz">Schwarz</option>
-                  </select></label
+                <form
+                  [formGroup]="managedQrForm"
+                  (ngSubmit)="assignManagedPatientQr('existing')"
+                  class="auth-form"
                 >
-                <label>Szene ID <input type="number" formControlName="operationSceneId" /></label>
-                <label
-                  >Begründung für klinische Korrektur <input formControlName="correctionReason"
-                /></label>
-                <button type="submit" [disabled]="busy() || managedPatientForm.invalid">
-                  Korrektur speichern
-                </button>
-              </form>
+                  <h3>Patienten-QR</h3>
+                  <p>{{ details.qrCodeBound ? 'QR zugewiesen' : 'Kein QR zugewiesen' }}</p>
+                  <label
+                    >Ungenutzter QR
+                    <select formControlName="qrReference">
+                      <option value="">Bitte wählen</option>
+                      @for (code of availablePatientQrCodes(); track code.reference) {
+                        <option [value]="code.reference">{{ code.label }}</option>
+                      }
+                    </select></label
+                  >
+                  <button type="submit" [disabled]="busy() || managedQrForm.invalid">
+                    Ausgewählten QR zuweisen
+                  </button>
+                  <button type="button" (click)="assignManagedPatientQr('new')" [disabled]="busy()">
+                    Neuen QR erzeugen und zuweisen
+                  </button>
+                </form>
+                @if (oneTimeQrToken()) {
+                  <section class="auth-form">
+                    <h3>Neuer Patienten-QR</h3>
+                    <app-qr-code-image [token]="oneTimeQrToken()!" label="Patienten-QR" /><button
+                      type="button"
+                      (click)="printOneTimeQr()"
+                    >
+                      Drucken</button
+                    ><button type="button" (click)="closeOneTimeQrPreview()">
+                      Vorschau schließen
+                    </button>
+                  </section>
+                }
+                <section>
+                  <h3>Letzte Änderungen</h3>
+                  <div class="admin-list">
+                    @for (entry of details.auditEntries; track entry.timestamp + entry.action) {
+                      <article>
+                        <strong>{{ entry.action }}</strong
+                        ><span>{{ entry.timestamp | date: 'short' }} · {{ entry.actorRole }}</span>
+                        @if (entry.reason) {
+                          <span>{{ entry.reason }}</span>
+                        }
+                      </article>
+                    }
+                  </div>
+                </section>
+              } @else {
+                <form
+                  [formGroup]="managedPatientForm"
+                  (ngSubmit)="saveManagedPatient()"
+                  class="auth-form"
+                >
+                  <p>
+                    {{ selected.humanReadableId ?? 'Unbenannter Patient' }} ·
+                    {{ selected.protocolStatus }}
+                  </p>
+                  <label>Name <input formControlName="name" /></label>
+                  <label
+                    >Triage
+                    <select formControlName="triagefarbe">
+                      <option value="">–</option>
+                      <option value="rot">Rot</option>
+                      <option value="gelb">Gelb</option>
+                      <option value="gruen">Grün</option>
+                      <option value="schwarz">Schwarz</option>
+                    </select></label
+                  >
+                  <label>Szene ID <input type="number" formControlName="operationSceneId" /></label>
+                  <label
+                    >Begründung für klinische Korrektur <input formControlName="correctionReason"
+                  /></label>
+                  <button type="submit" [disabled]="busy() || managedPatientForm.invalid">
+                    Korrektur speichern
+                  </button>
+                </form>
               }
             } @else {
               <p class="qr-modal-count">{{ managedPatients().length }} Patienten</p>
@@ -543,13 +685,18 @@ export class AdminDashboard {
   protected readonly managedPatient = signal<AdminPatient | null>(null);
   protected readonly managedPatientDetails = signal<AdminPatientDetails | null>(null);
   protected readonly bodyRegions = signal<BodyRegions>({ front: [], back: [] });
-  protected readonly availablePatientQrCodes = signal<components['schemas']['AvailablePatientQrCode'][]>([]);
+  protected readonly availablePatientQrCodes = signal<
+    components['schemas']['AvailablePatientQrCode'][]
+  >([]);
   protected readonly protocolSummaryOpen = signal(false);
   protected readonly oneTimeQrToken = signal<string | null>(null);
   protected readonly triageFields = [
-    { key: 'atmung', label: 'Atmung' }, { key: 'blutung', label: 'Blutung' },
-    { key: 'radialispuls', label: 'Radialispuls' }, { key: 'transport', label: 'Transport' },
-    { key: 'dringend', label: 'Dringend' }, { key: 'kontaminiert', label: 'Kontaminiert' },
+    { key: 'atmung', label: 'Atmung' },
+    { key: 'blutung', label: 'Blutung' },
+    { key: 'radialispuls', label: 'Radialispuls' },
+    { key: 'transport', label: 'Transport' },
+    { key: 'dringend', label: 'Dringend' },
+    { key: 'kontaminiert', label: 'Kontaminiert' },
   ] as const;
   protected readonly triageFieldsLeft = this.triageFields.slice(0, 3);
   protected readonly triageFieldsRight = this.triageFields.slice(3);
@@ -626,15 +773,22 @@ export class AdminDashboard {
     name: [''],
     triagefarbe: [''],
     operationSceneId: [null as number | null, Validators.required],
-    correctionReason: [
-      '',
-      [Validators.maxLength(500)],
-    ],
-    atmung: [false], blutung: [false], radialispuls: [false], transport: [false], dringend: [false], kontaminiert: [false],
-    latitudePatient: [null as number | null], longitudePatient: [null as number | null],
-    locationSource: [''], locationAccuracyMeters: [null as number | null], indoorLocation: [''],
+    correctionReason: ['', [Validators.maxLength(500)]],
+    atmung: [false],
+    blutung: [false],
+    radialispuls: [false],
+    transport: [false],
+    dringend: [false],
+    kontaminiert: [false],
+    latitudePatient: [null as number | null],
+    longitudePatient: [null as number | null],
+    locationSource: [''],
+    locationAccuracyMeters: [null as number | null],
+    indoorLocation: [''],
   });
-  protected readonly managedBodyPartsForm = this.fb.group({ correctionReason: ['', Validators.maxLength(500)] });
+  protected readonly managedBodyPartsForm = this.fb.group({
+    correctionReason: ['', Validators.maxLength(500)],
+  });
   protected readonly managedQrForm = this.fb.group({ qrReference: ['', Validators.required] });
 
   protected loadScenes(): void {
@@ -855,15 +1009,20 @@ export class AdminDashboard {
     this.managedUser.set(null);
     this.run(() =>
       this.api
-        .adminUsers(value.search || undefined, value.role || undefined, value.accountType || undefined, value.status || undefined)
+        .adminUsers(
+          value.search || undefined,
+          value.role || undefined,
+          value.accountType || undefined,
+          value.status || undefined,
+        )
         .subscribe({
-        next: (page) =>
-          this.done(() => {
-            this.managedUsers.set(page.items);
-            this.userManagementOpen.set(true);
-          }),
-        error: (error: unknown) =>
-          this.fail(apiErrorMessage(error, 'Benutzer konnten nicht geladen werden.')),
+          next: (page) =>
+            this.done(() => {
+              this.managedUsers.set(page.items);
+              this.userManagementOpen.set(true);
+            }),
+          error: (error: unknown) =>
+            this.fail(apiErrorMessage(error, 'Benutzer konnten nicht geladen werden.')),
         }),
     );
   }
@@ -876,7 +1035,12 @@ export class AdminDashboard {
     }
     const value = this.userSearchForm.getRawValue();
     this.api
-      .adminUsers(search, value.role || undefined, value.accountType || undefined, value.status || undefined)
+      .adminUsers(
+        search,
+        value.role || undefined,
+        value.accountType || undefined,
+        value.status || undefined,
+      )
       .subscribe({
         next: (page) => {
           if ((event.target as HTMLInputElement).value.trim() === search)
@@ -1006,95 +1170,194 @@ export class AdminDashboard {
       triagefarbe: patient.triagefarbe ?? '',
       operationSceneId: patient.operationSceneId,
       correctionReason: '',
-      atmung: patient.atmung ?? false, blutung: patient.blutung ?? false, radialispuls: patient.radialispuls ?? false, transport: patient.transport ?? false, dringend: patient.dringend ?? false, kontaminiert: patient.kontaminiert ?? false,
-      latitudePatient: patient.latitudePatient, longitudePatient: patient.longitudePatient,
-      locationSource: patient.locationSource ?? '', locationAccuracyMeters: patient.locationAccuracyMeters, indoorLocation: patient.indoorLocation ?? '',
+      atmung: patient.atmung ?? false,
+      blutung: patient.blutung ?? false,
+      radialispuls: patient.radialispuls ?? false,
+      transport: patient.transport ?? false,
+      dringend: patient.dringend ?? false,
+      kontaminiert: patient.kontaminiert ?? false,
+      latitudePatient: patient.latitudePatient,
+      longitudePatient: patient.longitudePatient,
+      locationSource: patient.locationSource ?? '',
+      locationAccuracyMeters: patient.locationAccuracyMeters,
+      indoorLocation: patient.indoorLocation ?? '',
     });
   }
 
   protected openManagedPatientDetails(): void {
     const patient = this.managedPatient();
     if (!patient) return;
-    this.run(() => this.api.adminPatientDetails(patient.editReference).subscribe({
-      next: (details) => this.done(() => {
-        this.managedPatientDetails.set(details);
-        this.managedBodyPartsForm.reset({ correctionReason: '' });
-        this.managedQrForm.reset({ qrReference: '' });
-        this.protocolSummaryOpen.set(false);
-        this.oneTimeQrToken.set(null);
-        this.loadManagedBodyRegions();
-        this.loadAvailablePatientQrCodes();
+    this.run(() =>
+      this.api.adminPatientDetails(patient.editReference).subscribe({
+        next: (details) =>
+          this.done(() => {
+            this.managedPatientDetails.set(details);
+            this.managedBodyPartsForm.reset({ correctionReason: '' });
+            this.managedQrForm.reset({ qrReference: '' });
+            this.protocolSummaryOpen.set(false);
+            this.oneTimeQrToken.set(null);
+            this.loadManagedBodyRegions();
+            this.loadAvailablePatientQrCodes();
+          }),
+        error: (error: unknown) =>
+          this.fail(apiErrorMessage(error, 'Patientendaten konnten nicht geladen werden.')),
       }),
-      error: (error: unknown) => this.fail(apiErrorMessage(error, 'Patientendaten konnten nicht geladen werden.')),
-    }));
+    );
   }
 
-  protected closeManagedPatientDetails(): void { this.managedPatientDetails.set(null); this.protocolSummaryOpen.set(false); this.oneTimeQrToken.set(null); }
+  protected closeManagedPatientDetails(): void {
+    this.managedPatientDetails.set(null);
+    this.protocolSummaryOpen.set(false);
+    this.oneTimeQrToken.set(null);
+  }
 
-  protected bodyPartLabel(key: string): string { return key.replaceAll('_', ' '); }
+  protected bodyPartLabel(key: string): string {
+    return key.replaceAll('_', ' ');
+  }
 
   protected setManagedBodyPart(key: string, selected: boolean): void {
-    this.managedPatientDetails.update((details) => details ? { ...details, bodyParts: { ...details.bodyParts, [key]: selected ? 1 : 0 } } : details);
+    this.managedPatientDetails.update((details) =>
+      details
+        ? { ...details, bodyParts: { ...details.bodyParts, [key]: selected ? 1 : 0 } }
+        : details,
+    );
   }
 
   protected saveManagedBodyParts(): void {
-    const patient = this.managedPatient(); const details = this.managedPatientDetails();
+    const patient = this.managedPatient();
+    const details = this.managedPatientDetails();
     if (!patient || !details) return;
     const correctionReason = this.managedBodyPartsForm.controls.correctionReason.value;
-    this.run(() => this.api.updateAdminPatientBodyParts(patient.editReference, { bodyParts: details.bodyParts, ...(correctionReason ? { correctionReason } : {}) }).subscribe({
-      next: (updated) => this.done(() => { this.managedPatientDetails.set(updated); this.managedBodyPartsForm.reset({ correctionReason: '' }); }, 'Körperkarte korrigiert.'),
-      error: (error: unknown) => this.fail(apiErrorMessage(error, 'Körperkarte konnte nicht korrigiert werden.')),
-    }));
+    this.run(() =>
+      this.api
+        .updateAdminPatientBodyParts(patient.editReference, {
+          bodyParts: details.bodyParts,
+          ...(correctionReason ? { correctionReason } : {}),
+        })
+        .subscribe({
+          next: (updated) =>
+            this.done(() => {
+              this.managedPatientDetails.set(updated);
+              this.managedBodyPartsForm.reset({ correctionReason: '' });
+            }, 'Körperkarte korrigiert.'),
+          error: (error: unknown) =>
+            this.fail(apiErrorMessage(error, 'Körperkarte konnte nicht korrigiert werden.')),
+        }),
+    );
   }
 
-  protected protocolSections(protocol: AdminPatientDetails['protocol']): { title: string; entries: { label: string; value: string }[] }[] {
+  protected protocolSections(
+    protocol: AdminPatientDetails['protocol'],
+  ): { title: string; entries: { label: string; value: string }[] }[] {
     const form = protocol.formState as Record<string, unknown>;
     const groups: [string, string[]][] = [
-      ['Patientendaten', ['incident', 'patient']], ['Beurteilung', ['assessment_primary', 'assessment_secondary']],
-      ['Vitalwerte', ['vitals']], ['Befunde', ['history']], ['Maßnahmen und Medikation', ['measures', 'medications_administered']],
-      ['Disposition', ['disposition', 'signatures']], ['Abschluss', []],
+      ['Patientendaten', ['incident', 'patient']],
+      ['Beurteilung', ['assessment_primary', 'assessment_secondary']],
+      ['Vitalwerte', ['vitals']],
+      ['Befunde', ['history']],
+      ['Maßnahmen und Medikation', ['measures', 'medications_administered']],
+      ['Disposition', ['disposition', 'signatures']],
+      ['Abschluss', []],
     ];
-    return groups.map(([title, keys]) => ({ title, entries: title === 'Abschluss'
-      ? [{ label: 'Status', value: protocol.status === 'finalized' ? 'Finalisiert' : 'Entwurf' }, ...(protocol.finalizedAt ? [{ label: 'Finalisiert am', value: protocol.finalizedAt }] : [])]
-      : (keys as string[]).flatMap((key) => this.protocolEntries(form[key], key)) }));
+    return groups.map(([title, keys]) => ({
+      title,
+      entries:
+        title === 'Abschluss'
+          ? [
+              {
+                label: 'Status',
+                value: protocol.status === 'finalized' ? 'Finalisiert' : 'Entwurf',
+              },
+              ...(protocol.finalizedAt
+                ? [{ label: 'Finalisiert am', value: protocol.finalizedAt }]
+                : []),
+            ]
+          : (keys as string[]).flatMap((key) => this.protocolEntries(form[key], key)),
+    }));
   }
 
   protected assignManagedPatientQr(source: 'existing' | 'new'): void {
-    const patient = this.managedPatient(); const qrReference = this.managedQrForm.controls.qrReference.value;
-    if (!patient || source === 'existing' && !qrReference) return;
-    this.run(() => this.api.assignAdminPatientQrCode(patient.editReference, source === 'new' ? { source } : { source, qrReference }).subscribe({
-      next: (result) => this.done(() => {
-        this.managedPatients.update((items) => items.map((item) => item.editReference === result.patient.editReference ? result.patient : item));
-        this.managedPatient.set(result.patient);
-        this.managedPatientDetails.update((details) => details ? { ...details, patient: result.patient, qrCodeBound: true } : details);
-        this.managedQrForm.reset({ qrReference: '' });
-        this.oneTimeQrToken.set(result.printableQrToken ?? null);
-        this.loadAvailablePatientQrCodes();
-      }, 'QR-Code zugewiesen.'),
-      error: (error: unknown) => this.fail(apiErrorMessage(error, 'QR-Code konnte nicht neu zugewiesen werden.')),
-    }));
+    const patient = this.managedPatient();
+    const qrReference = this.managedQrForm.controls.qrReference.value;
+    if (!patient || (source === 'existing' && !qrReference)) return;
+    this.run(() =>
+      this.api
+        .assignAdminPatientQrCode(
+          patient.editReference,
+          source === 'new' ? { source } : { source, qrReference },
+        )
+        .subscribe({
+          next: (result) =>
+            this.done(() => {
+              this.managedPatients.update((items) =>
+                items.map((item) =>
+                  item.editReference === result.patient.editReference ? result.patient : item,
+                ),
+              );
+              this.managedPatient.set(result.patient);
+              this.managedPatientDetails.update((details) =>
+                details ? { ...details, patient: result.patient, qrCodeBound: true } : details,
+              );
+              this.managedQrForm.reset({ qrReference: '' });
+              this.oneTimeQrToken.set(result.printableQrToken ?? null);
+              this.loadAvailablePatientQrCodes();
+            }, 'QR-Code zugewiesen.'),
+          error: (error: unknown) =>
+            this.fail(apiErrorMessage(error, 'QR-Code konnte nicht neu zugewiesen werden.')),
+        }),
+    );
   }
 
-  protected printOneTimeQr(): void { window.print(); }
-  protected closeOneTimeQrPreview(): void { this.oneTimeQrToken.set(null); }
+  protected printOneTimeQr(): void {
+    window.print();
+  }
+  protected closeOneTimeQrPreview(): void {
+    this.oneTimeQrToken.set(null);
+  }
 
   private loadManagedBodyRegions(): void {
     if (this.bodyRegions().front.length || this.bodyRegions().back.length) return;
-    fetch('/body-regions.json').then((response) => response.json()).then((regions: BodyRegions) => this.bodyRegions.set(regions)).catch(() => this.fail('Körperregionen konnten nicht geladen werden.'));
+    fetch('/body-regions.json')
+      .then((response) => response.json())
+      .then((regions: BodyRegions) => this.bodyRegions.set(regions))
+      .catch(() => this.fail('Körperregionen konnten nicht geladen werden.'));
   }
 
   private loadAvailablePatientQrCodes(): void {
     this.api.availableAdminPatientQrCodes().subscribe({
       next: (page) => this.availablePatientQrCodes.set(page.items),
-      error: (error: unknown) => this.fail(apiErrorMessage(error, 'Ungenutzte QR-Codes konnten nicht geladen werden.')),
+      error: (error: unknown) =>
+        this.fail(apiErrorMessage(error, 'Ungenutzte QR-Codes konnten nicht geladen werden.')),
     });
   }
 
   private protocolEntries(value: unknown, prefix: string): { label: string; value: string }[] {
-    if (value == null || value === '' || value === false || Array.isArray(value) && value.length === 0) return [];
-    if (Array.isArray(value)) return [{ label: this.bodyPartLabel(prefix), value: value.map((item) => typeof item === 'string' ? item : JSON.stringify(item)).join(', ') }];
-    if (typeof value === 'object') return Object.entries(value as Record<string, unknown>).flatMap(([key, nested]) => this.protocolEntries(nested, `${prefix}.${key}`));
-    return [{ label: this.bodyPartLabel(prefix.replaceAll('.', ' · ')), value: value === true ? 'Ja' : String(value) }];
+    if (
+      value == null ||
+      value === '' ||
+      value === false ||
+      (Array.isArray(value) && value.length === 0)
+    )
+      return [];
+    if (Array.isArray(value))
+      return [
+        {
+          label: this.bodyPartLabel(prefix),
+          value: value
+            .map((item) => (typeof item === 'string' ? item : JSON.stringify(item)))
+            .join(', '),
+        },
+      ];
+    if (typeof value === 'object')
+      return Object.entries(value as Record<string, unknown>).flatMap(([key, nested]) =>
+        this.protocolEntries(nested, `${prefix}.${key}`),
+      );
+    return [
+      {
+        label: this.bodyPartLabel(prefix.replaceAll('.', ' · ')),
+        value: value === true ? 'Ja' : String(value),
+      },
+    ];
   }
 
   protected saveManagedPatient(): void {
@@ -1114,7 +1377,11 @@ export class AdminDashboard {
           operationSceneId: value.operationSceneId,
           correctionReason: value.correctionReason,
           ...triageUpdates,
-          latitudePatient: value.latitudePatient, longitudePatient: value.longitudePatient, locationSource: value.locationSource || null, locationAccuracyMeters: value.locationAccuracyMeters, indoorLocation: value.indoorLocation || null,
+          latitudePatient: value.latitudePatient,
+          longitudePatient: value.longitudePatient,
+          locationSource: value.locationSource || null,
+          locationAccuracyMeters: value.locationAccuracyMeters,
+          indoorLocation: value.indoorLocation || null,
         })
         .subscribe({
           next: (updated) =>
@@ -1131,7 +1398,6 @@ export class AdminDashboard {
         }),
     );
   }
-
 
   protected sceneDisabledReason(): string {
     if (this.busy()) return 'Aktion läuft.';
