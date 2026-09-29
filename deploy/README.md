@@ -119,7 +119,7 @@ Postgres keeps its original password.
   come from the wrong installation.
 - **Off-host copy:** the Proxmox admin runs a Proxmox Backup Server job for this container daily
   **after 01:30**, with client-side encryption. That snapshot contains `.env`, the `backups/` folder
-  and the Docker volumes (including `dpkeys`), which together are everything a restore needs. The
+  and the Docker volumes (including `dataprotection`), which together are everything a restore needs. The
   dumps inside this container alone are **not** a backup: they die with the container.
 - **Restore drill** (non-destructive, run at least once per quarter and after upgrades):
   `sudo bash scripts/verify-restore.sh backups/<file>.dump` restores into a throwaway database
@@ -145,6 +145,13 @@ Proxmox admin restores the PBS snapshot instead.
 Unpack the new bundle over the existing folder (`.env` is not part of the bundle, so yours
 is kept), then run `sudo bash install.sh` again. It takes a backup first, then starts the new
 version; database migrations run automatically when the app starts.
+
+### Upgrade notes
+
+- **First release with the non-root container:** data-protection keys move to the new
+  `dataprotection` volume. Admin patient/QR links issued before the upgrade stop working (reload
+  the admin page); no data is affected. The old `ambulanzsystem_dpkeys` volume can be removed with
+  `sudo docker volume rm ambulanzsystem_dpkeys` afterwards.
 
 ## Rollback
 

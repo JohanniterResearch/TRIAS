@@ -3,10 +3,18 @@
 # Fixed project name: renaming the folder must not switch to new, empty volumes.
 name: ambulanzsystem
 
+# Docker keeps container logs forever by default; cap them so they cannot fill the disk.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   db:
     image: postgres:16-alpine
     restart: unless-stopped
+    logging: *logging
     environment:
       POSTGRES_DB: ambulanzsystem
       POSTGRES_USER: pls
@@ -23,6 +31,7 @@ services:
     # make-bundle.sh tags every build with its git SHA too; pin APP_IMAGE in .env to roll back.
     image: ${APP_IMAGE:-ambulanzsystem-backend:bundle}
     restart: unless-stopped
+    logging: *logging
     depends_on:
       db: { condition: service_healthy }
     environment:
@@ -37,13 +46,16 @@ services:
       RateLimiting__RefreshPermitLimit: ${REFRESH_RATE_LIMIT:-10}
     volumes:
       # AdminManagementController protects patient/QR references with these keys; keep them across upgrades.
-      - dpkeys:/root/.aspnet/DataProtection-Keys
+      # The app runs as the non-root "app" user. The earlier root-owned "dpkeys" volume is no longer
+      # mounted; losing those keys only invalidates admin patient/QR links, not data.
+      - dataprotection:/home/app/.aspnet/DataProtection-Keys
     # Deliberately no published ports: the API trusts one X-Forwarded-For hop from any source
     # (Program.cs), so it must only be reachable through Caddy on the compose network.
 
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
+    logging: *logging
     depends_on: [backend]
     environment:
       SITE_ADDRESS: ${SITE_ADDRESS}
@@ -60,6 +72,6 @@ services:
 
 volumes:
   pgdata:
-  dpkeys:
+  dataprotection:
   caddy_data:
   caddy_config:
