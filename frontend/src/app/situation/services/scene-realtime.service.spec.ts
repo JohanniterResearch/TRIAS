@@ -33,6 +33,28 @@ describe('SceneRealtimeService', () => {
     expect(b.invoke).not.toHaveBeenCalledWith('JoinScene', 1);
   });
 
+  it('falls back to polling on close and restarts the connection', async () => {
+    vi.useFakeTimers();
+    const connection = new FakeConnection();
+    vi.spyOn(HubConnectionBuilder.prototype, 'build').mockReturnValue(connection as any);
+    const service = TestBed.inject(SceneRealtimeService);
+    const states: string[] = [];
+    service.connect(3).subscribe((event) => event.type === 'state' && states.push(event.payload));
+    connection.resolveStart();
+    await vi.advanceTimersByTimeAsync(0);
+
+    connection.reconnectingHandler!();
+    connection.closeHandler!();
+    expect(states).toEqual(['connected', 'polling', 'polling']);
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(connection.start).toHaveBeenCalledTimes(2);
+    connection.resolveStart();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(states.at(-1)).toBe('connected');
+    vi.useRealTimers();
+  });
+
   it('emits authoritative patient lists and ignores older entity updates', async () => {
     const connection = new FakeConnection();
     vi.spyOn(HubConnectionBuilder.prototype, 'build').mockReturnValue(connection as any);
@@ -104,6 +126,10 @@ class FakeConnection {
   readonly start = vi.fn(() => new Promise<void>((resolve) => (this.startResolver = resolve)));
   on = vi.fn((name: string, handler: (payload: any) => void) => this.handlers.set(name, handler));
   onreconnected = vi.fn((handler: () => void) => (this.reconnectHandler = handler));
+  onreconnecting = vi.fn((handler: () => void) => (this.reconnectingHandler = handler));
+  onclose = vi.fn((handler: () => void) => (this.closeHandler = handler));
+  reconnectingHandler: (() => void) | null = null;
+  closeHandler: (() => void) | null = null;
 
   resolveStart(): void {
     this.startResolver();

@@ -56,6 +56,25 @@ describe('SituationRoomPage scene ownership', () => {
     page = TestBed.runInInjectionContext(() => new SituationRoomPage());
   });
 
+  it('keeps polling after a failed poll request', async () => {
+    vi.useFakeTimers();
+    let calls = 0;
+    api.listPatients = () => {
+      calls++;
+      return calls === 2 ? throwError(() => new Error('offline')) : of([patient(calls)]);
+    };
+    (page as any).sceneForm.controls.sceneId.setValue(1);
+    (page as any).connect();
+    realtime.next({ type: 'state', payload: 'polling' });
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect((page as any).error()).toContain('unterbrochen');
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect((page as any).error()).toBe('');
+    expect((page as any).patients().map((item: any) => item.id)).toEqual([3]);
+    vi.useRealTimers();
+  });
+
   it('does not apply a delayed response from the previous scene', () => {
     (page as any).sceneForm.controls.sceneId.setValue(1);
     (page as any).connect();

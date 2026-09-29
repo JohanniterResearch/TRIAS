@@ -14,7 +14,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import * as L from 'leaflet';
-import { Subscription, interval, switchMap } from 'rxjs';
+import { EMPTY, Subscription, catchError, interval, switchMap } from 'rxjs';
 
 import { apiErrorMessage, ApiClient } from '../../api/api-client';
 import type { components } from '../../api/openapi-types';
@@ -26,6 +26,8 @@ import { SceneRealtimeService } from '../services/scene-realtime.service';
 type Patient = components['schemas']['Patient'];
 type Team = components['schemas']['Team'];
 type TriageColor = components['schemas']['TriageColor'];
+
+const pollingErrorMessage = 'Live-Verbindung und Aktualisierung sind unterbrochen.';
 
 @Component({
   selector: 'app-situation-room-page',
@@ -520,18 +522,25 @@ export class SituationRoomPage implements AfterViewInit, OnDestroy {
   private startPolling(sceneId: number): void {
     const generation = this.sceneGeneration;
     this.pollingSub?.unsubscribe();
+    // Errors are handled per request so one failed poll never ends polling for good.
     this.pollingSub = interval(10000)
       .pipe(
-        switchMap(() => this.api.listPatients(sceneId)),
+        switchMap(() =>
+          this.api.listPatients(sceneId).pipe(
+            catchError(() => {
+              if (generation === this.sceneGeneration) this.error.set(pollingErrorMessage);
+              return EMPTY;
+            }),
+          ),
+        ),
         takeUntilDestroyed(this.destroyRef),
       )
-      .subscribe({
-        next: (patients) => {
-          if (generation !== this.sceneGeneration || this.sceneId() !== sceneId) return;
-          this.patients.set(patients);
-          this.renderMarkers();
-        },
-        error: () => this.error.set('Live-Verbindung und Aktualisierung sind unterbrochen.'),
+      .subscribe((patients) => {
+        if (generation !== this.sceneGeneration || this.sceneId() !== sceneId) return;
+        if (this.error() === pollingErrorMessage) this.error.set('');
+        this.patients.set(patients);
+        this.realtimeState.set(`polling · ${new Date().toLocaleTimeString()}`);
+        this.renderMarkers();
       });
   }
 
