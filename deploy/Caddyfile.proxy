@@ -1,0 +1,27 @@
+# Used when an upstream reverse proxy (e.g. NPMplus) terminates TLS and forwards plain HTTP here.
+{
+	servers {
+		# Only TRUSTED_PROXY may set the client IP. Strict mode reads X-Forwarded-For right-to-left,
+		# so a client-supplied X-Forwarded-For value can't be used to spoof the address.
+		trusted_proxies static {$TRUSTED_PROXY}
+		trusted_proxies_strict
+	}
+}
+
+http://:8080 {
+	encode zstd gzip
+	# The API's SPA fallback (Program.cs MapFallback) sends index.html without a Content-Type; with
+	# nosniff, browsers then download it or show it as text whenever Caddy doesn't compress (and so
+	# doesn't sniff). Label extensionless app routes only; files and the API keep their own types.
+	@spa {
+		method GET HEAD
+		not path /api/* /hubs/* /health
+		not path_regexp \.[^/]*$
+	}
+	header @spa ?Content-Type "text/html; charset=utf-8"
+	reverse_proxy backend:8080 {
+		# The API keeps only the last X-Forwarded-For hop and rate-limits per IP. Pass the real client
+		# instead of letting Caddy append the proxy address, which would put all clients in one bucket.
+		header_up X-Forwarded-For {client_ip}
+	}
+}

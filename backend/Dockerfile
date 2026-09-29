@@ -1,4 +1,4 @@
-# Build context is the repo root (see docker-compose.yml `build.context`) because the API
+# Build context is the repo root (see deploy/make-bundle.sh) because the API
 # project links contract/*.json files that live outside backend/.
 FROM node:24-alpine AS frontend
 WORKDIR /src

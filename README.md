@@ -55,6 +55,12 @@ likelihood:
 cd contract && npm install && npm run mock   # serves http://localhost:4010
 ```
 
+## Production deployment
+
+Everything for the production host (Compose stack with Caddy, install/upgrade script, nightly
+backups, restore check, smoke test, bundle builder) lives in [`deploy/`](deploy/README.md).
+The pilot runbook and gate list are in [`docs/pilot/`](docs/pilot/).
+
 ## Contract rules
 
 - `contract/openapi.yaml` is the single source of truth for the API. Generated

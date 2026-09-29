@@ -29,8 +29,8 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
     options.ForwardLimit = 1;
-    // Both Compose definitions bind the API to loopback, so production traffic can only arrive
-    // through a host-local reverse proxy. Trust exactly one forwarding hop; otherwise Docker's
+    // deploy/docker-compose.yml publishes no API port, so production traffic can only arrive
+    // through the Caddy container on the Compose network. Trust exactly one forwarding hop; otherwise Docker's
     // bridge source address collapses every client into one rate-limit partition.
     options.KnownNetworks.Clear();
     options.KnownProxies.Clear();
