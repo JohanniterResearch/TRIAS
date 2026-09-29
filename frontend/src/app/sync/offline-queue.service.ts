@@ -601,8 +601,9 @@ export class OfflineQueueService {
     const failed = items.filter((item) => item.lastError);
     this.blockedItems.set(
       items
-        // 401 items resume automatically after re-login, so only real rejections need a decision.
-        .filter((item) => item.state === 'blocked' && item.errorStatus !== 401)
+        // 401 items resume after re-login, but an expired QR code or closed account can never
+        // log in again, so they must stay exportable too.
+        .filter((item) => item.state === 'blocked')
         .map((item) => ({
           id: item.id,
           type: item.type,

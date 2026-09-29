@@ -29,7 +29,11 @@ const typeLabels: Record<BlockedItem['type'], string> = {
                 >{{ label(item) }} · Patient {{ item.patientId }} ·
                 {{ item.createdAt | date: 'short' }}</span
               >
-              <span class="form-error">{{ item.lastError }}</span>
+              <span class="form-error">{{
+                item.errorStatus === 401
+                  ? 'Anmeldung abgelaufen – nach erneuter Anmeldung wird automatisch gesendet.'
+                  : item.lastError
+              }}</span>
               <button type="button" (click)="retry(item)" [disabled]="busy()">
                 Erneut versuchen
               </button>

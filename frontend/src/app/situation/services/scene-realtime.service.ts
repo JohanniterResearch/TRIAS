@@ -134,7 +134,8 @@ export class SceneRealtimeService {
     connection.onclose(() => {
       if (!current()) return;
       emit({ type: 'state', payload: 'polling' });
-      setTimeout(start, maxRetryDelayMs);
+      // Usually the access token expired (every 15 min); restart at once with a fresh one.
+      start();
     });
     start();
 

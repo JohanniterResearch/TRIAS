@@ -47,7 +47,6 @@ describe('SceneRealtimeService', () => {
     connection.closeHandler!();
     expect(states).toEqual(['connected', 'polling', 'polling']);
 
-    await vi.advanceTimersByTimeAsync(30_000);
     expect(connection.start).toHaveBeenCalledTimes(2);
     connection.resolveStart();
     await vi.advanceTimersByTimeAsync(0);
