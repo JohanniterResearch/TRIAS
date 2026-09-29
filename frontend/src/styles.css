@@ -706,6 +706,10 @@ label.check-row {
 }
 
 @media print {
+  .update-banner {
+    display: none;
+  }
+
   @page {
     margin: 0;
     size: A4 portrait;
@@ -977,4 +981,12 @@ label.check-row {
 .qr-modal-token {
   font-size: 0.7rem;
   overflow-wrap: anywhere;
+}
+
+.update-banner {
+  bottom: 1rem;
+  left: 50%;
+  position: fixed;
+  transform: translateX(-50%);
+  z-index: 1000;
 }
