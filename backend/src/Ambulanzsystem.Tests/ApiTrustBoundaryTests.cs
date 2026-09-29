@@ -73,7 +73,7 @@ public class ApiTrustBoundaryTests(WebApplicationFactory<Program> factory) : ICl
     }
 
     [Fact]
-    public async Task TriageUpdate_RejectsUnknownField_MalformedBoolean_AndFutureTimestamp()
+    public async Task TriageUpdate_RejectsUnknownField_AndMalformedBoolean()
     {
         var admin = await AdminClientAsync();
         var sceneId = await CreateSceneAsync(admin);
@@ -88,13 +88,31 @@ public class ApiTrustBoundaryTests(WebApplicationFactory<Program> factory) : ICl
             new { respiration = "yes" });
         Assert.Equal(HttpStatusCode.BadRequest, malformed.StatusCode);
 
-        var future = await admin.PostAsJsonAsync($"/api/persons/{patient.id}/update-triage-color",
-            new { triageColor = "rot", clientUpdatedAt = DateTime.UtcNow.AddMinutes(6) });
-        Assert.Equal(HttpStatusCode.BadRequest, future.StatusCode);
+    }
+
+    [Fact]
+    public async Task FutureClientTimestamps_AreClampedToServerTime_NotRejected()
+    {
+        var admin = await AdminClientAsync();
+        var sceneId = await CreateSceneAsync(admin);
+        var patient = await (await admin.PostAsJsonAsync("/api/persons/manual", new { operationSceneId = sceneId }))
+            .Content.ReadFromJsonAsync<PatientBearing>();
+
+        // A device clock one hour fast must neither strand the write nor win every later edit.
+        var future = await admin.PostAsJsonAsync($"/api/persons/{patient!.id}/update-triage-color",
+            new { triageColor = "rot", clientUpdatedAt = DateTime.UtcNow.AddHours(1) });
+        Assert.Equal(HttpStatusCode.OK, future.StatusCode);
 
         var respirationFuture = await admin.PostAsJsonAsync($"/api/persons/{patient.id}/respiration",
-            new { respiration = true, clientUpdatedAt = DateTime.UtcNow.AddMinutes(6) });
-        Assert.Equal(HttpStatusCode.BadRequest, respirationFuture.StatusCode);
+            new { respiration = true, clientUpdatedAt = DateTime.UtcNow.AddHours(1) });
+        Assert.Equal(HttpStatusCode.OK, respirationFuture.StatusCode);
+
+        await Task.Delay(50);
+        var later = await admin.PostAsJsonAsync($"/api/persons/{patient.id}/update-triage-color",
+            new { triageColor = "gelb", clientUpdatedAt = DateTime.UtcNow });
+        Assert.Equal(HttpStatusCode.OK, later.StatusCode);
+        var body = await later.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        Assert.Equal("gelb", body.GetProperty("triagefarbe").GetString());
     }
 
     [Fact]

@@ -480,13 +480,9 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
             return false;
         }
 
-        if (parsed > DateTime.UtcNow.AddMinutes(5))
-        {
-            error = new ErrorResponse("clientUpdatedAt must not be more than 5 minutes in the future.");
-            return false;
-        }
-
-        clientUpdatedAt = parsed;
+        // Clamp a fast device clock to server time instead of rejecting the offline write.
+        var now = DateTime.UtcNow;
+        clientUpdatedAt = parsed > now ? now : parsed;
         error = null!;
         return true;
     }
