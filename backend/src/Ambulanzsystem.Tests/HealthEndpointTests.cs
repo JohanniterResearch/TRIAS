@@ -24,6 +24,19 @@ public class HealthEndpointTests(WebApplicationFactory<Program> factory) : IClas
     }
 
     [Fact]
+    public async Task Responses_CarryContentSecurityAndPermissionsPolicy()
+    {
+        using var client = factory.CreateClient();
+        var response = await client.GetAsync("/health");
+
+        var csp = string.Join(";", response.Headers.GetValues("Content-Security-Policy"));
+        Assert.Contains("script-src 'self';", csp);
+        Assert.Contains("frame-ancestors 'none'", csp);
+        Assert.DoesNotContain("unsafe-eval", csp);
+        Assert.Contains("camera=(self)", string.Join(",", response.Headers.GetValues("Permissions-Policy")));
+    }
+
+    [Fact]
     public async Task HealthyDependencies_ReturnHealthy200()
     {
         using var client = factory.CreateClient();

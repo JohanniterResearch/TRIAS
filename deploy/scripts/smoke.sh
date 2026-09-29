@@ -36,6 +36,11 @@ curl -fsS -D "$headers" "$url/situation-room" | grep -q '<app-root'
 grep -qi '^Content-Type: text/html' "$headers"
 grep -qi '^X-Content-Type-Options: nosniff' "$headers"
 grep -qi '^X-Frame-Options: DENY' "$headers"
+grep -qi "^Content-Security-Policy: .*script-src 'self';" "$headers"
+if curl -fsS "$url/" | grep -q 'onload='; then
+  echo "index.html has an inline handler, which the CSP blocks" >&2
+  exit 1
+fi
 test "$(curl -s -o /dev/null -w '%{http_code}' "$url/api/does-not-exist")" = 404
 test "$(curl -s -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -d '{"role":"admin"}' "$url/api/dev-login")" = 404
 curl -fsS "$url/sw.js" | grep -Eq "ambulanzsystem-shell-[0-9a-f]{16}"
