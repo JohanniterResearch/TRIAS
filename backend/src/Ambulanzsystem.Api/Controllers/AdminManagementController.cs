@@ -119,7 +119,17 @@ public class AdminManagementController(AppDbContext db, RefreshTokenService refr
             patient.OperationSceneId = scene.GetInt32();
         }
         foreach (var property in body.EnumerateObject()) ApplyPatientProperty(patient, property);
-        audit.LogFieldsWrite(User, "patient", patient.Id, patient.Id, present.Where(x => x != "correctionReason").ToDictionary(x => x, _ => ((object?)null, (object?)"admin correction")), reason);
+        // Clinical corrections must be reconstructable: log the tracked original and new value of
+        // every submitted field (JSON names match the entity properties case-insensitively).
+        var entry = db.Entry(patient);
+        var changes = present.Where(x => !x.Equals("correctionReason", StringComparison.OrdinalIgnoreCase)).ToDictionary(
+            x => x,
+            x =>
+            {
+                var property = entry.Properties.First(p => p.Metadata.Name.Equals(x, StringComparison.OrdinalIgnoreCase));
+                return (property.OriginalValue, property.CurrentValue);
+            });
+        audit.LogFieldsWrite(User, "patient", patient.Id, patient.Id, changes, reason);
         await db.SaveChangesAsync(); return Ok(AdminPatientResponse.From(patient, await db.AmbulanzprotokollPage1s.Where(p => p.PatientId == id).Select(p => p.Status).FirstOrDefaultAsync(), ProtectPatientId(patient.Id)));
     }
 

@@ -71,6 +71,30 @@ public class AdminPatientSearchTests(WebApplicationFactory<Program> factory) : I
     }
 
     [Fact]
+    public async Task ClinicalCorrection_AuditsRealBeforeAndAfterValues()
+    {
+        var admin = factory.CreateClient();
+        admin.DefaultRequestHeaders.Authorization = new("Bearer", await TestAuth.LoginAsync(admin, "/api/admin-login", "admin", "dev-admin-password"));
+        var scene = (await (await admin.PostAsJsonAsync("/api/operation-scenes", new { name = $"admin-audit-{Guid.NewGuid():N}" })).Content.ReadFromJsonAsync<Scene>())!;
+        var id = (await (await admin.PostAsJsonAsync("/api/persons/manual", new { operationSceneId = scene.id, name = "Vorher" })).Content.ReadFromJsonAsync<Patient>())!.id;
+        (await admin.PostAsJsonAsync($"/api/persons/{id}/update-triage-color", new { triageColor = "rot" })).EnsureSuccessStatusCode();
+        var search = await admin.GetFromJsonAsync<JsonElement>($"/api/admin/patients?search={id}");
+        var reference = search!.GetProperty("items")[0].GetProperty("editReference").GetString()!;
+
+        (await admin.PutAsJsonAsync($"/api/admin/patients/{Uri.EscapeDataString(reference)}",
+            new { name = "Nachher", triagefarbe = "gelb", correctionReason = "Sichtung korrigiert" })).EnsureSuccessStatusCode();
+
+        var audit = await admin.GetFromJsonAsync<JsonElement>($"/api/audit?patientId={id}&action=write&entityType=patient&pageSize=100");
+        var entry = audit.GetProperty("entries").EnumerateArray().Single(e => e.GetProperty("reason").GetString() == "Sichtung korrigiert");
+        var before = JsonDocument.Parse(entry.GetProperty("before").GetString()!).RootElement;
+        var after = JsonDocument.Parse(entry.GetProperty("after").GetString()!).RootElement;
+        Assert.Equal("Vorher", before.GetProperty("name").GetString());
+        Assert.Equal("rot", before.GetProperty("triagefarbe").GetString());
+        Assert.Equal("Nachher", after.GetProperty("name").GetString());
+        Assert.Equal("gelb", after.GetProperty("triagefarbe").GetString());
+    }
+
+    [Fact]
     public async Task AdminQrAssignment_UsesOpaqueReferences_AndReturnsNewTokenOnlyForPrinting()
     {
         var admin = factory.CreateClient();
