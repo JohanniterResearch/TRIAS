@@ -16,6 +16,10 @@ type ManualPatientRequest =
   paths['/api/persons/manual']['post']['requestBody']['content']['application/json'];
 type TriageUpdateRequest =
   paths['/api/persons/{id}/update-triage-color']['post']['requestBody']['content']['application/json'];
+type LocationRequest =
+  paths['/api/persons/{id}/location']['post']['requestBody']['content']['application/json'];
+type BodyPartRequest =
+  paths['/api/body-parts']['put']['requestBody']['content']['application/json'];
 type SaveProtokollRequest =
   paths['/api/persons/{patientId}/ambulanzprotokoll-page1']['put']['requestBody']['content']['application/json'];
 
@@ -51,6 +55,20 @@ type QueueItem = QueueMetadata &
         type: 'triage';
         patientId: number;
         body: TriageUpdateRequest;
+        createdAt: string;
+      }
+    | {
+        id: string;
+        type: 'location';
+        patientId: number;
+        body: LocationRequest;
+        createdAt: string;
+      }
+    | {
+        id: string;
+        type: 'body-part';
+        patientId: number;
+        body: BodyPartRequest;
         createdAt: string;
       }
     | {
@@ -163,6 +181,32 @@ export class OfflineQueueService {
       withMetadata({
         id: `triage:${patientId}:${crypto.randomUUID()}`,
         type: 'triage',
+        patientId,
+        body,
+        createdAt: new Date().toISOString(),
+      }),
+    );
+  }
+
+  // One key per patient (location) or per region (body part): a newer intent replaces the older
+  // unsent one, since both are absolute values rather than increments.
+  async queueLocation(patientId: number, body: LocationRequest): Promise<void> {
+    await this.add(
+      withMetadata({
+        id: `location:${patientId}`,
+        type: 'location',
+        patientId,
+        body: { ...body, clientUpdatedAt: body.clientUpdatedAt ?? new Date().toISOString() },
+        createdAt: new Date().toISOString(),
+      }),
+    );
+  }
+
+  async queueBodyPart(patientId: number, body: BodyPartRequest): Promise<void> {
+    await this.add(
+      withMetadata({
+        id: `body-part:${patientId}:${body.bodyPartId}`,
+        type: 'body-part',
         patientId,
         body,
         createdAt: new Date().toISOString(),
@@ -387,6 +431,15 @@ export class OfflineQueueService {
     if (item.type === 'triage') {
       const patient = await firstValueFrom(this.api.updateTriage(patientId, item.body));
       this.responderState.replacePatient(patientId, patient);
+      return true;
+    }
+    if (item.type === 'location') {
+      const patient = await firstValueFrom(this.api.updatePatientLocation(patientId, item.body));
+      this.responderState.replacePatient(patientId, patient);
+      return true;
+    }
+    if (item.type === 'body-part') {
+      await firstValueFrom(this.api.toggleBodyPart({ ...item.body, idpatient: patientId }));
       return true;
     }
     const record = await firstValueFrom(this.api.saveProtokollPage1(patientId, item.body));

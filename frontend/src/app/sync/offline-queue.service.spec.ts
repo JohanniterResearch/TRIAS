@@ -9,7 +9,10 @@ import { OfflineQueueService, sameQueueWrite } from './offline-queue.service';
 import { SyncStatusService } from './sync-status.service';
 
 describe('OfflineQueueService', () => {
-  let api: { updateTriage: ReturnType<typeof vi.fn>; saveProtokollPage1: ReturnType<typeof vi.fn> };
+  let api: Record<
+    'updateTriage' | 'saveProtokollPage1' | 'updatePatientLocation' | 'toggleBodyPart',
+    ReturnType<typeof vi.fn>
+  >;
   let sync: { setPending: ReturnType<typeof vi.fn>; markQueueFlushed: ReturnType<typeof vi.fn> };
   let service: OfflineQueueService;
 
@@ -19,7 +22,12 @@ describe('OfflineQueueService', () => {
       undefined,
     );
     vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
-    api = { updateTriage: vi.fn(), saveProtokollPage1: vi.fn() };
+    api = {
+      updateTriage: vi.fn(),
+      saveProtokollPage1: vi.fn(),
+      updatePatientLocation: vi.fn(),
+      toggleBodyPart: vi.fn(),
+    };
     sync = { setPending: vi.fn(), markQueueFlushed: vi.fn() };
     TestBed.configureTestingModule({
       providers: [
@@ -342,6 +350,32 @@ describe('OfflineQueueService', () => {
     await service.discard('manual');
 
     expect(deleted).toEqual(['manual', 'dependent']);
+  });
+
+  it('replays queued location and body-part writes against the real patient ID', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+    vi.spyOn(service as any, 'items').mockResolvedValue([
+      { ...triage('location', -3), type: 'location', body: { lat: 48.2, lng: 16.3 } },
+      {
+        ...triage('body', -3),
+        type: 'body-part',
+        body: { idpatient: -3, bodyPartId: 'kopf_vorne', isClicked: true },
+      },
+    ]);
+    vi.spyOn(service as any, 'realPatientId').mockResolvedValue(9);
+    const remove = vi.spyOn(service as any, 'deleteIfCurrent').mockResolvedValue(true);
+    api.updatePatientLocation.mockReturnValue(of({ id: 9 }));
+    api.toggleBodyPart.mockReturnValue(of({}));
+
+    await service.flush();
+
+    expect(api.updatePatientLocation).toHaveBeenCalledWith(9, { lat: 48.2, lng: 16.3 });
+    expect(api.toggleBodyPart).toHaveBeenCalledWith({
+      idpatient: 9,
+      bodyPartId: 'kopf_vorne',
+      isClicked: true,
+    });
+    expect(remove).toHaveBeenCalledTimes(2);
   });
 
   it('marks queue flush time only after a persisted queue deletion', async () => {

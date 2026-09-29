@@ -7,6 +7,8 @@ const typeLabels: Record<BlockedItem['type'], string> = {
   'manual-patient': 'Neuer Patient',
   triage: 'Triage',
   protocol: 'Ambulanzprotokoll',
+  location: 'Position',
+  'body-part': 'Körpermarkierung',
 };
 
 // Rejected writes stay on the device until someone decides what happens to them. Discarding

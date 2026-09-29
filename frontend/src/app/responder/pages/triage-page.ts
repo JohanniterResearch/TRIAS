@@ -13,7 +13,7 @@ import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import * as L from 'leaflet';
 
-import { apiErrorMessage, ApiClient } from '../../api/api-client';
+import { apiErrorMessage, ApiClient, isRetryableFailure } from '../../api/api-client';
 import type { components } from '../../api/openapi-types';
 import { MyAccess } from '../../auth/components/my-access';
 import { OfflineQueueService } from '../../sync/offline-queue.service';
@@ -272,21 +272,32 @@ export class TriagePage implements AfterViewInit, OnDestroy {
       return;
     }
 
-    this.api
-      .updatePatientLocation(patient.id, {
-        lat: Number(raw.lat),
-        lng: Number(raw.lng),
-        source: 'manual',
-        indoorLocation: raw.indoorLocation || undefined,
-      })
-      .subscribe({
-        next: (updated) => {
-          this.state.setPatient(updated);
-          this.message.set('Position gespeichert.');
-        },
-        error: (error: unknown) =>
-          this.error.set(apiErrorMessage(error, 'Position konnte nicht gespeichert werden.')),
-      });
+    const body = {
+      lat: Number(raw.lat),
+      lng: Number(raw.lng),
+      source: 'manual' as const,
+      indoorLocation: raw.indoorLocation || undefined,
+      clientUpdatedAt: new Date().toISOString(),
+    };
+    const queue = () =>
+      this.offlineQueue
+        .queueLocation(patient.id, body)
+        .then(() => this.message.set('Lokal gespeichert, Sync ausstehend.'))
+        .catch(() => this.error.set('Lokale Sync-Warteschlange konnte nicht gespeichert werden.'));
+    if (patient.id < 0) {
+      void queue();
+      return;
+    }
+    this.api.updatePatientLocation(patient.id, body).subscribe({
+      next: (updated) => {
+        this.state.setPatient(updated);
+        this.message.set('Position gespeichert.');
+      },
+      error: (error: unknown) =>
+        isRetryableFailure(error)
+          ? void queue()
+          : this.error.set(apiErrorMessage(error, 'Position konnte nicht gespeichert werden.')),
+    });
   }
 
   protected continueToProtocol(): void {

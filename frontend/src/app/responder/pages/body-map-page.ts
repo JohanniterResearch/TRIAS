@@ -1,9 +1,10 @@
 import { Component, inject, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { EMPTY, Subject, catchError, concatMap, tap } from 'rxjs';
+import { EMPTY, Subject, catchError, concatMap, from, tap } from 'rxjs';
 
-import { apiErrorMessage, ApiClient } from '../../api/api-client';
+import { apiErrorMessage, ApiClient, isRetryableFailure } from '../../api/api-client';
 import { MyAccess } from '../../auth/components/my-access';
+import { OfflineQueueService } from '../../sync/offline-queue.service';
 import { ResponderStateStore } from '../services/responder-state';
 
 interface BodyRegions {
@@ -80,6 +81,7 @@ export class BodyMapPage {
   protected readonly error = signal('');
 
   private readonly api = inject(ApiClient);
+  private readonly offlineQueue = inject(OfflineQueueService);
   private readonly route = inject(ActivatedRoute);
   private readonly intents = new Subject<{
     patientId: number;
@@ -96,44 +98,64 @@ export class BodyMapPage {
     this.intents
       .pipe(
         concatMap((intent) =>
-          this.api
-            .toggleBodyPart({
-              idpatient: intent.patientId,
-              bodyPartId: intent.region,
-              isClicked: intent.isClicked,
-            })
-            .pipe(
-              tap((body) => {
-                if (this.latestIntent.get(intent.region)?.generation === intent.generation) {
-                  this.latestIntent.delete(intent.region);
-                }
-                this.bodyPartsRevision++;
-                this.applyServerBody(body.bodyParts);
-              }),
-              catchError((error: unknown) => {
-                const revision = ++this.bodyPartsRevision;
-                if (this.latestIntent.get(intent.region)?.generation === intent.generation) {
-                  this.latestIntent.delete(intent.region);
-                  this.updateDisplay();
-                }
-                this.error.set(
-                  apiErrorMessage(error, 'Körpermarkierung konnte nicht gespeichert werden.'),
-                );
-                return this.api.getBodyParts(intent.patientId).pipe(
+          intent.patientId < 0
+            ? this.queueIntent(intent)
+            : this.api
+                .toggleBodyPart({
+                  idpatient: intent.patientId,
+                  bodyPartId: intent.region,
+                  isClicked: intent.isClicked,
+                })
+                .pipe(
                   tap((body) => {
-                    if (this.bodyPartsRevision === revision) {
-                      this.applyServerBody(body.bodyParts);
+                    if (this.latestIntent.get(intent.region)?.generation === intent.generation) {
+                      this.latestIntent.delete(intent.region);
                     }
+                    this.bodyPartsRevision++;
+                    this.applyServerBody(body.bodyParts);
                   }),
-                  catchError(() => EMPTY),
-                );
-              }),
-            ),
+                  catchError((error: unknown) => {
+                    if (isRetryableFailure(error)) return this.queueIntent(intent);
+                    const revision = ++this.bodyPartsRevision;
+                    if (this.latestIntent.get(intent.region)?.generation === intent.generation) {
+                      this.latestIntent.delete(intent.region);
+                      this.updateDisplay();
+                    }
+                    this.error.set(
+                      apiErrorMessage(error, 'Körpermarkierung konnte nicht gespeichert werden.'),
+                    );
+                    return this.api.getBodyParts(intent.patientId).pipe(
+                      tap((body) => {
+                        if (this.bodyPartsRevision === revision) {
+                          this.applyServerBody(body.bodyParts);
+                        }
+                      }),
+                      catchError(() => EMPTY),
+                    );
+                  }),
+                ),
         ),
       )
       .subscribe();
     this.loadRegions();
     this.load();
+  }
+
+  // Offline (or no server answer): keep the optimistic mark and replay it later. The toggle is an
+  // absolute value per region, so a queued newer intent simply replaces an older one.
+  private queueIntent(intent: { patientId: number; region: string; isClicked: boolean }) {
+    return from(
+      this.offlineQueue.queueBodyPart(intent.patientId, {
+        idpatient: intent.patientId,
+        bodyPartId: intent.region,
+        isClicked: intent.isClicked,
+      }),
+    ).pipe(
+      catchError(() => {
+        this.error.set('Lokale Sync-Warteschlange konnte nicht gespeichert werden.');
+        return EMPTY;
+      }),
+    );
   }
 
   protected view(): 'front' | 'back' {

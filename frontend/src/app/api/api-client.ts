@@ -7,6 +7,11 @@ import { AuthStore } from '../auth/auth.store';
 import { SyncStatusService } from '../sync/sync-status.service';
 import type { paths } from './openapi-types';
 
+/** No server answer, or a 5xx: the write may be replayed later instead of being rejected. */
+export function isRetryableFailure(error: unknown): boolean {
+  return !(error instanceof ApiRequestError) || error.status >= 500;
+}
+
 export class ApiRequestError extends Error {
   constructor(
     readonly status: number,
