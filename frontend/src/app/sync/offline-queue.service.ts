@@ -63,6 +63,14 @@ type QueueItem = QueueMetadata &
         createdAt: string;
       }
   );
+export interface BlockedItem {
+  id: string;
+  type: QueueItem['type'];
+  patientId: number;
+  errorStatus: number | null;
+  lastError: string | null;
+  createdAt: string;
+}
 type PendingWrite = Exclude<QueueItem, { type: 'manual-patient' }>;
 type ProtocolWrite = Extract<QueueItem, { type: 'protocol' }>;
 type PatientMapping = { provisionalId: number; realId: number; patient: Patient };
@@ -87,6 +95,8 @@ export class OfflineQueueService {
   private persistence: Promise<void> = Promise.resolve();
   private readonly unsavedProtocols = new Map<number, ProtocolWrite>();
   readonly localWrites = signal(0);
+  readonly blockedItems = signal<BlockedItem[]>([]);
+  private readonly exportedIds = new Set<string>();
   readonly hasPendingWork = computed(
     () =>
       this.localWrites() > 0 || !this.syncStatus.queueReady() || this.syncStatus.pendingCount() > 0,
@@ -229,7 +239,9 @@ export class OfflineQueueService {
             (!immediate && (this.protocolNotBefore.get(item.patientId) ?? 0) > Date.now()))
         )
           continue;
-        if (item.state === 'blocked' && item.errorStatus !== 401 && item.errorStatus !== 403) {
+        // Only an expired/invalid session is retried automatically; other rejections wait for
+        // an explicit retry, export, or discard so they cannot stall unrelated writes.
+        if (item.state === 'blocked' && item.errorStatus !== 401) {
           continue;
         }
         if (item.nextAttemptAt && Date.parse(item.nextAttemptAt) > Date.now()) {
@@ -316,6 +328,48 @@ export class OfflineQueueService {
     await this.refreshStatus();
   }
 
+  async retry(id: string): Promise<void> {
+    const item = (await this.items()).find((candidate) => candidate.id === id);
+    if (!item) return;
+    await this.replaceIfCurrent(item, { ...item, state: 'pending', nextAttemptAt: null });
+    await this.refreshStatus();
+    await this.flush(true);
+  }
+
+  /** JSON backup of a blocked item and every queued write that depends on it. */
+  async exportBlocked(id: string): Promise<Blob> {
+    const related = await this.withDependents(id);
+    if (!related.length) throw new Error('Eintrag nicht gefunden.');
+    for (const item of related) this.exportedIds.add(item.id);
+    const payload = { exportedAt: new Date().toISOString(), items: related };
+    return new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  }
+
+  /** Removes a blocked item and its dependents; refused until they were exported. */
+  async discard(id: string): Promise<void> {
+    const related = await this.withDependents(id);
+    if (related.some((item) => !this.exportedIds.has(item.id))) {
+      throw new Error('Eintrag zuerst als Datei sichern.');
+    }
+    await this.withStore(queueStore, 'readwrite', async (store) => {
+      for (const item of related) await request(store.delete(item.id));
+    });
+    await this.refreshStatus();
+  }
+
+  private async withDependents(id: string): Promise<QueueItem[]> {
+    const items = await this.items();
+    const root = items.find((item) => item.id === id);
+    if (!root) return [];
+    if (root.type !== 'manual-patient') return [root];
+    return [
+      root,
+      ...items.filter(
+        (item) => item.type !== 'manual-patient' && item.patientId === root.provisionalId,
+      ),
+    ];
+  }
+
   private async replay(item: PendingWrite): Promise<boolean | ProtocolSaveResult> {
     const patientId = await this.realPatientId(item.patientId);
     if (patientId < 0) return false;
@@ -369,8 +423,11 @@ export class OfflineQueueService {
 
   private async recordFailure(item: QueueItem, error: unknown): Promise<boolean> {
     const status = error instanceof ApiRequestError ? error.status : null;
-    const authBlocked = status === 401 || status === 403;
-    const permanentlyBlocked = status !== null && status >= 400 && status < 500;
+    // 401 invalidates every protected write, so the flush pauses. Any other rejection (e.g. 403
+    // after a scene closed) blocks only this item; 408/429 are transient and retried.
+    const authBlocked = status === 401;
+    const permanentlyBlocked =
+      status !== null && status >= 400 && status < 500 && status !== 408 && status !== 429;
     const attemptCount = (item.attemptCount ?? 0) + 1;
     const retryDelay = Math.min(60_000, 1000 * 2 ** Math.min(attemptCount - 1, 6));
     await this.replaceIfCurrent(item, {
@@ -478,6 +535,19 @@ export class OfflineQueueService {
       return;
     }
     const failed = items.filter((item) => item.lastError);
+    this.blockedItems.set(
+      items
+        // 401 items resume automatically after re-login, so only real rejections need a decision.
+        .filter((item) => item.state === 'blocked' && item.errorStatus !== 401)
+        .map((item) => ({
+          id: item.id,
+          type: item.type,
+          patientId: item.type === 'manual-patient' ? item.provisionalId : item.patientId,
+          errorStatus: item.errorStatus ?? null,
+          lastError: item.lastError ?? null,
+          createdAt: item.createdAt,
+        })),
+    );
     this.syncStatus.setPending(
       items.length,
       items[0]?.createdAt ?? null,

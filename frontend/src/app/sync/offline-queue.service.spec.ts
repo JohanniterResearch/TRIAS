@@ -255,6 +255,95 @@ describe('OfflineQueueService', () => {
     );
   });
 
+  it('blocks only the rejected item on 403 and keeps replaying later writes', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+    vi.spyOn(service as any, 'items').mockResolvedValue([triage('closed', 1), triage('later', 2)]);
+    vi.spyOn(service as any, 'realPatientId').mockImplementation((...args: unknown[]) =>
+      Promise.resolve(Number(args[0])),
+    );
+    (service as any).replaceIfCurrent = vi.fn().mockResolvedValue(true);
+    const remove = vi.spyOn(service as any, 'deleteIfCurrent').mockResolvedValue(true);
+    api.updateTriage
+      .mockReturnValueOnce(throwError(() => new ApiRequestError(403, {})))
+      .mockReturnValueOnce(of({}));
+
+    await service.flush();
+
+    expect(api.updateTriage).toHaveBeenCalledTimes(2);
+    expect(remove).toHaveBeenCalledWith(expect.objectContaining({ id: 'later' }));
+    expect((service as any).replaceIfCurrent).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'closed' }),
+      expect.objectContaining({ state: 'blocked', errorStatus: 403 }),
+    );
+  });
+
+  it('does not automatically retry a 403-blocked item', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+    vi.spyOn(service as any, 'items').mockResolvedValue([
+      { ...triage('closed', 1), state: 'blocked', errorStatus: 403 },
+    ]);
+
+    await service.flush();
+
+    expect(api.updateTriage).not.toHaveBeenCalled();
+  });
+
+  it('treats 429 as transient instead of blocking', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+    vi.spyOn(service as any, 'items').mockResolvedValue([triage('limited', 1)]);
+    vi.spyOn(service as any, 'realPatientId').mockResolvedValue(1);
+    (service as any).replaceIfCurrent = vi.fn().mockResolvedValue(true);
+    api.updateTriage.mockReturnValue(throwError(() => new ApiRequestError(429, {})));
+
+    await service.flush();
+
+    const replacement = (service as any).replaceIfCurrent.mock.calls[0][1];
+    expect(replacement.state).toBe('retrying');
+    expect(replacement.nextAttemptAt).not.toBeNull();
+  });
+
+  it('discards a blocked patient with its dependents only after export', async () => {
+    const manual = {
+      id: 'manual',
+      type: 'manual-patient',
+      provisionalId: -5,
+      body: {},
+      createdAt: '2026-01-01T00:00:00Z',
+      state: 'blocked',
+      errorStatus: 403,
+    };
+    vi.spyOn(service as any, 'items').mockResolvedValue([
+      manual,
+      triage('dependent', -5),
+      triage('unrelated', 9),
+    ]);
+    const deleted: string[] = [];
+    (service as any).withStore = vi.fn(async (_name: string, _mode: string, work: any) =>
+      work({
+        delete: (id: string) => {
+          deleted.push(id);
+          const req: any = {};
+          queueMicrotask(() => req.onsuccess?.());
+          return req;
+        },
+      }),
+    );
+
+    await expect(service.discard('manual')).rejects.toThrow('zuerst als Datei sichern');
+    const blob = await service.exportBlocked('manual');
+    const text = await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.readAsText(blob);
+    });
+    const exported = JSON.parse(text);
+    expect(exported.items.map((item: any) => item.id)).toEqual(['manual', 'dependent']);
+
+    await service.discard('manual');
+
+    expect(deleted).toEqual(['manual', 'dependent']);
+  });
+
   it('marks queue flush time only after a persisted queue deletion', async () => {
     (service as any).withStore = vi.fn().mockResolvedValue(true);
 

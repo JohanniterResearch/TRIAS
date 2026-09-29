@@ -4,10 +4,12 @@ import { Router } from '@angular/router';
 import { apiErrorMessage, ApiClient } from '../../api/api-client';
 import { LocalWorkspaceService } from '../../sync/local-workspace.service';
 import { OfflineQueueService } from '../../sync/offline-queue.service';
+import { SyncIssues } from '../../sync/sync-issues';
 import { AuthStore } from '../auth.store';
 
 @Component({
   selector: 'app-my-access',
+  imports: [SyncIssues],
   template: `
     @if (auth.activeSession(); as session) {
       <aside class="my-access" aria-label="Meine Sitzung">
@@ -25,6 +27,7 @@ import { AuthStore } from '../auth.store';
           <p class="form-error" role="alert" aria-live="assertive">
             Zugang kann erst nach dem Abschluss der Synchronisierung beendet werden.
           </p>
+          <app-sync-issues />
         }
         @if (error) {
           <p class="form-error" role="alert" aria-live="assertive">{{ error }}</p>
