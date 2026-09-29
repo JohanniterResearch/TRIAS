@@ -161,6 +161,7 @@ export class TriagePage implements AfterViewInit, OnDestroy {
   private map: L.Map | null = null;
   private marker: L.CircleMarker | null = null;
   private flagsRevision = 0;
+  private flagsEdited = false;
 
   constructor() {
     effect(() => {
@@ -211,22 +212,29 @@ export class TriagePage implements AfterViewInit, OnDestroy {
   }
 
   protected saveFlags(flag: (typeof this.flags)[number]['name']): void {
+    // A tap supersedes any restore still in flight; otherwise the restore can reset the box.
+    this.flagsEdited = true;
+    this.flagsRevision++;
     this.save({ [flag]: this.flagsForm.controls[flag].value });
   }
 
   private async restoreFlags(patient: components['schemas']['Patient']): Promise<void> {
     const revision = ++this.flagsRevision;
-    this.flagsForm.patchValue({
+    const server = {
       respiration: patient.atmung ?? null,
       blutung: patient.blutung ?? null,
       radialispuls: patient.radialispuls ?? null,
       transport: patient.transport ?? null,
       dringend: patient.dringend ?? null,
       kontaminiert: patient.kontaminiert ?? null,
-    });
+    };
+    // Show server values at once on first load; after a user edit, only apply them together
+    // with the queued intents so an unsynced tap is never shown as reverted.
+    if (!this.flagsEdited) this.flagsForm.patchValue(server);
     try {
       const pending = await this.offlineQueue.pendingTriage(patient.id);
       if (revision !== this.flagsRevision || this.state.patient()?.id !== patient.id) return;
+      this.flagsForm.patchValue(server);
       for (const intent of pending) this.flagsForm.patchValue(intent);
     } catch {
       this.error.set('Lokale Triage-Änderungen konnten nicht geladen werden.');
