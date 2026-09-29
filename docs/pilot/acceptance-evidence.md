@@ -2,6 +2,20 @@
 
 Allowed status values: `automated/pass`, `manual/pass`, `blocked`, `not-run`.
 
+## Technical gate — 2026-09-29, end of day (Dev_RH `c0c0ed3`, Tier 1–3 code remediation)
+
+Local/disposable verification, not real-host acceptance.
+
+- Backend `dotnet test`: 146 passed. No vulnerable NuGet packages; no pending EF model changes.
+- Frontend on Angular 22.2: 125 unit tests + static checks passed; `npm audit --omit=dev` 0
+  vulnerabilities; production build + `check:production` passed; E2E 12 passed; offline 8 passed
+  (triage-flags repeated 12/12 after the restore-race fix).
+- Contract lint and generated-client check clean.
+- Image `ambulanzsystem-backend:c0c0ed3` built from `git archive`; `deploy/scripts/smoke.sh` passed
+  (incl. CSP header, no inline handlers, non-root container).
+- Chrome against the production image: no CSP violations, OSM tiles load, SignalR `live`.
+- GitHub Actions workflows added but not yet run (branch not pushed).
+
 ## Technical gate — 2026-09-29 (Dev_RH, Tier 1 remediation)
 
 Local/disposable verification on the development machine, not real-host acceptance.
