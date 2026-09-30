@@ -1,8 +1,9 @@
 import { DatePipe } from '@angular/common';
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal, type WritableSignal } from '@angular/core';
 import { AbstractControl, FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import QRCode from 'qrcode';
+import type { Observable } from 'rxjs';
 
 import { apiErrorMessage, ApiClient } from '../../api/api-client';
 import type { components } from '../../api/openapi-types';
@@ -430,31 +431,39 @@ type BodyRegions = { front: string[]; back: string[] };
               >
                 Zurück zur Suche
               </button>
-              @if (!managedPatientDetails()) {
+              @if (managedPatientDetails()) {
+                <button type="button" (click)="closeManagedPatientDetails()">
+                  Zurück zur Kurzkorrektur
+                </button>
+              } @else {
                 <button type="button" (click)="openManagedPatientDetails()">
                   Weitere Patientendaten bearbeiten
                 </button>
               }
-              @if (managedPatientDetails(); as details) {
-                <button type="button" (click)="closeManagedPatientDetails()">
-                  Zurück zur Kurzkorrektur
-                </button>
-                <form
-                  [formGroup]="managedPatientForm"
-                  (ngSubmit)="saveManagedPatient()"
-                  class="auth-form"
-                >
+              <form
+                [formGroup]="managedPatientForm"
+                (ngSubmit)="saveManagedPatient()"
+                class="auth-form"
+              >
+                @if (managedPatientDetails()) {
                   <h3>Stammdaten, Triage und Ort</h3>
-                  <label>Name <input formControlName="name" /></label>
-                  <label
-                    >Triage
-                    <select formControlName="triagefarbe">
-                      <option value="">–</option>
-                      @for (color of triageColors; track color.value) {
-                        <option [value]="color.value">{{ color.label }}</option>
-                      }
-                    </select></label
-                  >
+                } @else {
+                  <p>
+                    {{ selected.humanReadableId ?? 'Unbenannter Patient' }} ·
+                    {{ selected.protocolStatus }}
+                  </p>
+                }
+                <label>Name <input formControlName="name" /></label>
+                <label
+                  >Triage
+                  <select formControlName="triagefarbe">
+                    <option value="">–</option>
+                    @for (color of triageColors; track color.value) {
+                      <option [value]="color.value">{{ color.label }}</option>
+                    }
+                  </select></label
+                >
+                @if (managedPatientDetails()) {
                   <div class="body-map-columns">
                     <section>
                       @for (field of triageFieldsLeft; track field.key) {
@@ -475,7 +484,9 @@ type BodyRegions = { front: string[]; back: string[] };
                       }
                     </section>
                   </div>
-                  <label>Szene ID <input type="number" formControlName="operationSceneId" /></label>
+                }
+                <label>Szene ID <input type="number" formControlName="operationSceneId" /></label>
+                @if (managedPatientDetails()) {
                   <label
                     >Breitengrad <input type="number" formControlName="latitudePatient"
                   /></label>
@@ -495,11 +506,18 @@ type BodyRegions = { front: string[]; back: string[] };
                     <input type="number" min="0" formControlName="locationAccuracyMeters"
                   /></label>
                   <label>Innenraum-Ort <input formControlName="indoorLocation" /></label>
-                  <label>Begründung <input formControlName="correctionReason" /></label>
-                  <button type="submit" [disabled]="busy() || managedPatientForm.invalid">
-                    Korrektur speichern
-                  </button>
-                </form>
+                }
+                <label
+                  >{{
+                    managedPatientDetails() ? 'Begründung' : 'Begründung für klinische Korrektur'
+                  }}
+                  <input formControlName="correctionReason"
+                /></label>
+                <button type="submit" [disabled]="busy() || managedPatientForm.invalid">
+                  Korrektur speichern
+                </button>
+              </form>
+              @if (managedPatientDetails(); as details) {
                 <form
                   [formGroup]="managedBodyPartsForm"
                   (ngSubmit)="saveManagedBodyParts()"
@@ -507,30 +525,20 @@ type BodyRegions = { front: string[]; back: string[] };
                 >
                   <h3>Körperkarte</h3>
                   <div class="body-map-columns">
-                    <section>
-                      <h4>Körper vorne</h4>
-                      @for (part of bodyRegions().front; track part) {
-                        <label class="check-row"
-                          ><input
-                            type="checkbox"
-                            [checked]="details.bodyParts[part] === 1"
-                            (change)="setManagedBodyPart(part, $any($event.target).checked)"
-                          />{{ bodyPartLabel(part) }}</label
-                        >
-                      }
-                    </section>
-                    <section>
-                      <h4>Körper hinten</h4>
-                      @for (part of bodyRegions().back; track part) {
-                        <label class="check-row"
-                          ><input
-                            type="checkbox"
-                            [checked]="details.bodyParts[part] === 1"
-                            (change)="setManagedBodyPart(part, $any($event.target).checked)"
-                          />{{ bodyPartLabel(part) }}</label
-                        >
-                      }
-                    </section>
+                    @for (side of bodySides; track side.key) {
+                      <section>
+                        <h4>{{ side.label }}</h4>
+                        @for (part of bodyRegions()[side.key]; track part) {
+                          <label class="check-row"
+                            ><input
+                              type="checkbox"
+                              [checked]="details.bodyParts[part] === 1"
+                              (change)="setManagedBodyPart(part, $any($event.target).checked)"
+                            />{{ bodyPartLabel(part) }}</label
+                          >
+                        }
+                      </section>
+                    }
                   </div>
                   <label>Begründung <input formControlName="correctionReason" /></label>
                   <button type="submit" [disabled]="busy() || managedBodyPartsForm.invalid">
@@ -612,34 +620,6 @@ type BodyRegions = { front: string[]; back: string[] };
                     }
                   </div>
                 </section>
-              } @else {
-                <form
-                  [formGroup]="managedPatientForm"
-                  (ngSubmit)="saveManagedPatient()"
-                  class="auth-form"
-                >
-                  <p>
-                    {{ selected.humanReadableId ?? 'Unbenannter Patient' }} ·
-                    {{ selected.protocolStatus }}
-                  </p>
-                  <label>Name <input formControlName="name" /></label>
-                  <label
-                    >Triage
-                    <select formControlName="triagefarbe">
-                      <option value="">–</option>
-                      @for (color of triageColors; track color.value) {
-                        <option [value]="color.value">{{ color.label }}</option>
-                      }
-                    </select></label
-                  >
-                  <label>Szene ID <input type="number" formControlName="operationSceneId" /></label>
-                  <label
-                    >Begründung für klinische Korrektur <input formControlName="correctionReason"
-                  /></label>
-                  <button type="submit" [disabled]="busy() || managedPatientForm.invalid">
-                    Korrektur speichern
-                  </button>
-                </form>
               }
             } @else {
               <p class="qr-modal-count">{{ managedPatients().length }} Patienten</p>
@@ -684,6 +664,10 @@ export class AdminDashboard {
   protected readonly managedPatient = signal<AdminPatient | null>(null);
   protected readonly managedPatientDetails = signal<AdminPatientDetails | null>(null);
   protected readonly triageColors = TRIAGE_COLORS;
+  protected readonly bodySides = [
+    { key: 'front', label: 'Körper vorne' },
+    { key: 'back', label: 'Körper hinten' },
+  ] as const;
   protected readonly bodyRegions = signal<BodyRegions>({ front: [], back: [] });
   protected readonly availablePatientQrCodes = signal<
     components['schemas']['AvailablePatientQrCode'][]
@@ -791,50 +775,39 @@ export class AdminDashboard {
   });
   protected readonly managedQrForm = this.fb.group({ qrReference: ['', Validators.required] });
 
-  protected loadScenes(): void {
-    this.run(() =>
-      this.api.listScenes().subscribe({
-        next: (scenes) =>
-          this.done(() => {
-            this.scenes.set(scenes);
-            this.scenesPreviewOpen.set(true);
-          }),
-        error: (error: unknown) =>
-          this.fail(apiErrorMessage(error, 'Szenen konnten nicht geladen werden.')),
-      }),
-    );
+  protected loadScenes(openPreview = true): void {
+    this.call(this.api.listScenes(), 'Szenen konnten nicht geladen werden.', (scenes) => {
+      this.scenes.set(scenes);
+      if (openPreview) this.scenesPreviewOpen.set(true);
+    });
   }
 
   protected saveScene(): void {
     const raw = this.sceneForm.getRawValue();
-    this.run(() =>
-      this.api
-        .saveScene({
-          id: raw.id ?? undefined,
-          name: raw.name,
-          description: raw.description || undefined,
-          parentSceneId: raw.parentSceneId ?? undefined,
-          accessWindowStart: toIso(raw.accessWindowStart),
-          accessWindowEnd: toIso(raw.accessWindowEnd),
-          active: raw.active,
-        })
-        .subscribe({
-          next: (scene) =>
-            this.done(() => {
-              this.upsertScene(scene);
-              this.sceneForm.reset({
-                id: null,
-                name: '',
-                description: '',
-                parentSceneId: null,
-                accessWindowStart: '',
-                accessWindowEnd: '',
-                active: true,
-              });
-            }, 'Szene gespeichert.'),
-          error: (error: unknown) =>
-            this.fail(apiErrorMessage(error, 'Szene konnte nicht gespeichert werden.')),
-        }),
+    this.call(
+      this.api.saveScene({
+        id: raw.id ?? undefined,
+        name: raw.name,
+        description: raw.description || undefined,
+        parentSceneId: raw.parentSceneId ?? undefined,
+        accessWindowStart: toIso(raw.accessWindowStart),
+        accessWindowEnd: toIso(raw.accessWindowEnd),
+        active: raw.active,
+      }),
+      'Szene konnte nicht gespeichert werden.',
+      (scene) => {
+        this.upsertScene(scene);
+        this.sceneForm.reset({
+          id: null,
+          name: '',
+          description: '',
+          parentSceneId: null,
+          accessWindowStart: '',
+          accessWindowEnd: '',
+          active: true,
+        });
+      },
+      'Szene gespeichert.',
     );
   }
 
@@ -851,93 +824,64 @@ export class AdminDashboard {
   }
 
   protected deleteScene(id: number): void {
-    this.run(() =>
-      this.api.deleteScene(id).subscribe({
-        next: () =>
-          this.done(
-            () => this.scenes.update((scenes) => scenes.filter((scene) => scene.id !== id)),
-            'Szene gelöscht.',
-          ),
-        error: (error: unknown) =>
-          this.fail(
-            apiErrorMessage(
-              error,
-              'Szene konnte nicht gelöscht werden. Falls Patienten verknüpft sind, bitte deaktivieren.',
-            ),
-          ),
-      }),
+    this.call(
+      this.api.deleteScene(id),
+      'Szene konnte nicht gelöscht werden. Falls Patienten verknüpft sind, bitte deaktivieren.',
+      () => this.scenes.update((scenes) => scenes.filter((scene) => scene.id !== id)),
+      'Szene gelöscht.',
     );
   }
 
   protected generateLoginQr(): void {
     const raw = this.loginQrForm.getRawValue();
-    this.run(() =>
-      this.api
-        .generateLoginQrCodes({
-          eventSceneId: Number(raw.eventSceneId),
-          number: raw.number,
-          expiresInHours: raw.expiresInHours,
-        })
-        .subscribe({
-          next: (codes) =>
-            this.done(() => this.loginQrCodes.set(codes), 'Responder QR Codes generiert.'),
-          error: (error: unknown) =>
-            this.fail(apiErrorMessage(error, 'Responder QR Codes konnten nicht generiert werden.')),
-        }),
+    this.call(
+      this.api.generateLoginQrCodes({
+        eventSceneId: Number(raw.eventSceneId),
+        number: raw.number,
+        expiresInHours: raw.expiresInHours,
+      }),
+      'Responder QR Codes konnten nicht generiert werden.',
+      (codes) => this.loginQrCodes.set(codes),
+      'Responder QR Codes generiert.',
     );
   }
 
   protected loadLoginQr(): void {
     const eventSceneId = this.loginQrForm.controls.eventSceneId.value;
-    this.run(() =>
-      this.api.listLoginQrCodes(eventSceneId ?? undefined).subscribe({
-        next: (codes) =>
-          this.done(() => {
-            this.loginQrCodes.set(codes);
-            this.loginQrPreviewOpen.set(true);
-          }),
-        error: (error: unknown) =>
-          this.fail(apiErrorMessage(error, 'Responder QR Codes konnten nicht geladen werden.')),
-      }),
+    this.call(
+      this.api.listLoginQrCodes(eventSceneId ?? undefined),
+      'Responder QR Codes konnten nicht geladen werden.',
+      (codes) => {
+        this.loginQrCodes.set(codes);
+        this.loginQrPreviewOpen.set(true);
+      },
     );
   }
 
   protected generatePatientQr(): void {
-    this.run(() =>
-      this.api.generatePatientQrCodes(this.patientQrForm.getRawValue()).subscribe({
-        next: (tokens) =>
-          this.done(() => this.patientQrCodes.set(tokens), 'Patient QR Codes generiert.'),
-        error: (error: unknown) =>
-          this.fail(apiErrorMessage(error, 'Patient QR Codes konnten nicht generiert werden.')),
-      }),
+    this.call(
+      this.api.generatePatientQrCodes(this.patientQrForm.getRawValue()),
+      'Patient QR Codes konnten nicht generiert werden.',
+      (tokens) => this.patientQrCodes.set(tokens),
+      'Patient QR Codes generiert.',
     );
   }
 
   protected loadPatientQr(): void {
-    this.run(() =>
-      this.api.listUnusedPatientQrCodes().subscribe({
-        next: (tokens) =>
-          this.done(() => {
-            this.patientQrCodes.set(tokens);
-            this.patientQrPreviewOpen.set(true);
-          }),
-        error: (error: unknown) =>
-          this.fail(apiErrorMessage(error, 'Patient QR Codes konnten nicht geladen werden.')),
-      }),
+    this.call(
+      this.api.listUnusedPatientQrCodes(),
+      'Patient QR Codes konnten nicht geladen werden.',
+      (tokens) => {
+        this.patientQrCodes.set(tokens);
+        this.patientQrPreviewOpen.set(true);
+      },
     );
   }
 
   // Loads the scene list lazily the first time the picker is opened, so the admin
   // sees names instead of having to remember scene IDs.
   protected ensureScenesLoaded(): void {
-    if (this.scenes().length > 0 || this.busy()) return;
-    this.run(() =>
-      this.api.listScenes().subscribe({
-        next: (scenes) => this.done(() => this.scenes.set(scenes)),
-        error: (error: unknown) =>
-          this.fail(apiErrorMessage(error, 'Szenen konnten nicht geladen werden.')),
-      }),
-    );
+    if (this.scenes().length === 0 && !this.busy()) this.loadScenes(false);
   }
 
   // Datalist options render as "Name (ID 3)"; only act once the typed text matches
@@ -949,95 +893,69 @@ export class AdminDashboard {
 
   protected createUser(): void {
     const raw = this.userForm.getRawValue();
-    this.run(() =>
-      this.api
-        .createUser({
-          username: raw.username,
-          password: raw.password,
-          role: raw.role,
-          accountType: raw.accountType,
-          eventSceneId: raw.eventSceneId ?? undefined,
-        })
-        .subscribe({
-          next: (user) =>
-            this.done(() => {
-              this.createdUser.set(user);
-              this.upsertUser(user);
-            }, 'Benutzer angelegt.'),
-          error: (error: unknown) =>
-            this.fail(apiErrorMessage(error, 'Benutzer konnte nicht angelegt werden.')),
-        }),
+    this.call(
+      this.api.createUser({
+        username: raw.username,
+        password: raw.password,
+        role: raw.role,
+        accountType: raw.accountType,
+        eventSceneId: raw.eventSceneId ?? undefined,
+      }),
+      'Benutzer konnte nicht angelegt werden.',
+      (user) => {
+        this.createdUser.set(user);
+        this.upsertUser(user);
+      },
+      'Benutzer angelegt.',
     );
   }
 
   protected revokeUser(id: number): void {
-    this.run(() =>
-      this.api.revokeUser(id).subscribe({
-        next: () => this.done(() => this.loadUsers(), 'Zugang widerrufen.'),
-        error: (error: unknown) =>
-          this.fail(apiErrorMessage(error, 'Zugang konnte nicht widerrufen werden.')),
-      }),
+    this.call(
+      this.api.revokeUser(id),
+      'Zugang konnte nicht widerrufen werden.',
+      () => this.loadUsers(),
+      'Zugang widerrufen.',
     );
   }
 
   protected loadUsers(): void {
-    this.run(() =>
-      this.api.listUsers().subscribe({
-        next: (users) =>
-          this.done(() => {
-            this.users.set(users);
-            this.usersPreviewOpen.set(true);
-          }),
-        error: (error: unknown) =>
-          this.fail(apiErrorMessage(error, 'Benutzer konnten nicht geladen werden.')),
-      }),
-    );
+    this.call(this.api.listUsers(), 'Benutzer konnten nicht geladen werden.', (users) => {
+      this.users.set(users);
+      this.usersPreviewOpen.set(true);
+    });
   }
 
   protected searchManagedUsers(): void {
     const value = this.userSearchForm.getRawValue();
     this.managedUser.set(null);
-    this.run(() =>
-      this.api
-        .adminUsers(
-          value.search || undefined,
-          value.role || undefined,
-          value.accountType || undefined,
-          value.status || undefined,
-        )
-        .subscribe({
-          next: (page) =>
-            this.done(() => {
-              this.managedUsers.set(page.items);
-              this.userManagementOpen.set(true);
-            }),
-          error: (error: unknown) =>
-            this.fail(apiErrorMessage(error, 'Benutzer konnten nicht geladen werden.')),
-        }),
+    this.call(
+      this.api.adminUsers(
+        value.search || undefined,
+        value.role || undefined,
+        value.accountType || undefined,
+        value.status || undefined,
+      ),
+      'Benutzer konnten nicht geladen werden.',
+      (page) => {
+        this.managedUsers.set(page.items);
+        this.userManagementOpen.set(true);
+      },
     );
   }
 
   protected suggestManagedUsers(event: Event): void {
-    const search = (event.target as HTMLInputElement).value.trim();
-    if (search.length < 2) {
-      this.managedUserSuggestions.set([]);
-      return;
-    }
     const value = this.userSearchForm.getRawValue();
-    this.api
-      .adminUsers(
-        search,
-        value.role || undefined,
-        value.accountType || undefined,
-        value.status || undefined,
-      )
-      .subscribe({
-        next: (page) => {
-          if ((event.target as HTMLInputElement).value.trim() === search)
-            this.managedUserSuggestions.set(page.items);
-        },
-        error: () => this.managedUserSuggestions.set([]),
-      });
+    suggest(event, this.managedUserSuggestions, (search) =>
+      search.length < 2
+        ? null
+        : this.api.adminUsers(
+            search,
+            value.role || undefined,
+            value.accountType || undefined,
+            value.status || undefined,
+          ),
+    );
   }
 
   protected closeUserManagement(): void {
@@ -1061,25 +979,21 @@ export class AdminDashboard {
     const user = this.managedUser();
     if (!user) return;
     const value = this.managedUserForm.getRawValue();
-    this.run(() =>
-      this.api
-        .updateAdminUser(user.id, {
-          username: value.username,
-          role: value.role,
-          accountType: value.accountType,
-          eventSceneId: value.accountType === 'event' ? value.eventSceneId : null,
-        })
-        .subscribe({
-          next: (updated) =>
-            this.done(() => {
-              this.managedUsers.update((items) =>
-                items.map((item) => (item.id === updated.id ? updated : item)),
-              );
-              this.selectManagedUser(updated);
-            }, 'Benutzer gespeichert.'),
-          error: (error: unknown) =>
-            this.fail(apiErrorMessage(error, 'Benutzer konnte nicht gespeichert werden.')),
-        }),
+    this.call(
+      this.api.updateAdminUser(user.id, {
+        username: value.username,
+        role: value.role,
+        accountType: value.accountType,
+        eventSceneId: value.accountType === 'event' ? value.eventSceneId : null,
+      }),
+      'Benutzer konnte nicht gespeichert werden.',
+      (updated) => {
+        this.managedUsers.update((items) =>
+          items.map((item) => (item.id === updated.id ? updated : item)),
+        );
+        this.selectManagedUser(updated);
+      },
+      'Benutzer gespeichert.',
     );
   }
 
@@ -1087,56 +1001,45 @@ export class AdminDashboard {
     const user = this.managedUser();
     const password = this.managedUserForm.controls.temporaryPassword.value;
     if (!user || !password) return;
-    this.run(() =>
-      (reactivate
+    this.call(
+      reactivate
         ? this.api.reactivateAdminUser(user.id, password)
-        : this.api.resetAdminUserPassword(user.id, password)
-      ).subscribe({
-        next: () =>
-          this.done(
-            () => this.searchManagedUsers(),
-            reactivate ? 'Benutzer reaktiviert.' : 'Temporäres Passwort gesetzt.',
-          ),
-        error: (error: unknown) =>
-          this.fail(apiErrorMessage(error, 'Aktion konnte nicht ausgeführt werden.')),
-      }),
+        : this.api.resetAdminUserPassword(user.id, password),
+      'Aktion konnte nicht ausgeführt werden.',
+      () => this.searchManagedUsers(),
+      reactivate ? 'Benutzer reaktiviert.' : 'Temporäres Passwort gesetzt.',
     );
   }
 
   protected searchManagedPatients(): void {
     const value = this.patientSearchForm.getRawValue();
     this.managedPatient.set(null);
-    this.run(() =>
-      this.api
-        .adminPatients(value.search, value.operationSceneId ?? undefined, value.status || undefined)
-        .subscribe({
-          next: (page) =>
-            this.done(() => {
-              this.managedPatients.set(page.items);
-              this.patientManagementOpen.set(true);
-            }),
-          error: (error: unknown) =>
-            this.fail(apiErrorMessage(error, 'Patienten konnten nicht geladen werden.')),
-        }),
+    this.call(
+      this.api.adminPatients(
+        value.search,
+        value.operationSceneId ?? undefined,
+        value.status || undefined,
+      ),
+      'Patienten konnten nicht geladen werden.',
+      (page) => {
+        this.managedPatients.set(page.items);
+        this.patientManagementOpen.set(true);
+      },
     );
   }
 
   protected suggestManagedPatients(event: Event): void {
-    const search = (event.target as HTMLInputElement).value.trim();
-    if (search.length < 2 && !/^\d+$/.test(search)) {
-      this.managedPatientSuggestions.set([]);
-      return;
-    }
     const value = this.patientSearchForm.getRawValue();
-    this.api
-      .adminPatients(search, value.operationSceneId ?? undefined, value.status || undefined)
-      .subscribe({
-        next: (page) => {
-          if ((event.target as HTMLInputElement).value.trim() === search)
-            this.managedPatientSuggestions.set(page.items);
-        },
-        error: () => this.managedPatientSuggestions.set([]),
-      });
+    // A short numeric search is a patient ID, so it is not held back like short text.
+    suggest(event, this.managedPatientSuggestions, (search) =>
+      search.length < 2 && !/^\d+$/.test(search)
+        ? null
+        : this.api.adminPatients(
+            search,
+            value.operationSceneId ?? undefined,
+            value.status || undefined,
+          ),
+    );
   }
 
   protected closePatientManagement(): void {
@@ -1171,21 +1074,18 @@ export class AdminDashboard {
   protected openManagedPatientDetails(): void {
     const patient = this.managedPatient();
     if (!patient) return;
-    this.run(() =>
-      this.api.adminPatientDetails(patient.editReference).subscribe({
-        next: (details) =>
-          this.done(() => {
-            this.managedPatientDetails.set(details);
-            this.managedBodyPartsForm.reset({ correctionReason: '' });
-            this.managedQrForm.reset({ qrReference: '' });
-            this.protocolSummaryOpen.set(false);
-            this.oneTimeQrToken.set(null);
-            this.loadManagedBodyRegions();
-            this.loadAvailablePatientQrCodes();
-          }),
-        error: (error: unknown) =>
-          this.fail(apiErrorMessage(error, 'Patientendaten konnten nicht geladen werden.')),
-      }),
+    this.call(
+      this.api.adminPatientDetails(patient.editReference),
+      'Patientendaten konnten nicht geladen werden.',
+      (details) => {
+        this.managedPatientDetails.set(details);
+        this.managedBodyPartsForm.reset({ correctionReason: '' });
+        this.managedQrForm.reset({ qrReference: '' });
+        this.protocolSummaryOpen.set(false);
+        this.oneTimeQrToken.set(null);
+        this.loadManagedBodyRegions();
+        this.loadAvailablePatientQrCodes();
+      },
     );
   }
 
@@ -1212,21 +1112,17 @@ export class AdminDashboard {
     const details = this.managedPatientDetails();
     if (!patient || !details) return;
     const correctionReason = this.managedBodyPartsForm.controls.correctionReason.value;
-    this.run(() =>
-      this.api
-        .updateAdminPatientBodyParts(patient.editReference, {
-          bodyParts: details.bodyParts,
-          ...(correctionReason ? { correctionReason } : {}),
-        })
-        .subscribe({
-          next: (updated) =>
-            this.done(() => {
-              this.managedPatientDetails.set(updated);
-              this.managedBodyPartsForm.reset({ correctionReason: '' });
-            }, 'Körperkarte korrigiert.'),
-          error: (error: unknown) =>
-            this.fail(apiErrorMessage(error, 'Körperkarte konnte nicht korrigiert werden.')),
-        }),
+    this.call(
+      this.api.updateAdminPatientBodyParts(patient.editReference, {
+        bodyParts: details.bodyParts,
+        ...(correctionReason ? { correctionReason } : {}),
+      }),
+      'Körperkarte konnte nicht korrigiert werden.',
+      (updated) => {
+        this.managedPatientDetails.set(updated);
+        this.managedBodyPartsForm.reset({ correctionReason: '' });
+      },
+      'Körperkarte korrigiert.',
     );
   }
 
@@ -1264,31 +1160,27 @@ export class AdminDashboard {
     const patient = this.managedPatient();
     const qrReference = this.managedQrForm.controls.qrReference.value;
     if (!patient || (source === 'existing' && !qrReference)) return;
-    this.run(() =>
-      this.api
-        .assignAdminPatientQrCode(
-          patient.editReference,
-          source === 'new' ? { source } : { source, qrReference },
-        )
-        .subscribe({
-          next: (result) =>
-            this.done(() => {
-              this.managedPatients.update((items) =>
-                items.map((item) =>
-                  item.editReference === result.patient.editReference ? result.patient : item,
-                ),
-              );
-              this.managedPatient.set(result.patient);
-              this.managedPatientDetails.update((details) =>
-                details ? { ...details, patient: result.patient, qrCodeBound: true } : details,
-              );
-              this.managedQrForm.reset({ qrReference: '' });
-              this.oneTimeQrToken.set(result.printableQrToken ?? null);
-              this.loadAvailablePatientQrCodes();
-            }, 'QR-Code zugewiesen.'),
-          error: (error: unknown) =>
-            this.fail(apiErrorMessage(error, 'QR-Code konnte nicht neu zugewiesen werden.')),
-        }),
+    this.call(
+      this.api.assignAdminPatientQrCode(
+        patient.editReference,
+        source === 'new' ? { source } : { source, qrReference },
+      ),
+      'QR-Code konnte nicht neu zugewiesen werden.',
+      (result) => {
+        this.managedPatients.update((items) =>
+          items.map((item) =>
+            item.editReference === result.patient.editReference ? result.patient : item,
+          ),
+        );
+        this.managedPatient.set(result.patient);
+        this.managedPatientDetails.update((details) =>
+          details ? { ...details, patient: result.patient, qrCodeBound: true } : details,
+        );
+        this.managedQrForm.reset({ qrReference: '' });
+        this.oneTimeQrToken.set(result.printableQrToken ?? null);
+        this.loadAvailablePatientQrCodes();
+      },
+      'QR-Code zugewiesen.',
     );
   }
 
@@ -1353,33 +1245,27 @@ export class AdminDashboard {
         .filter((field) => this.managedPatientForm.controls[field.key].dirty)
         .map((field) => [field.key, value[field.key]]),
     );
-    this.run(() =>
-      this.api
-        .updateAdminPatient(patient.editReference, {
-          name: value.name || null,
-          triagefarbe: value.triagefarbe || null,
-          operationSceneId: value.operationSceneId,
-          correctionReason: value.correctionReason,
-          ...triageUpdates,
-          latitudePatient: value.latitudePatient,
-          longitudePatient: value.longitudePatient,
-          locationSource: value.locationSource || null,
-          locationAccuracyMeters: value.locationAccuracyMeters,
-          indoorLocation: value.indoorLocation || null,
-        })
-        .subscribe({
-          next: (updated) =>
-            this.done(() => {
-              this.managedPatients.update((items) =>
-                items.map((item) =>
-                  item.editReference === updated.editReference ? updated : item,
-                ),
-              );
-              this.selectManagedPatient(updated);
-            }, 'Patient korrigiert.'),
-          error: (error: unknown) =>
-            this.fail(apiErrorMessage(error, 'Patient konnte nicht korrigiert werden.')),
-        }),
+    this.call(
+      this.api.updateAdminPatient(patient.editReference, {
+        name: value.name || null,
+        triagefarbe: value.triagefarbe || null,
+        operationSceneId: value.operationSceneId,
+        correctionReason: value.correctionReason,
+        ...triageUpdates,
+        latitudePatient: value.latitudePatient,
+        longitudePatient: value.longitudePatient,
+        locationSource: value.locationSource || null,
+        locationAccuracyMeters: value.locationAccuracyMeters,
+        indoorLocation: value.indoorLocation || null,
+      }),
+      'Patient konnte nicht korrigiert werden.',
+      (updated) => {
+        this.managedPatients.update((items) =>
+          items.map((item) => (item.editReference === updated.editReference ? updated : item)),
+        );
+        this.selectManagedPatient(updated);
+      },
+      'Patient korrigiert.',
     );
   }
 
@@ -1519,23 +1405,50 @@ export class AdminDashboard {
     );
   }
 
-  private run(action: () => void): void {
+  private call<T>(
+    request: Observable<T>,
+    errorMessage: string,
+    onSuccess: (value: T) => void,
+    successMessage = '',
+  ): void {
     this.busy.set(true);
     this.error.set('');
     this.message.set('');
-    action();
-  }
-
-  private done(update?: () => void, message = ''): void {
-    update?.();
-    this.busy.set(false);
-    this.message.set(message);
+    request.subscribe({
+      next: (value) => {
+        onSuccess(value);
+        this.busy.set(false);
+        this.message.set(successMessage);
+      },
+      error: (error: unknown) => this.fail(apiErrorMessage(error, errorMessage)),
+    });
   }
 
   private fail(message: string): void {
     this.busy.set(false);
     this.error.set(message);
   }
+}
+
+// Datalist suggestions: a reply for text the user has since changed is dropped.
+function suggest<T>(
+  event: Event,
+  target: WritableSignal<T[]>,
+  request: (search: string) => Observable<{ items: T[] }> | null,
+): void {
+  const input = event.target as HTMLInputElement;
+  const search = input.value.trim();
+  const pending = request(search);
+  if (!pending) {
+    target.set([]);
+    return;
+  }
+  pending.subscribe({
+    next: (page) => {
+      if (input.value.trim() === search) target.set(page.items);
+    },
+    error: () => target.set([]),
+  });
 }
 
 async function sha256Hex(value: string): Promise<string> {
