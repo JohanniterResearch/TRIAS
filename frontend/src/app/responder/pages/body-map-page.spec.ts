@@ -14,12 +14,6 @@ describe('BodyMapPage intent ordering', () => {
   });
 
   it('queues a toggle whose response was lost and keeps it over the initial load', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(() =>
-        Promise.resolve({ json: () => Promise.resolve({ front: ['kopf_vorne'], back: [] }) }),
-      ),
-    );
     const initialLoad = new Subject<any>();
     const reconciliationLoad = new Subject<any>();
     const toggle = new Subject<any>();
@@ -59,12 +53,6 @@ describe('BodyMapPage intent ordering', () => {
   });
 
   it('keeps the final marked state when the initial load resolves after rapid writes', () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(() =>
-        Promise.resolve({ json: () => Promise.resolve({ front: ['kopf_vorne'], back: [] }) }),
-      ),
-    );
     const initialLoad = new Subject<any>();
     const first = new Subject<any>();
     const second = new Subject<any>();
@@ -105,12 +93,6 @@ describe('BodyMapPage intent ordering', () => {
   });
 
   it('returns to the confirmed unmarked state when both rapid toggles fail', () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(() =>
-        Promise.resolve({ json: () => Promise.resolve({ front: ['kopf_vorne'], back: [] }) }),
-      ),
-    );
     const first = new Subject<any>();
     const second = new Subject<any>();
     const api = {
@@ -139,12 +121,6 @@ describe('BodyMapPage intent ordering', () => {
   });
 
   it('keeps the final intent when rapid responses would otherwise arrive reversed', () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(() =>
-        Promise.resolve({ json: () => Promise.resolve({ front: ['kopf_vorne'], back: [] }) }),
-      ),
-    );
     const first = new Subject<any>();
     const second = new Subject<any>();
     const api = {
@@ -177,12 +153,6 @@ describe('BodyMapPage intent ordering', () => {
   });
 
   it('uses the second server response when the first toggle fails', () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(() =>
-        Promise.resolve({ json: () => Promise.resolve({ front: ['kopf_vorne'], back: [] }) }),
-      ),
-    );
     const first = new Subject<any>();
     const second = new Subject<any>();
     const api = {
@@ -211,12 +181,6 @@ describe('BodyMapPage intent ordering', () => {
   });
 
   it('returns to the first successful server response when the second toggle fails', () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(() =>
-        Promise.resolve({ json: () => Promise.resolve({ front: ['kopf_vorne'], back: [] }) }),
-      ),
-    );
     const first = new Subject<any>();
     const second = new Subject<any>();
     const api = {

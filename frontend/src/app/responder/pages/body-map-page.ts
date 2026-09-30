@@ -2,15 +2,11 @@ import { Component, inject, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { EMPTY, Subject, catchError, concatMap, from, tap } from 'rxjs';
 
+import bodyRegions from '../../../../../contract/body-regions.json';
 import { apiErrorMessage, ApiClient, isRetryableFailure } from '../../api/api-client';
 import { MyAccess } from '../../auth/components/my-access';
 import { OfflineQueueService } from '../../sync/offline-queue.service';
 import { ResponderStateStore } from '../services/responder-state';
-
-interface BodyRegions {
-  front: string[];
-  back: string[];
-}
 
 @Component({
   selector: 'app-body-map-page',
@@ -76,7 +72,6 @@ interface BodyRegions {
 })
 export class BodyMapPage {
   protected readonly state = inject(ResponderStateStore);
-  protected readonly regions = signal<BodyRegions>({ front: [], back: [] });
   protected readonly bodyParts = signal<Record<string, number>>({});
   protected readonly error = signal('');
 
@@ -137,7 +132,6 @@ export class BodyMapPage {
         ),
       )
       .subscribe();
-    this.loadRegions();
     this.load();
   }
 
@@ -163,7 +157,7 @@ export class BodyMapPage {
   }
 
   protected regionList(): string[] {
-    return this.regions()[this.view()];
+    return bodyRegions[this.view()];
   }
 
   protected isMarked(region: string): boolean {
@@ -264,12 +258,5 @@ export class BodyMapPage {
       [...this.latestIntent].map(([region, intent]) => [region, intent.isClicked ? 1 : 0]),
     );
     this.bodyParts.set({ ...this.confirmedBodyParts, ...pending });
-  }
-
-  private loadRegions(): void {
-    fetch('/body-regions.json')
-      .then((response) => response.json())
-      .then((regions: BodyRegions) => this.regions.set(regions))
-      .catch(() => this.error.set('Körperregionen konnten nicht aus dem Vertrag geladen werden.'));
   }
 }

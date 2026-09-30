@@ -5,6 +5,7 @@ import { RouterLink } from '@angular/router';
 import QRCode from 'qrcode';
 import type { Observable } from 'rxjs';
 
+import bodyRegions from '../../../../../contract/body-regions.json';
 import { apiErrorMessage, ApiClient } from '../../api/api-client';
 import type { components } from '../../api/openapi-types';
 import { MyAccess } from '../../auth/components/my-access';
@@ -18,7 +19,6 @@ type LoginQrCode = components['schemas']['LoginQrCode'];
 type AdminUser = components['schemas']['User'];
 type AdminPatient = components['schemas']['AdminPatient'];
 type AdminPatientDetails = components['schemas']['AdminPatientDetails'];
-type BodyRegions = { front: string[]; back: string[] };
 
 @Component({
   selector: 'app-admin-dashboard',
@@ -528,7 +528,7 @@ type BodyRegions = { front: string[]; back: string[] };
                     @for (side of bodySides; track side.key) {
                       <section>
                         <h4>{{ side.label }}</h4>
-                        @for (part of bodyRegions()[side.key]; track part) {
+                        @for (part of bodyRegions[side.key]; track part) {
                           <label class="check-row"
                             ><input
                               type="checkbox"
@@ -668,7 +668,7 @@ export class AdminDashboard {
     { key: 'front', label: 'Körper vorne' },
     { key: 'back', label: 'Körper hinten' },
   ] as const;
-  protected readonly bodyRegions = signal<BodyRegions>({ front: [], back: [] });
+  protected readonly bodyRegions = bodyRegions;
   protected readonly availablePatientQrCodes = signal<
     components['schemas']['AvailablePatientQrCode'][]
   >([]);
@@ -1083,7 +1083,6 @@ export class AdminDashboard {
         this.managedQrForm.reset({ qrReference: '' });
         this.protocolSummaryOpen.set(false);
         this.oneTimeQrToken.set(null);
-        this.loadManagedBodyRegions();
         this.loadAvailablePatientQrCodes();
       },
     );
@@ -1189,14 +1188,6 @@ export class AdminDashboard {
   }
   protected closeOneTimeQrPreview(): void {
     this.oneTimeQrToken.set(null);
-  }
-
-  private loadManagedBodyRegions(): void {
-    if (this.bodyRegions().front.length || this.bodyRegions().back.length) return;
-    fetch('/body-regions.json')
-      .then((response) => response.json())
-      .then((regions: BodyRegions) => this.bodyRegions.set(regions))
-      .catch(() => this.fail('Körperregionen konnten nicht geladen werden.'));
   }
 
   private loadAvailablePatientQrCodes(): void {

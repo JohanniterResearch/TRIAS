@@ -9,4 +9,3 @@ test-results/
 src/app/api/openapi-types.ts
 
 # Generated/copied build input.
-public/body-regions.json
