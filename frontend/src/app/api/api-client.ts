@@ -2,7 +2,6 @@ import { inject, Injectable } from '@angular/core';
 import createClient from 'openapi-fetch';
 import { from, map, Observable, tap, throwError } from 'rxjs';
 
-import { environment } from '../../environments/environment';
 import { AuthStore } from '../auth/auth.store';
 import { SyncStatusService } from '../sync/sync-status.service';
 import type { paths } from './openapi-types';
@@ -127,7 +126,7 @@ type AssignAdminPatientQrCodeResponse =
 export class ApiClient {
   private readonly auth = inject(AuthStore);
   private readonly syncStatus = inject(SyncStatusService);
-  private readonly client = createClient<paths>({ baseUrl: environment.apiBaseUrl });
+  private readonly client = createClient<paths>();
 
   constructor() {
     this.client.use({
@@ -354,14 +353,6 @@ export class ApiClient {
     return this.unwrap(
       this.client.GET('/api/login-qr-codes', {
         params: { query: eventSceneId ? { eventSceneId } : {} },
-      }),
-    );
-  }
-
-  revokeLoginQrCode(id: number): Observable<void> {
-    return this.unwrap(
-      this.client.POST('/api/login-qr-codes/{id}/revoke', {
-        params: { path: { id } },
       }),
     );
   }

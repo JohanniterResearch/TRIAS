@@ -1,12 +1,12 @@
+import { isDevMode } from '@angular/core';
 import { bootstrapApplication } from '@angular/platform-browser';
 import { appConfig } from './app/app.config';
 import { App } from './app/app';
-import { environment } from './environments/environment';
 
 bootstrapApplication(App, appConfig).catch((err) => console.error(err));
 
 if ('serviceWorker' in navigator) {
-  if (environment.production) {
+  if (!isDevMode()) {
     window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'));
     // The first install also claims the page; only a replaced worker means a new deploy.
     const hadController = !!navigator.serviceWorker.controller;

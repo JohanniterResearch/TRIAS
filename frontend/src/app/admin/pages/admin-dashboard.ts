@@ -10,6 +10,7 @@ import { MyAccess } from '../../auth/components/my-access';
 import { PreviewModal } from '../components/preview-modal';
 import { QrCodeImage } from '../components/qr-code-image';
 import { QrPreviewModal, type QrPreviewItem } from '../components/qr-preview-modal';
+import { TRIAGE_COLORS } from '../../shared/triage';
 
 type OperationScene = components['schemas']['OperationScene'];
 type LoginQrCode = components['schemas']['LoginQrCode'];
@@ -342,7 +343,7 @@ type BodyRegions = { front: string[]; back: string[] };
                 </button>
                 <button
                   type="button"
-                  (click)="resetManagedUser()"
+                  (click)="setManagedPassword(false)"
                   [disabled]="busy() || managedUserForm.controls.temporaryPassword.invalid"
                 >
                   Passwort zurücksetzen
@@ -350,7 +351,7 @@ type BodyRegions = { front: string[]; back: string[] };
                 @if (selected.revokedAt) {
                   <button
                     type="button"
-                    (click)="reactivateManagedUser()"
+                    (click)="setManagedPassword(true)"
                     [disabled]="busy() || managedUserForm.controls.temporaryPassword.invalid"
                   >
                     Reaktivieren
@@ -449,10 +450,9 @@ type BodyRegions = { front: string[]; back: string[] };
                     >Triage
                     <select formControlName="triagefarbe">
                       <option value="">–</option>
-                      <option value="rot">Rot</option>
-                      <option value="gelb">Gelb</option>
-                      <option value="gruen">Grün</option>
-                      <option value="schwarz">Schwarz</option>
+                      @for (color of triageColors; track color.value) {
+                        <option [value]="color.value">{{ color.label }}</option>
+                      }
                     </select></label
                   >
                   <div class="body-map-columns">
@@ -627,10 +627,9 @@ type BodyRegions = { front: string[]; back: string[] };
                     >Triage
                     <select formControlName="triagefarbe">
                       <option value="">–</option>
-                      <option value="rot">Rot</option>
-                      <option value="gelb">Gelb</option>
-                      <option value="gruen">Grün</option>
-                      <option value="schwarz">Schwarz</option>
+                      @for (color of triageColors; track color.value) {
+                        <option [value]="color.value">{{ color.label }}</option>
+                      }
                     </select></label
                   >
                   <label>Szene ID <input type="number" formControlName="operationSceneId" /></label>
@@ -684,6 +683,7 @@ export class AdminDashboard {
   protected readonly managedPatientSuggestions = signal<AdminPatient[]>([]);
   protected readonly managedPatient = signal<AdminPatient | null>(null);
   protected readonly managedPatientDetails = signal<AdminPatientDetails | null>(null);
+  protected readonly triageColors = TRIAGE_COLORS;
   protected readonly bodyRegions = signal<BodyRegions>({ front: [], back: [] });
   protected readonly availablePatientQrCodes = signal<
     components['schemas']['AvailablePatientQrCode'][]
@@ -902,16 +902,6 @@ export class AdminDashboard {
     );
   }
 
-  protected revokeLoginQr(id: number): void {
-    this.run(() =>
-      this.api.revokeLoginQrCode(id).subscribe({
-        next: () => this.done(() => this.loadLoginQr(), 'Responder QR Code widerrufen.'),
-        error: (error: unknown) =>
-          this.fail(apiErrorMessage(error, 'Responder QR Code konnte nicht widerrufen werden.')),
-      }),
-    );
-  }
-
   protected generatePatientQr(): void {
     this.run(() =>
       this.api.generatePatientQrCodes(this.patientQrForm.getRawValue()).subscribe({
@@ -1093,13 +1083,7 @@ export class AdminDashboard {
     );
   }
 
-  protected resetManagedUser(): void {
-    this.setManagedPassword(false);
-  }
-  protected reactivateManagedUser(): void {
-    this.setManagedPassword(true);
-  }
-  private setManagedPassword(reactivate: boolean): void {
+  protected setManagedPassword(reactivate: boolean): void {
     const user = this.managedUser();
     const password = this.managedUserForm.controls.temporaryPassword.value;
     if (!user || !password) return;

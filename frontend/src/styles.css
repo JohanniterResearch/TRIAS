@@ -288,14 +288,12 @@ label.check-row {
   }
 }
 
-.admin-list,
-.print-sheet {
+.admin-list {
   display: grid;
   gap: 0.75rem;
 }
 
-.admin-list article,
-.print-token {
+.admin-list article {
   border: 1px solid #d7dde5;
   border-radius: 0.35rem;
   display: grid;

@@ -295,11 +295,7 @@ export class OfflineQueueService {
           if (item.type === 'manual-patient') {
             const patient = await firstValueFrom(this.api.createManualPatient(item.body));
             await this.commitPatientMapping(item.id, item.provisionalId, patient);
-            await this.reconcilePatient({
-              provisionalId: item.provisionalId,
-              realId: patient.id,
-              patient,
-            });
+            await this.reconcilePatientIds(item.provisionalId, patient.id, patient);
             continue;
           }
           const result = await this.replay(item);
@@ -559,13 +555,9 @@ export class OfflineQueueService {
           );
         }
       } else {
-        await this.reconcilePatient(mapping);
+        await this.reconcilePatientIds(mapping.provisionalId, mapping.realId, mapping.patient);
       }
     }
-  }
-
-  private async reconcilePatient(mapping: PatientMapping): Promise<void> {
-    await this.reconcilePatientIds(mapping.provisionalId, mapping.realId, mapping.patient);
   }
 
   private async reconcilePatientIds(

@@ -7,7 +7,6 @@ import {
 } from '@microsoft/signalr';
 import { Observable, Subject } from 'rxjs';
 
-import { environment } from '../../../environments/environment';
 import type { components } from '../../api/openapi-types';
 import { AuthStore } from '../../auth/auth.store';
 
@@ -62,10 +61,9 @@ export class SceneRealtimeService {
       this.disconnect(this.sceneId);
     }
     const events = new Subject<SceneRealtimeEvent>();
-    const hubUrl = `${environment.apiBaseUrl.replace(/\/$/, '')}/hubs/scene`;
 
     const connection = new HubConnectionBuilder()
-      .withUrl(hubUrl, { accessTokenFactory: () => this.auth.bearerToken() ?? '' })
+      .withUrl('/hubs/scene', { accessTokenFactory: () => this.auth.bearerToken() ?? '' })
       // Never give up: the default policy stops after ~42 s and would leave the room frozen.
       .withAutomaticReconnect({
         nextRetryDelayInMilliseconds: ({ previousRetryCount }) =>

@@ -1,4 +1,3 @@
-import { JsonPipe } from '@angular/common';
 import {
   Component,
   computed,
@@ -8,6 +7,8 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
 import { Subscription } from 'rxjs';
 
@@ -375,7 +376,7 @@ const zones = [
 
 @Component({
   selector: 'app-ambulanzprotokoll-page',
-  imports: [JsonPipe, MyAccess],
+  imports: [MyAccess, NgTemplateOutlet],
   template: `
     <section class="protocol-workspace">
       <app-my-access />
@@ -423,7 +424,7 @@ const zones = [
               </section>
             }
 
-            @for (field of fields; track field.path) {
+            <ng-template #protocolField let-field>
               <label
                 class="protocol-field"
                 [style.left.%]="field.x"
@@ -445,6 +446,10 @@ const zones = [
                   />
                 }
               </label>
+            </ng-template>
+
+            @for (field of fields; track field.path) {
+              <ng-container *ngTemplateOutlet="protocolField; context: { $implicit: field }" />
             }
 
             @for (group of optionGroups; track group.path) {
@@ -472,20 +477,7 @@ const zones = [
             }
 
             @for (field of measureFields; track field.path) {
-              <label
-                class="protocol-field"
-                [style.left.%]="field.x"
-                [style.top.%]="field.y"
-                [style.width.%]="field.w"
-                [style.height.%]="field.h"
-              >
-                <span>{{ field.label }}</span>
-                <input
-                  [type]="field.type || 'text'"
-                  [value]="value(field.path)"
-                  (input)="setValue(field.path, $any($event.target).value)"
-                />
-              </label>
+              <ng-container *ngTemplateOutlet="protocolField; context: { $implicit: field }" />
             }
 
             <div class="protocol-emergency-time">
@@ -708,11 +700,6 @@ const zones = [
           </div>
         </div>
       </fieldset>
-
-      <details>
-        <summary>FormState JSON</summary>
-        <pre>{{ form() | json }}</pre>
-      </details>
     </section>
   `,
 })
@@ -772,15 +759,14 @@ export class AmbulanzprotokollPage implements OnDestroy {
   private readonly currentPatientId = signal(0);
   private editVersion = 0;
   private currentWriteId: string | undefined;
-  private readonly savedSub: Subscription;
   private loadGeneration = 0;
   private loadSub: Subscription | null = null;
-  private readonly routeSub: Subscription;
   private signaturePoint: { x: number; y: number } | null = null;
 
   constructor() {
-    this.savedSub = this.offlineQueue.protocolSaved.subscribe(
-      ({ patientId, sourcePatientId, writeId, record }) => {
+    this.offlineQueue.protocolSaved
+      .pipe(takeUntilDestroyed())
+      .subscribe(({ patientId, sourcePatientId, writeId, record }) => {
         if (
           (patientId !== this.patientId() && sourcePatientId !== this.patientId()) ||
           writeId !== this.currentWriteId
@@ -790,9 +776,8 @@ export class AmbulanzprotokollPage implements OnDestroy {
         this.finalizedAt.set(record.finalizedAt ?? null);
         this.warnings.set(record.warnings);
         this.saveState.set(`server ${new Date(record.updatedAt).toLocaleTimeString()}`);
-      },
-    );
-    this.routeSub = this.route.paramMap.subscribe((params) => {
+      });
+    this.route.paramMap.pipe(takeUntilDestroyed()).subscribe((params) => {
       const patientId = Number(params.get('patientId') ?? this.responderState.patient()?.id ?? 0);
       if (!patientId || patientId === this.currentPatientId()) return;
       this.currentWriteId = undefined;
@@ -811,10 +796,8 @@ export class AmbulanzprotokollPage implements OnDestroy {
   }
 
   ngOnDestroy(): void {
-    this.savedSub.unsubscribe();
     this.loadGeneration++;
     this.loadSub?.unsubscribe();
-    this.routeSub.unsubscribe();
   }
 
   protected patientId(): number {
@@ -836,7 +819,7 @@ export class AmbulanzprotokollPage implements OnDestroy {
   protected setValue(path: string, value: unknown): void {
     if (this.locked()) return;
     this.form.update((current) => setPath(current, path, value));
-    this.queueAutosave();
+    this.persistSnapshot();
   }
 
   protected setNumber(path: string, value: string): void {
@@ -904,7 +887,7 @@ export class AmbulanzprotokollPage implements OnDestroy {
       rows[index] = { ...row, [key]: value || (key === 'uhrzeit' ? null : '') };
       return { ...current, medications_administered: rows };
     });
-    this.queueAutosave();
+    this.persistSnapshot();
   }
 
   protected addMarker(event: MouseEvent): void {
@@ -923,7 +906,7 @@ export class AmbulanzprotokollPage implements OnDestroy {
         ],
       },
     }));
-    this.queueAutosave();
+    this.persistSnapshot();
   }
 
   protected visibleMarkers(): FormState['assessment_secondary']['bodymap'] {
@@ -941,7 +924,7 @@ export class AmbulanzprotokollPage implements OnDestroy {
         bodymap: current.assessment_secondary.bodymap.filter((item) => item !== marker),
       },
     }));
-    this.queueAutosave();
+    this.persistSnapshot();
   }
 
   protected startSignature(event: PointerEvent): void {
@@ -1118,10 +1101,6 @@ export class AmbulanzprotokollPage implements OnDestroy {
       },
       error: () => undefined,
     });
-  }
-
-  private queueAutosave(): void {
-    this.persistSnapshot();
   }
 
   private computeGcs(): void {

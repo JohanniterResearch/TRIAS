@@ -15,13 +15,13 @@ import * as L from 'leaflet';
 
 import { apiErrorMessage, ApiClient, isRetryableFailure } from '../../api/api-client';
 import type { components } from '../../api/openapi-types';
+import { DEFAULT_MAP_CENTER, osmMap } from '../../shared/osm-map';
+import { TRIAGE_COLORS, type TriageColor } from '../../shared/triage';
 import { MyAccess } from '../../auth/components/my-access';
 import { OfflineQueueService } from '../../sync/offline-queue.service';
 import { SyncStatusService } from '../../sync/sync-status.service';
 import { ResponderStateStore } from '../services/responder-state';
 import { TriageDraftStore } from '../services/triage-draft-store';
-
-type TriageColor = components['schemas']['TriageColor'];
 
 @Component({
   selector: 'app-triage-page',
@@ -137,12 +137,7 @@ export class TriagePage implements AfterViewInit, OnDestroy {
     lng: [null as number | null],
     indoorLocation: [''],
   });
-  protected readonly colors: Array<{ value: TriageColor; label: string }> = [
-    { value: 'rot', label: 'Rot' },
-    { value: 'gelb', label: 'Gelb' },
-    { value: 'gruen', label: 'Grün' },
-    { value: 'schwarz', label: 'Schwarz' },
-  ];
+  protected readonly colors = TRIAGE_COLORS;
   protected readonly flags = [
     { name: 'respiration', label: 'Atmung' },
     { name: 'blutung', label: 'Blutung' },
@@ -184,15 +179,9 @@ export class TriagePage implements AfterViewInit, OnDestroy {
       return;
     }
     const patient = this.state.patient();
-    const lat = patient?.latitudePatient ?? 48.2082;
-    const lng = patient?.longitudePatient ?? 16.3738;
-    this.map = L.map(element).setView([lat, lng], patient?.latitudePatient == null ? 13 : 17);
-    // OSM's tile policy asks browser apps for a Referer; the page-wide no-referrer header would
-    // suppress it, so tiles alone send the origin (never the path, which may hold patient IDs).
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap contributors',
-      referrerPolicy: 'strict-origin-when-cross-origin',
-    }).addTo(this.map);
+    const lat = patient?.latitudePatient ?? DEFAULT_MAP_CENTER[0];
+    const lng = patient?.longitudePatient ?? DEFAULT_MAP_CENTER[1];
+    this.map = osmMap(element, [lat, lng], patient?.latitudePatient == null ? 13 : 17);
     if (patient?.latitudePatient != null && patient.longitudePatient != null) {
       this.setMarker(patient.latitudePatient, patient.longitudePatient);
       this.locationForm.patchValue({

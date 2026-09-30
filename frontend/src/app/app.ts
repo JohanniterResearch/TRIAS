@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject } from '@angular/core';
 import { RouterLink, RouterOutlet } from '@angular/router';
 
 import { SyncIndicator } from './sync/sync-indicator';
@@ -14,7 +14,6 @@ import { SessionRefreshService } from './auth/session-refresh.service';
   styleUrl: './app.css',
 })
 export class App {
-  protected readonly title = signal('Ambulanzsystem');
   private readonly offlineQueue = inject(OfflineQueueService);
   private readonly sessionRefresh = inject(SessionRefreshService);
   private readonly localWorkspace = inject(LocalWorkspaceService);
