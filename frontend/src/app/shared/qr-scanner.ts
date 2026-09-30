@@ -6,7 +6,9 @@ import jsQR from 'jsqr';
   template: `
     <div class="camera-panel">
       <video #video autoplay muted playsinline></video>
-      <button type="button" (click)="start()" [disabled]="scanning()">{{ buttonLabel() }}</button>
+      <button type="button" (click)="start()" [disabled]="scanning() || starting()">
+        {{ previewBlocked() ? 'Vorschau starten' : buttonLabel() }}
+      </button>
       @if (scanning()) {
         <p class="status-message" role="status" aria-live="polite">Kamera aktiv</p>
       }
@@ -21,6 +23,9 @@ export class QrScanner implements OnDestroy {
   readonly scanned = output<string>();
   protected readonly scanning = signal(false);
   protected readonly error = signal('');
+  protected readonly starting = signal(false);
+  // Some mobile browsers reject play() once the tap gesture was spent on the permission prompt.
+  protected readonly previewBlocked = signal(false);
 
   private readonly video = viewChild<ElementRef<HTMLVideoElement>>('video');
   private stream: MediaStream | null = null;
@@ -33,32 +38,47 @@ export class QrScanner implements OnDestroy {
   }
 
   protected async start(): Promise<void> {
+    const video = this.video()?.nativeElement;
+    if (!video) {
+      return;
+    }
+    this.starting.set(true);
+    this.error.set('');
     try {
-      this.stream = await navigator.mediaDevices.getUserMedia({
+      this.stream ??= await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'environment' },
       });
-      const video = this.video()?.nativeElement;
-      if (!video) {
-        this.stop();
-        return;
-      }
-
+      // Angular adds the muted attribute after element creation, which leaves the property false.
+      video.muted = true;
       video.srcObject = this.stream;
-      this.scanning.set(true);
-      const scan = () => {
-        const code = this.decodeFrame(video);
-        if (code) {
-          this.stop();
-          this.scanned.emit(code);
-          return;
-        }
-        this.scanTimer = window.setTimeout(scan, 500);
-      };
-      this.scanTimer = window.setTimeout(scan, 500);
     } catch {
       this.stop();
       this.error.set('Kamera konnte nicht gestartet werden. QR Code bitte eintippen.');
+      return;
     }
+
+    try {
+      await video.play();
+    } catch {
+      // Keep the stream so the next tap only has to start playback.
+      this.starting.set(false);
+      this.previewBlocked.set(true);
+      return;
+    }
+
+    this.starting.set(false);
+    this.previewBlocked.set(false);
+    this.scanning.set(true);
+    const scan = () => {
+      const code = this.decodeFrame(video);
+      if (code) {
+        this.stop();
+        this.scanned.emit(code);
+        return;
+      }
+      this.scanTimer = window.setTimeout(scan, 500);
+    };
+    this.scanTimer = window.setTimeout(scan, 500);
   }
 
   private decodeFrame(video: HTMLVideoElement): string | null {
@@ -83,5 +103,7 @@ export class QrScanner implements OnDestroy {
     this.stream?.getTracks().forEach((track) => track.stop());
     this.stream = null;
     this.scanning.set(false);
+    this.starting.set(false);
+    this.previewBlocked.set(false);
   }
 }
