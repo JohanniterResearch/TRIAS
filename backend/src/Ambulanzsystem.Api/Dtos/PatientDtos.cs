@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 using Ambulanzsystem.Api.Domain;
 
 namespace Ambulanzsystem.Api.Dtos;
@@ -45,13 +46,30 @@ public record ManualPatientRequest(
 public record ReassignQrCodeRequest(string qr_code);
 
 
+// Disallow matches the contract's additionalProperties: false. JsonRequired stops a missing
+// value-type field from silently binding as false/0.
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public record TriageUpdateRequest(
+    string? TriageColor,
+    bool? Respiration,
+    bool? Blutung,
+    bool? Radialispuls,
+    bool? Transport,
+    bool? Dringend,
+    bool? Kontaminiert,
+    DateTime? ClientUpdatedAt);
+
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public record RespirationUpdateRequest([property: JsonRequired] bool Respiration, DateTime? ClientUpdatedAt);
+
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public record LocationRequest(
-    double Lat,
-    double Lng,
-    string Source = "gps",
-    double? AccuracyMeters = null,
-    string? IndoorLocation = null,
-    DateTime? ClientUpdatedAt = null);
+    [property: JsonRequired][Range(-90.0, 90.0)] double Lat,
+    [property: JsonRequired][Range(-180.0, 180.0)] double Lng,
+    [AllowedValues("gps", "manual", null)] string? Source,
+    [Range(0.0, double.MaxValue)] double? AccuracyMeters,
+    [MaxLength(ExternalStringLimits.ShortText)] string? IndoorLocation,
+    DateTime? ClientUpdatedAt);
 
 public record TriageHistoryEntryResponse(
     DateTime Timestamp,

@@ -19,11 +19,7 @@ public static class SecurityHeadersMiddleware
             context.Response.Headers["X-Frame-Options"] = "DENY";
             context.Response.Headers["Referrer-Policy"] = "no-referrer";
             context.Response.Headers["Permissions-Policy"] = "camera=(self), geolocation=(self), microphone=()";
-            // Swagger UI (Development only) relies on inline scripts.
-            if (!context.Request.Path.StartsWithSegments("/swagger"))
-            {
-                context.Response.Headers["Content-Security-Policy"] = ContentSecurityPolicy;
-            }
+            context.Response.Headers["Content-Security-Policy"] = ContentSecurityPolicy;
             await next();
         });
     }

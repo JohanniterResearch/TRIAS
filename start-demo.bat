@@ -18,7 +18,7 @@ echo [3/3] Starting frontend (new window)...
 start "Ambulanzsystem frontend" cmd /k "cd /d "%~dp0frontend" && npm install && npm start"
 
 echo.
-echo Backend:  http://localhost:5042  (Swagger at /swagger)
+echo Backend:  http://localhost:5042
 echo Frontend: http://localhost:4200
 echo Login as admin / dev-admin-password (see README for reseeding notes).
 goto :eof

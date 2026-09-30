@@ -15,7 +15,6 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace Ambulanzsystem.Tests;
@@ -406,7 +405,7 @@ public class SessionSecurityGapTests(WebApplicationFactory<Program> factory) : I
         {
             var controller = new UsersController(
                 db,
-                new RefreshTokenService(db, Options.Create(new JwtOptions()), new AuditService(db)),
+                new RefreshTokenService(db, new AuditService(db)),
                 new AuditService(db))
             {
                 ControllerContext = new ControllerContext

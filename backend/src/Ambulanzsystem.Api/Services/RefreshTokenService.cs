@@ -3,7 +3,6 @@ using Ambulanzsystem.Api.Auth;
 using Ambulanzsystem.Api.Data;
 using Ambulanzsystem.Api.Domain;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
 
 namespace Ambulanzsystem.Api.Services;
 
@@ -12,12 +11,10 @@ public record IssuedRefreshToken(string RawToken, RefreshToken Entity);
 // 64 random bytes, base64-encoded, returned to the client once. Only the SHA-256 hash is ever
 // persisted — a DB read/leak cannot be replayed as a valid refresh token (recreation spec
 // deviation #1, fixing a known hardening gap in the legacy implementation).
-public class RefreshTokenService(AppDbContext db, IOptions<JwtOptions> options, AuditService audit)
+public class RefreshTokenService(AppDbContext db, AuditService audit)
 {
     // Two tabs of one browser can race the same refresh; only a later reuse counts as theft.
     private static readonly TimeSpan ReuseGrace = TimeSpan.FromSeconds(30);
-
-    private readonly JwtOptions _options = options.Value;
 
     public IssuedRefreshToken Issue(int userId)
     {
@@ -130,7 +127,7 @@ public class RefreshTokenService(AppDbContext db, IOptions<JwtOptions> options, 
         {
             UserId = userId,
             TokenHash = Convert.ToBase64String(SHA256.HashData(bytes)),
-            ExpiresAt = DateTime.UtcNow.AddDays(_options.RefreshTokenLifetimeDays),
+            ExpiresAt = DateTime.UtcNow.AddDays(JwtOptions.RefreshTokenLifetimeDays),
             IsRevoked = false,
         });
     }

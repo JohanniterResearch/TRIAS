@@ -11,9 +11,9 @@ public class JwtOptions
     public string Secret { get; set; } = null!;
 
     // Short, because logout cannot recall an issued access token; the refresh flow renews it.
-    public int AccessTokenLifetimeMinutes { get; set; } = 15;
-    public int RefreshTokenLifetimeDays { get; set; } = 30;
+    public const int AccessTokenLifetimeMinutes = 15;
+    public const int RefreshTokenLifetimeDays = 30;
 
     // QR sessions are inherently short-lived; also capped by the QrCodeLogin's own ExpiresAt.
-    public int QrTokenLifetimeMinutes { get; set; } = 480;
+    public const int QrTokenLifetimeMinutes = 480;
 }

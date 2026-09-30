@@ -18,7 +18,8 @@ public class FieldMerge
     // effective timestamp is not older than the last recorded write to this exact field.
     public bool TryApply(string field, DateTime? clientUpdatedAt, DateTime now)
     {
-        var candidate = clientUpdatedAt ?? now;
+        // Clamp a fast device clock to server time instead of rejecting the offline write.
+        var candidate = clientUpdatedAt is DateTime client && client < now ? client : now;
 
         if (_timestamps.TryGetValue(field, out var existing) && existing > candidate)
         {

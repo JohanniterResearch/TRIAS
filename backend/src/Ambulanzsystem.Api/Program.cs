@@ -4,6 +4,7 @@ using System.Text.Json.Serialization;
 using Ambulanzsystem.Api.Auth;
 using Ambulanzsystem.Api.Config;
 using Ambulanzsystem.Api.Data;
+using Ambulanzsystem.Api.Dtos;
 using Ambulanzsystem.Api.Endpoints;
 using Ambulanzsystem.Api.Filters;
 using Ambulanzsystem.Api.Middleware;
@@ -12,6 +13,7 @@ using Ambulanzsystem.Api.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 
@@ -21,10 +23,12 @@ StartupValidation.Validate(builder.Configuration, builder.Environment);
 
 builder.Services
     .AddControllers(options => options.Filters.Add<AuditReadFilter>())
+    // Contract errors are {status, message}; the frontend shows `message`, never ProblemDetails.
+    .ConfigureApiBehaviorOptions(o => o.InvalidModelStateResponseFactory = ctx => new BadRequestObjectResult(
+        new ErrorResponse(ctx.ModelState.Values.SelectMany(v => v.Errors)
+            .Select(e => e.ErrorMessage).FirstOrDefault(m => m.Length > 0) ?? "Invalid request.")))
     .AddJsonOptions(o => o.JsonSerializerOptions.Converters.Add(
         new JsonStringEnumConverter(JsonNamingPolicy.CamelCase)));
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
@@ -103,12 +107,6 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     await db.Database.MigrateAsync();
     await DataSeeder.SeedAsync(db, app.Configuration, app.Environment);
-}
-
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
 }
 
 if (app.Environment.IsProduction())

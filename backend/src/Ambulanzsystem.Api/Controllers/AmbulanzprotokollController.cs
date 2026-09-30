@@ -147,9 +147,7 @@ public class AmbulanzprotokollController(AppDbContext db, AuditService audit, Sc
         }
         await tx.CommitAsync();
 
-        var bodyPartsJson = await db.Bodies.Where(b => b.PatientId == patientId).Select(b => b.BodyPartsJson).FirstOrDefaultAsync();
-        var bodyParts = bodyPartsJson is null ? [] : JsonSerializer.Deserialize<Dictionary<string, int>>(bodyPartsJson)!;
-        notifier.PatientUpdated(patient.OperationSceneId, PatientResponse.From(patient), bodyParts, false, record.Status);
+        await notifier.PatientUpdatedAsync(patient, false, record.Status);
 
         var formStateOut = JsonDocument.Parse(FormStateMerge.WithDefaults(record.FormStateJson)).RootElement;
         return Ok(new ProtokollRecordResponse(patientId, record.Status, formStateOut, record.UpdatedAt, record.FinalizedAt, warnings));

@@ -91,6 +91,38 @@ public class ApiTrustBoundaryTests(WebApplicationFactory<Program> factory) : ICl
     }
 
     [Fact]
+    public async Task PatientWrites_RequireValueFields_DefaultNullSource_AndReturnContractErrors()
+    {
+        var admin = await AdminClientAsync();
+        var sceneId = await CreateSceneAsync(admin);
+        var patient = await (await admin.PostAsJsonAsync("/api/persons/manual", new { operationSceneId = sceneId }))
+            .Content.ReadFromJsonAsync<PatientBearing>();
+
+        // A missing required bool/double must not bind silently as false/0.
+        var noRespiration = await admin.PostAsJsonAsync($"/api/persons/{patient!.id}/respiration", new { });
+        Assert.Equal(HttpStatusCode.BadRequest, noRespiration.StatusCode);
+        var error = await noRespiration.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("error", error.GetProperty("status").GetString());
+        Assert.False(string.IsNullOrEmpty(error.GetProperty("message").GetString()));
+
+        var noLat = await admin.PostAsJsonAsync($"/api/persons/{patient.id}/location", new { lng = 16.3 });
+        Assert.Equal(HttpStatusCode.BadRequest, noLat.StatusCode);
+
+        var nullSource = await admin.PostAsJsonAsync($"/api/persons/{patient.id}/location",
+            new { lat = 48.2, lng = 16.3, source = (string?)null });
+        Assert.Equal(HttpStatusCode.OK, nullSource.StatusCode);
+        var located = await nullSource.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("gps", located.GetProperty("locationSource").GetString());
+
+        var longName = await admin.PostAsJsonAsync("/api/persons/manual",
+            new { operationSceneId = sceneId, name = new string('x', 256) });
+        Assert.Equal(HttpStatusCode.BadRequest, longName.StatusCode);
+        var longNameError = await longName.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("error", longNameError.GetProperty("status").GetString());
+        Assert.True(longNameError.TryGetProperty("message", out _));
+    }
+
+    [Fact]
     public async Task FutureClientTimestamps_AreClampedToServerTime_NotRejected()
     {
         var admin = await AdminClientAsync();

@@ -11,8 +11,8 @@ Run through in order. Each step assumes the previous one is still running.
 - [ ] **Database** — `docker compose up -d db` (Postgres on host port `5434`; override
       with `DB_HOST_PORT`/`DB_PASSWORD` env vars if that port is taken).
 - [ ] **Backend** — `cd backend && dotnet run --project src/Ambulanzsystem.Api`
-      (applies EF migrations and seeds on startup). Serves `http://localhost:5042`,
-      Swagger UI at `/swagger`.
+      (applies EF migrations and seeds on startup). Serves `http://localhost:5042`;
+      the API contract is `contract/openapi.yaml`.
   - Development seeding (`appsettings.Development.json`) creates `admin` /
     `dev-admin-password` and a demo responder `responder-demo` / `responder-demo`,
     plus sample scene data (`Bootstrap:SeedDevSampleData`).
