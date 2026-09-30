@@ -1,5 +1,7 @@
 import { Injectable } from '@angular/core';
 
+import { request, transactionDone } from '../../shared/idb';
+
 export interface ProtokollDraftRecord {
   patientId: number;
   sceneId?: number;
@@ -59,12 +61,10 @@ export class ProtokollDraftStore {
     const db = await this.open();
     try {
       const transaction = db.transaction(storeName, mode);
-      const completed = new Promise<void>((resolve, reject) => {
-        transaction.oncomplete = () => resolve();
-        transaction.onerror = () => reject(transaction.error);
-        transaction.onabort = () => reject(transaction.error);
-      });
-      const [result] = await Promise.all([work(transaction.objectStore(storeName)), completed]);
+      const [result] = await Promise.all([
+        work(transaction.objectStore(storeName)),
+        transactionDone(transaction),
+      ]);
       return result;
     } finally {
       db.close();
@@ -80,11 +80,4 @@ export class ProtokollDraftStore {
       openRequest.onerror = () => reject(openRequest.error);
     });
   }
-}
-
-function request<T>(idbRequest: IDBRequest<T>): Promise<T> {
-  return new Promise((resolve, reject) => {
-    idbRequest.onsuccess = () => resolve(idbRequest.result);
-    idbRequest.onerror = () => reject(idbRequest.error);
-  });
 }

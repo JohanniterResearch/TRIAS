@@ -1,7 +1,7 @@
 import { Component, input, output } from '@angular/core';
 
 // Generic popover shell for admin lists (scenes, users) that can grow large.
-// Reuses the qr-modal-* styles already built for QrPreviewModal, so a loaded
+// Uses the qr-modal-* styles (QrPreviewModal renders through it), so a loaded
 // list scrolls inside a fixed-size overlay instead of stretching the page.
 @Component({
   selector: 'app-preview-modal',

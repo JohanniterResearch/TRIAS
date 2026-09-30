@@ -1,7 +1,7 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom, Subject } from 'rxjs';
 
-import { apiErrorMessage, ApiClient, ApiRequestError } from '../api/api-client';
+import { apiErrorMessage, ApiClient, ApiRequestError, type JsonBody } from '../api/api-client';
 import type { components, paths } from '../api/openapi-types';
 import {
   ProtokollDraftRecord,
@@ -9,19 +9,15 @@ import {
 } from '../protokoll/services/protokoll-draft-store';
 import { ResponderStateStore } from '../responder/services/responder-state';
 import { TriageDraftStore } from '../responder/services/triage-draft-store';
+import { request, transactionDone } from '../shared/idb';
 import { SyncStatusService } from './sync-status.service';
 
 type Patient = components['schemas']['Patient'];
-type ManualPatientRequest =
-  paths['/api/persons/manual']['post']['requestBody']['content']['application/json'];
-type TriageUpdateRequest =
-  paths['/api/persons/{id}/update-triage-color']['post']['requestBody']['content']['application/json'];
-type LocationRequest =
-  paths['/api/persons/{id}/location']['post']['requestBody']['content']['application/json'];
-type BodyPartRequest =
-  paths['/api/body-parts']['put']['requestBody']['content']['application/json'];
-type SaveProtokollRequest =
-  paths['/api/persons/{patientId}/ambulanzprotokoll-page1']['put']['requestBody']['content']['application/json'];
+type ManualPatientRequest = JsonBody<'/api/persons/manual', 'post'>;
+type TriageUpdateRequest = JsonBody<'/api/persons/{id}/update-triage-color', 'post'>;
+type LocationRequest = JsonBody<'/api/persons/{id}/location', 'post'>;
+type BodyPartRequest = JsonBody<'/api/body-parts', 'put'>;
+type SaveProtokollRequest = JsonBody<'/api/persons/{patientId}/ambulanzprotokoll-page1', 'put'>;
 
 type ProtocolResponse =
   paths['/api/persons/{patientId}/ambulanzprotokoll-page1']['put']['responses'][200]['content']['application/json'];
@@ -41,44 +37,17 @@ type QueueMetadata = {
   errorStatus?: number | null;
   nextAttemptAt?: string | null;
 };
-type QueueItem = QueueMetadata &
-  (
+type QueueItem = QueueMetadata & { id: string; createdAt: string } & (
+    | { type: 'manual-patient'; body: ManualPatientRequest; provisionalId: number }
+    | { type: 'triage'; patientId: number; body: TriageUpdateRequest }
+    | { type: 'location'; patientId: number; body: LocationRequest }
+    | { type: 'body-part'; patientId: number; body: BodyPartRequest }
     | {
-        id: string;
-        type: 'manual-patient';
-        body: ManualPatientRequest;
-        provisionalId: number;
-        createdAt: string;
-      }
-    | {
-        id: string;
-        type: 'triage';
-        patientId: number;
-        body: TriageUpdateRequest;
-        createdAt: string;
-      }
-    | {
-        id: string;
-        type: 'location';
-        patientId: number;
-        body: LocationRequest;
-        createdAt: string;
-      }
-    | {
-        id: string;
-        type: 'body-part';
-        patientId: number;
-        body: BodyPartRequest;
-        createdAt: string;
-      }
-    | {
-        id: string;
         type: 'protocol';
         patientId: number;
         body: SaveProtokollRequest;
         sceneId?: number;
         finalizedAt?: string | null;
-        createdAt: string;
       }
   );
 export interface BlockedItem {
@@ -674,20 +643,5 @@ function openDb(): Promise<IDBDatabase> {
     };
     openRequest.onsuccess = () => resolve(openRequest.result);
     openRequest.onerror = () => reject(openRequest.error);
-  });
-}
-
-function request<T>(idbRequest: IDBRequest<T>): Promise<T> {
-  return new Promise((resolve, reject) => {
-    idbRequest.onsuccess = () => resolve(idbRequest.result);
-    idbRequest.onerror = () => reject(idbRequest.error);
-  });
-}
-
-function transactionDone(transaction: IDBTransaction): Promise<void> {
-  return new Promise((resolve, reject) => {
-    transaction.oncomplete = () => resolve();
-    transaction.onerror = () => reject(transaction.error);
-    transaction.onabort = () => reject(transaction.error);
   });
 }
