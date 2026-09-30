@@ -17,32 +17,28 @@ public static class AmbulanzprotokollSchemaValidator
             return false;
         }
 
-        return TryValidateJson(formState.GetRawText(), out error);
+        return TryValidate(formState, out error);
     }
 
-    public static bool TryValidateMerged(string formStateJson, out string? error) =>
-        TryValidateJson(formStateJson, out error);
-
-    private static bool TryValidateJson(string json, out string? error)
+    public static bool TryValidateMerged(string formStateJson, out string? error)
     {
         try
         {
-            using var document = JsonDocument.Parse(json);
-            var result = Schema.Value.Evaluate(document.RootElement, new EvaluationOptions());
-            if (result.IsValid)
-            {
-                error = null;
-                return true;
-            }
-
-            error = "formState must conform to ambulanzprotokoll-page1.schema.json.";
-            return false;
+            using var document = JsonDocument.Parse(formStateJson);
+            return TryValidate(document.RootElement, out error);
         }
         catch (JsonException)
         {
             error = "formState must be valid JSON.";
             return false;
         }
+    }
+
+    private static bool TryValidate(JsonElement formState, out string? error)
+    {
+        var valid = Schema.Value.Evaluate(formState, new EvaluationOptions()).IsValid;
+        error = valid ? null : "formState must conform to ambulanzprotokoll-page1.schema.json.";
+        return valid;
     }
 
     private static JsonSchema LoadSchema()

@@ -117,12 +117,10 @@ public class OperationScenesController(AppDbContext db, AuditService audit) : Co
     [AuditRead("operation_scene_list")]
     public async Task<IActionResult> List()
     {
-        var type = User.TokenType();
         var now = DateTime.UtcNow;
         var eventSceneId = User.EventSceneId();
 
-        // Admin is always global; Leitstelle only when unscoped (mirrors SceneAccess.CanAccessAsync).
-        if (type is TokenTypes.Admin || (type == TokenTypes.Leitstelle && eventSceneId is null))
+        if (SceneAccess.IsGlobalAdministrator(User))
         {
             var all = await db.OperationScenes.OrderByDescending(s => s.UpdatedAt).ToListAsync();
             return Ok(all.Select(OperationSceneResponse.From));

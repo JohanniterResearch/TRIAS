@@ -44,8 +44,8 @@ public class AuditService(AppDbContext db)
     public void LogLogin(int? actorId, string actorRole, string entityType, int? entityId) =>
         LogEvent(actorId, actorRole, "login", entityType, entityId, null, null, null, null);
 
-    public void LogRevoke(ClaimsPrincipal? actor, int? actorId, string actorRole, string entityType, int entityId) =>
-        LogEvent(actor?.SubjectId() ?? actorId, actor?.TokenType() ?? actorRole, "revoke", entityType, entityId, null, null, null, null);
+    public void LogRevoke(ClaimsPrincipal? actor, string actorRole, string entityType, int entityId) =>
+        LogEvent(actor?.SubjectId(), actor?.TokenType() ?? actorRole, "revoke", entityType, entityId, null, null, null, null);
 
     private void LogEvent(int? actorId, string actorRole, string action, string entityType, int? entityId, int? patientId, string[]? fields, object? before, object? after, string? reason = null)
     {

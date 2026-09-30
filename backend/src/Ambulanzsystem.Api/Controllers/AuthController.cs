@@ -89,26 +89,18 @@ public class AuthController(
         TouchLoginTimestamps(user);
 
         var issued = tokens.IssueUserToken(user);
-        var refresh = await refreshTokens.IssueAsync(user.Id);
-        audit.LogLogin(user.Id, RoleClaim(user.Role), "user", user.Id);
+        var refresh = refreshTokens.Issue(user.Id);
+        audit.LogLogin(user.Id, TokenTypes.For(user.Role)!, "user", user.Id);
         await db.SaveChangesAsync();
         await transaction.CommitAsync();
 
         if (asAdminResponse)
         {
-            var role = user.Role == Role.Admin ? TokenTypes.Admin : TokenTypes.Leitstelle;
-            return Ok(new AdminLoginResponse("ok", issued.Token, refresh.RawToken, user.RequiresPasswordChange, role, user.EventSceneId));
+            return Ok(new AdminLoginResponse("ok", issued.Token, refresh.RawToken, user.RequiresPasswordChange, TokenTypes.For(user.Role)!, user.EventSceneId));
         }
 
         return Ok(new UserLoginResponse("ok", issued.Token, refresh.RawToken, user.RequiresPasswordChange));
     }
-
-    private static string RoleClaim(Role role) => role switch
-    {
-        Role.Admin => TokenTypes.Admin,
-        Role.Leitstelle => TokenTypes.Leitstelle,
-        _ => TokenTypes.User,
-    };
 
     [HttpPost("refresh-token")]
     [AllowAnonymous]
@@ -145,7 +137,7 @@ public class AuthController(
     [AllowPendingPasswordChange]
     public IActionResult ValidateToken()
     {
-        var role = User.FindFirst(TokenTypes.ClaimType)?.Value ?? "unknown";
+        var role = User.TokenType() ?? "unknown";
         return Ok(new ValidateTokenResponse(true, role));
     }
 
@@ -178,7 +170,7 @@ public class AuthController(
         TouchLoginTimestamps(user);
 
         var issued = tokens.IssueUserToken(user, devPasswordChangeBypass: true);
-        audit.LogLogin(user.Id, RoleClaim(user.Role), "user", user.Id);
+        audit.LogLogin(user.Id, TokenTypes.For(user.Role)!, "user", user.Id);
         await db.SaveChangesAsync();
 
         return Ok(new DevLoginResponse("ok", issued.Token, user.Username, false));

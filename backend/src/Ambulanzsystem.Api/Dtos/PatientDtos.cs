@@ -44,7 +44,6 @@ public record ManualPatientRequest(
 
 public record ReassignQrCodeRequest(string qr_code);
 
-public record RespirationRequest(bool Respiration, DateTime? ClientUpdatedAt);
 
 public record LocationRequest(
     double Lat,

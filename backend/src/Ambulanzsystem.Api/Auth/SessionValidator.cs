@@ -35,13 +35,7 @@ public class SessionValidator(AppDbContext db, IHostEnvironment environment, ICo
             || user.EventSceneId != principal.EventSceneId())
             return SessionValidity.Invalid;
 
-        var expectedType = user.Role switch
-        {
-            Role.Admin => TokenTypes.Admin,
-            Role.Leitstelle => TokenTypes.Leitstelle,
-            Role.Responder => TokenTypes.User,
-            _ => null,
-        };
+        var expectedType = TokenTypes.For(user.Role);
         if (expectedType is null || principal.TokenType() != expectedType) return SessionValidity.Invalid;
 
         var bypass = principal.HasClaim(TokenTypes.DevPasswordChangeBypassClaimType, "true")

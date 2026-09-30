@@ -67,7 +67,7 @@ public class AmbulanzprotokollController(AppDbContext db, AuditService audit, Sc
         {
             return Forbid();
         }
-        if (wasFinalized && (string.IsNullOrWhiteSpace(request.CorrectionReason) || request.CorrectionReason.Length > 500))
+        if (wasFinalized && !ExternalStringLimits.IsValidCorrectionReason(request.CorrectionReason))
         {
             return BadRequest(new ErrorResponse("correctionReason must be 1 to 500 characters for finalized protocol corrections."));
         }

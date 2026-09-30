@@ -18,13 +18,7 @@ public class TokenService(IOptions<JwtOptions> options)
     // every live token instantly, without a blocklist.
     public IssuedToken IssueUserToken(User user, bool devPasswordChangeBypass = false)
     {
-        var type = user.Role switch
-        {
-            Role.Admin => TokenTypes.Admin,
-            Role.Leitstelle => TokenTypes.Leitstelle,
-            Role.Responder => TokenTypes.User,
-            _ => throw new ArgumentOutOfRangeException(nameof(user)),
-        };
+        var type = TokenTypes.For(user.Role) ?? throw new ArgumentOutOfRangeException(nameof(user));
 
         var claims = new List<Claim>
         {

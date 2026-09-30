@@ -19,11 +19,11 @@ public class RefreshTokenService(AppDbContext db, IOptions<JwtOptions> options, 
 
     private readonly JwtOptions _options = options.Value;
 
-    public Task<IssuedRefreshToken> IssueAsync(int userId)
+    public IssuedRefreshToken Issue(int userId)
     {
         var issued = Create(userId);
         db.RefreshTokens.Add(issued.Entity);
-        return Task.FromResult(issued);
+        return issued;
     }
 
     // Rotation: the presented token is revoked and a new one issued, whether or not the caller
@@ -50,13 +50,12 @@ public class RefreshTokenService(AppDbContext db, IOptions<JwtOptions> options, 
             return null;
         }
 
-        var ownsTransaction = db.Database.CurrentTransaction is null;
-        await using var transaction = ownsTransaction ? await db.Database.BeginTransactionAsync() : null;
+        await using var transaction = await db.Database.BeginTransactionAsync();
         var user = await RowLocks.UserAsync(db, existing.UserId);
         if (user is null || user.RevokedAt is not null
             || (user.AccountType == AccountType.Event && user.EventSceneId is null))
         {
-            if (transaction is not null) await transaction.RollbackAsync();
+            await transaction.RollbackAsync();
             return null;
         }
 
@@ -65,14 +64,14 @@ public class RefreshTokenService(AppDbContext db, IOptions<JwtOptions> options, 
             .ExecuteUpdateAsync(update => update.SetProperty(t => t.IsRevoked, true).SetProperty(t => t.RotatedAt, now));
         if (claimed != 1)
         {
-            if (transaction is not null) await transaction.RollbackAsync();
+            await transaction.RollbackAsync();
             return null;
         }
 
         var issued = Create(existing.UserId);
         db.RefreshTokens.Add(issued.Entity);
         await db.SaveChangesAsync();
-        if (transaction is not null) await transaction.CommitAsync();
+        await transaction.CommitAsync();
         return (user, issued);
     }
 
@@ -104,7 +103,7 @@ public class RefreshTokenService(AppDbContext db, IOptions<JwtOptions> options, 
             .ExecuteUpdateAsync(update => update.SetProperty(t => t.IsRevoked, true));
         await db.Users.Where(u => u.Id == userId)
             .ExecuteUpdateAsync(update => update.SetProperty(u => u.SecurityStamp, Guid.NewGuid().ToString()));
-        audit.LogRevoke(null, null, "system", "refresh_token_reuse", userId);
+        audit.LogRevoke(null, "system", "refresh_token_reuse", userId);
         await db.SaveChangesAsync();
     }
 

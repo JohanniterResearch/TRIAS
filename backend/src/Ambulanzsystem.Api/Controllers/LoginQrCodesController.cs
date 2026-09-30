@@ -84,7 +84,7 @@ public class LoginQrCodesController(AppDbContext db, AuditService audit) : Contr
         if (!await SceneAccess.CanAdministerAsync(User, db, code.EventSceneId)) return Forbid();
 
         code.RevokedAt = DateTime.UtcNow;
-        audit.LogRevoke(User, null, "unknown", "qr_code_login", id);
+        audit.LogRevoke(User, "unknown", "qr_code_login", id);
         await db.SaveChangesAsync();
 
         return NoContent();

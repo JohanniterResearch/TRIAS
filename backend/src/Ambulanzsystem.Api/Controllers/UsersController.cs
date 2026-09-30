@@ -139,9 +139,7 @@ public class UsersController(AppDbContext db, RefreshTokenService refreshTokens,
                 return Forbid();
             }
         }
-        return await RevokeUserAsync(
-            user,
-            User.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub)?.Value);
+        return await RevokeUserAsync(user, User.SubjectId()?.ToString());
     }
 
     [HttpPost("self-cancel")]
@@ -149,8 +147,7 @@ public class UsersController(AppDbContext db, RefreshTokenService refreshTokens,
     [AllowPendingPasswordChange]
     public async Task<IActionResult> SelfCancel()
     {
-        var type = User.FindFirst(TokenTypes.ClaimType)?.Value;
-        if (type == TokenTypes.Qr)
+        if (User.TokenType() == TokenTypes.Qr)
         {
             if (User.SubjectId() is int qrLoginId)
             {
@@ -162,14 +159,13 @@ public class UsersController(AppDbContext db, RefreshTokenService refreshTokens,
 
                 // Same SaveChangesAsync as the RevokedAt write above: the row mutation and its
                 // audit entry commit as one transaction, or neither does.
-                audit.LogRevoke(User, null, TokenTypes.Qr, "qr_code_login", qrLoginId);
+                audit.LogRevoke(User, TokenTypes.Qr, "qr_code_login", qrLoginId);
                 await db.SaveChangesAsync();
             }
             return NoContent();
         }
 
-        var subClaim = User.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub)?.Value;
-        if (subClaim is null || !int.TryParse(subClaim, out var userId))
+        if (User.SubjectId() is not int userId)
         {
             return Unauthorized();
         }
@@ -186,7 +182,7 @@ public class UsersController(AppDbContext db, RefreshTokenService refreshTokens,
         {
             user.RevokedAt = DateTime.UtcNow;
             user.RevokedBy = revokedBy;
-            audit.LogRevoke(User, null, "unknown", "user", user.Id);
+            audit.LogRevoke(User, "unknown", "user", user.Id);
             await db.SaveChangesAsync();
             return NoContent();
         }
