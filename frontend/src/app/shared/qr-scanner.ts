@@ -32,8 +32,11 @@ export class QrScanner implements OnDestroy {
   private scanTimer = 0;
   private canvas: HTMLCanvasElement | null = null;
   private canvasContext: CanvasRenderingContext2D | null = null;
+  // start() awaits camera permission and playback; teardown in between must not be undone.
+  private destroyed = false;
 
   ngOnDestroy(): void {
+    this.destroyed = true;
     this.stop();
   }
 
@@ -45,13 +48,21 @@ export class QrScanner implements OnDestroy {
     this.starting.set(true);
     this.error.set('');
     try {
-      this.stream ??= await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' },
-      });
+      if (!this.stream) {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment' },
+        });
+        if (this.destroyed) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+        this.stream = stream;
+      }
       // Angular adds the muted attribute after element creation, which leaves the property false.
       video.muted = true;
       video.srcObject = this.stream;
     } catch {
+      if (this.destroyed) return;
       this.stop();
       this.error.set('Kamera konnte nicht gestartet werden. QR Code bitte eintippen.');
       return;
@@ -60,11 +71,13 @@ export class QrScanner implements OnDestroy {
     try {
       await video.play();
     } catch {
+      if (this.destroyed) return;
       // Keep the stream so the next tap only has to start playback.
       this.starting.set(false);
       this.previewBlocked.set(true);
       return;
     }
+    if (this.destroyed) return;
 
     this.starting.set(false);
     this.previewBlocked.set(false);

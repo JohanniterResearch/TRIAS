@@ -13,9 +13,13 @@ describe('QrScanner', () => {
       value: { getUserMedia },
     });
     getUserMedia.mockClear();
+    track.stop.mockClear();
   });
 
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
 
   async function tap(fixture: ReturnType<typeof TestBed.createComponent<QrScanner>>) {
     (fixture.nativeElement.querySelector('button') as HTMLButtonElement).click();
@@ -44,4 +48,36 @@ describe('QrScanner', () => {
     expect(element.textContent).toContain('Kamera aktiv');
     fixture.destroy();
   });
+
+  it.each(['permission', 'playback'] as const)(
+    'stays stopped when destroyed while %s is pending',
+    async (pending) => {
+      vi.useFakeTimers();
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      if (pending === 'permission') {
+        getUserMedia.mockImplementationOnce(async () => {
+          await gate;
+          return stream;
+        });
+        vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
+      } else {
+        vi.spyOn(HTMLMediaElement.prototype, 'play').mockReturnValueOnce(gate);
+      }
+      const fixture = TestBed.createComponent(QrScanner);
+      fixture.detectChanges();
+      const scanned = vi.fn();
+      fixture.componentInstance.scanned.subscribe(scanned);
+
+      (fixture.nativeElement.querySelector('button') as HTMLButtonElement).click();
+      await vi.advanceTimersByTimeAsync(0);
+      fixture.destroy();
+      release();
+      await vi.advanceTimersByTimeAsync(2000);
+
+      expect(track.stop).toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(0);
+      expect(scanned).not.toHaveBeenCalled();
+    },
+  );
 });
