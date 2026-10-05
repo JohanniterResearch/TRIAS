@@ -25,5 +25,7 @@ public record DevLoginResponse(string status, string token, string username, boo
 
 public record ErrorResponse(string message)
 {
+    public const string InvalidRequest = "Ungültige Anfrage. Bitte prüfen Sie Ihre Eingaben.";
+
     public string status => "error";
 }

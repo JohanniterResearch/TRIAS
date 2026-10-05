@@ -24,11 +24,14 @@ StartupValidation.Validate(builder.Configuration, builder.Environment);
 builder.Services
     .AddControllers(options => options.Filters.Add<AuditReadFilter>())
     // Contract errors are {status, message}; the frontend shows `message`, never ProblemDetails.
-    .ConfigureApiBehaviorOptions(o => o.InvalidModelStateResponseFactory = ctx => new BadRequestObjectResult(
-        new ErrorResponse(ctx.ModelState.Values.SelectMany(v => v.Errors)
-            .Select(e => e.ErrorMessage).FirstOrDefault(m => m.Length > 0) ?? "Invalid request.")))
-    .AddJsonOptions(o => o.JsonSerializerOptions.Converters.Add(
-        new JsonStringEnumConverter(JsonNamingPolicy.CamelCase)));
+    // Framework binding messages are English and can name internal types, so none reach the client.
+    .ConfigureApiBehaviorOptions(o => o.InvalidModelStateResponseFactory = _ =>
+        new BadRequestObjectResult(new ErrorResponse(ErrorResponse.InvalidRequest)))
+    .AddJsonOptions(o =>
+    {
+        o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
+        o.AllowInputFormatterExceptionMessages = false;
+    });
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;

@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Ambulanzsystem.Api.Data;
+using Ambulanzsystem.Api.Dtos;
 using Ambulanzsystem.Api.Services;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
@@ -98,17 +99,28 @@ public class ApiTrustBoundaryTests(WebApplicationFactory<Program> factory) : ICl
         var patient = await (await admin.PostAsJsonAsync("/api/persons/manual", new { operationSceneId = sceneId }))
             .Content.ReadFromJsonAsync<PatientBearing>();
 
-        // A missing required bool/double must not bind silently as false/0.
-        var noRespiration = await admin.PostAsJsonAsync($"/api/persons/{patient!.id}/respiration", new { });
-        Assert.Equal(HttpStatusCode.BadRequest, noRespiration.StatusCode);
-        var error = await noRespiration.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("error", error.GetProperty("status").GetString());
-        Assert.False(string.IsNullOrEmpty(error.GetProperty("message").GetString()));
+        // Missing required value fields (no silent false/0), malformed JSON, wrong types, unknown
+        // fields and out-of-range values all get the contract shape and a fixed German message.
+        var invalid = new (string Path, string Json)[]
+        {
+            ("respiration", "{}"),
+            ("location", """{"lng":16.3}"""),
+            ("location", """{"lat":48.2,"lng":"""),
+            ("respiration", """{"respiration":"yes"}"""),
+            ("respiration", """{"respiration":true,"extra":1}"""),
+            ("location", """{"lat":91,"lng":16.3}"""),
+        };
+        foreach (var (path, json) in invalid)
+        {
+            var response = await admin.PostAsync($"/api/persons/{patient!.id}/{path}",
+                new StringContent(json, System.Text.Encoding.UTF8, "application/json"));
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            var error = await response.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal("error", error.GetProperty("status").GetString());
+            Assert.Equal(ErrorResponse.InvalidRequest, error.GetProperty("message").GetString());
+        }
 
-        var noLat = await admin.PostAsJsonAsync($"/api/persons/{patient.id}/location", new { lng = 16.3 });
-        Assert.Equal(HttpStatusCode.BadRequest, noLat.StatusCode);
-
-        var nullSource = await admin.PostAsJsonAsync($"/api/persons/{patient.id}/location",
+        var nullSource = await admin.PostAsJsonAsync($"/api/persons/{patient!.id}/location",
             new { lat = 48.2, lng = 16.3, source = (string?)null });
         Assert.Equal(HttpStatusCode.OK, nullSource.StatusCode);
         var located = await nullSource.Content.ReadFromJsonAsync<JsonElement>();
@@ -119,7 +131,7 @@ public class ApiTrustBoundaryTests(WebApplicationFactory<Program> factory) : ICl
         Assert.Equal(HttpStatusCode.BadRequest, longName.StatusCode);
         var longNameError = await longName.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("error", longNameError.GetProperty("status").GetString());
-        Assert.True(longNameError.TryGetProperty("message", out _));
+        Assert.Equal(ErrorResponse.InvalidRequest, longNameError.GetProperty("message").GetString());
     }
 
     [Fact]
