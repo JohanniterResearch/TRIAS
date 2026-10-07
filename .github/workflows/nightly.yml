@@ -10,7 +10,7 @@ jobs:
   production-image:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Builds the image from this commit and checks health, headers, login and export end to end.
       - run: bash deploy/scripts/smoke.sh
 
@@ -20,7 +20,7 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
