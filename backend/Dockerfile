@@ -8,7 +8,7 @@ COPY frontend/ frontend/
 COPY contract/body-regions.json contract/body-regions.json
 RUN cd frontend && npm run build
 
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 COPY backend/Directory.Packages.props backend/Ambulanzsystem.slnx backend/
 COPY backend/src/Ambulanzsystem.Api/Ambulanzsystem.Api.csproj backend/src/Ambulanzsystem.Api/
