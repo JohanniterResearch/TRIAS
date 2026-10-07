@@ -15,7 +15,6 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace Ambulanzsystem.Tests;
@@ -74,7 +73,7 @@ public class LoginPasswordConcurrencyTests(WebApplicationFactory<Program> factor
             .UseSnakeCaseNamingConvention().AddInterceptors(interceptors).Options);
     }
 
-    private RefreshTokenService Refresh(AppDbContext db) => new(db, factory.Services.GetRequiredService<IOptions<JwtOptions>>());
+    private RefreshTokenService Refresh(AppDbContext db) => new(db, new AuditService(db));
     private AuthController Login(AppDbContext db) => new(db, factory.Services.GetRequiredService<TokenService>(),
         Refresh(db), new AuditService(db), factory.Services.GetRequiredService<MetricsService>(),
         factory.Services.GetRequiredService<IConfiguration>(), factory.Services.GetRequiredService<IHostEnvironment>());

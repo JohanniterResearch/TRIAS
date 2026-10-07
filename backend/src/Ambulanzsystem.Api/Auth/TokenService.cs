@@ -18,13 +18,7 @@ public class TokenService(IOptions<JwtOptions> options)
     // every live token instantly, without a blocklist.
     public IssuedToken IssueUserToken(User user, bool devPasswordChangeBypass = false)
     {
-        var type = user.Role switch
-        {
-            Role.Admin => TokenTypes.Admin,
-            Role.Leitstelle => TokenTypes.Leitstelle,
-            Role.Responder => TokenTypes.User,
-            _ => throw new ArgumentOutOfRangeException(nameof(user)),
-        };
+        var type = TokenTypes.For(user.Role) ?? throw new ArgumentOutOfRangeException(nameof(user));
 
         var claims = new List<Claim>
         {
@@ -44,7 +38,7 @@ public class TokenService(IOptions<JwtOptions> options)
             claims.Add(new Claim(TokenTypes.SceneIdClaimType, sceneId.ToString()));
         }
 
-        var expires = DateTime.UtcNow.AddMinutes(_options.AccessTokenLifetimeMinutes);
+        var expires = DateTime.UtcNow.AddMinutes(JwtOptions.AccessTokenLifetimeMinutes);
         return new IssuedToken(WriteToken(claims, expires), expires);
     }
 
@@ -61,7 +55,7 @@ public class TokenService(IOptions<JwtOptions> options)
             new(TokenTypes.SceneIdClaimType, eventSceneId.ToString()),
         };
 
-        var natural = DateTime.UtcNow.AddMinutes(_options.QrTokenLifetimeMinutes);
+        var natural = DateTime.UtcNow.AddMinutes(JwtOptions.QrTokenLifetimeMinutes);
         var expires = natural < qrExpiresAt ? natural : qrExpiresAt;
         return new IssuedToken(WriteToken(claims, expires), expires);
     }

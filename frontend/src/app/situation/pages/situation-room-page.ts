@@ -14,10 +14,12 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import * as L from 'leaflet';
-import { Subscription, interval, switchMap } from 'rxjs';
+import { EMPTY, Subscription, catchError, interval, switchMap } from 'rxjs';
 
 import { apiErrorMessage, ApiClient } from '../../api/api-client';
 import type { components } from '../../api/openapi-types';
+import { DEFAULT_MAP_CENTER, osmMap } from '../../shared/osm-map';
+import { TRIAGE_COLORS, type TriageColor } from '../../shared/triage';
 import { AuthStore } from '../../auth/auth.store';
 import { MyAccess } from '../../auth/components/my-access';
 import { ResponderStateStore } from '../../responder/services/responder-state';
@@ -25,7 +27,8 @@ import { SceneRealtimeService } from '../services/scene-realtime.service';
 
 type Patient = components['schemas']['Patient'];
 type Team = components['schemas']['Team'];
-type TriageColor = components['schemas']['TriageColor'];
+
+const pollingErrorMessage = 'Live-Verbindung und Aktualisierung sind unterbrochen.';
 
 @Component({
   selector: 'app-situation-room-page',
@@ -238,25 +241,21 @@ export class SituationRoomPage implements AfterViewInit, OnDestroy {
     () => this.leitstelle() && this.auth.eventSceneId() !== null,
   );
   protected readonly triageCounts = computed(() => {
-    const counts = new Map<string, number>([
-      ['rot', 0],
-      ['gelb', 0],
-      ['gruen', 0],
-      ['schwarz', 0],
-      ['unassigned', 0],
-    ]);
-    for (const patient of this.patients()) {
-      const value = patient.triagefarbe ?? 'unassigned';
-      const key = counts.has(value) ? value : 'invalid';
-      counts.set(key, (counts.get(key) ?? 0) + 1);
-    }
+    const values = this.patients().map((patient) => patient.triagefarbe);
+    const count = (match: (value: string | null | undefined) => boolean) =>
+      values.filter(match).length;
     return [
-      { label: 'Rot', color: 'rot', value: counts.get('rot') ?? 0 },
-      { label: 'Gelb', color: 'gelb', value: counts.get('gelb') ?? 0 },
-      { label: 'Grün', color: 'gruen', value: counts.get('gruen') ?? 0 },
-      { label: 'Schwarz', color: 'schwarz', value: counts.get('schwarz') ?? 0 },
-      { label: 'Ohne', color: 'unassigned', value: counts.get('unassigned') ?? 0 },
-      { label: 'Ungültig', color: 'invalid', value: counts.get('invalid') ?? 0 },
+      ...TRIAGE_COLORS.map(({ label, value }) => ({
+        label,
+        color: value,
+        value: count((v) => v === value),
+      })),
+      { label: 'Ohne', color: 'unassigned', value: count((v) => v == null) },
+      {
+        label: 'Ungültig',
+        color: 'invalid',
+        value: count((v) => v != null && !TRIAGE_COLORS.some((c) => c.value === v)),
+      },
     ];
   });
 
@@ -520,18 +519,25 @@ export class SituationRoomPage implements AfterViewInit, OnDestroy {
   private startPolling(sceneId: number): void {
     const generation = this.sceneGeneration;
     this.pollingSub?.unsubscribe();
+    // Errors are handled per request so one failed poll never ends polling for good.
     this.pollingSub = interval(10000)
       .pipe(
-        switchMap(() => this.api.listPatients(sceneId)),
+        switchMap(() =>
+          this.api.listPatients(sceneId).pipe(
+            catchError(() => {
+              if (generation === this.sceneGeneration) this.error.set(pollingErrorMessage);
+              return EMPTY;
+            }),
+          ),
+        ),
         takeUntilDestroyed(this.destroyRef),
       )
-      .subscribe({
-        next: (patients) => {
-          if (generation !== this.sceneGeneration || this.sceneId() !== sceneId) return;
-          this.patients.set(patients);
-          this.renderMarkers();
-        },
-        error: () => this.error.set('Live-Verbindung und Aktualisierung sind unterbrochen.'),
+      .subscribe((patients) => {
+        if (generation !== this.sceneGeneration || this.sceneId() !== sceneId) return;
+        if (this.error() === pollingErrorMessage) this.error.set('');
+        this.patients.set(patients);
+        this.realtimeState.set(`polling · ${new Date().toLocaleTimeString()}`);
+        this.renderMarkers();
       });
   }
 
@@ -588,10 +594,7 @@ export class SituationRoomPage implements AfterViewInit, OnDestroy {
     if (!element || this.map) {
       return;
     }
-    this.map = L.map(element).setView([48.2082, 16.3738], 13);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap contributors',
-    }).addTo(this.map);
+    this.map = osmMap(element, DEFAULT_MAP_CENTER, 13);
     this.markers.addTo(this.map);
   }
 
@@ -639,12 +642,5 @@ export class SituationRoomPage implements AfterViewInit, OnDestroy {
 }
 
 function triageColor(value?: TriageColor | null): string {
-  return (
-    (
-      { rot: '#b3261e', gelb: '#b77900', gruen: '#188038', schwarz: '#1f2933' } as Record<
-        string,
-        string
-      >
-    )[value ?? ''] ?? '#52606d'
-  );
+  return TRIAGE_COLORS.find((color) => color.value === value)?.hex ?? '#52606d';
 }

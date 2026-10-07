@@ -66,6 +66,8 @@ public class AuthController(
     public Task<IActionResult> AdminLogin(CredentialsRequest request) =>
         LoginPrivileged(request, allowedRoles: [Role.Admin, Role.Leitstelle], asAdminResponse: true);
 
+    private static readonly string UnknownUserHash = BCrypt.Net.BCrypt.HashPassword(Guid.NewGuid().ToString());
+
     private async Task<IActionResult> LoginPrivileged(CredentialsRequest request, Role[] allowedRoles, bool asAdminResponse)
     {
         var userId = await db.Users.AsNoTracking().Where(u => u.Username == request.Username)
@@ -74,9 +76,11 @@ public class AuthController(
         await using var transaction = await db.Database.BeginTransactionAsync();
         var user = userId is int id ? await RowLocks.UserAsync(db, id) : null;
 
+        // Always pay the bcrypt cost so response time does not reveal whether a username exists.
+        var passwordValid = BCrypt.Net.BCrypt.Verify(request.Password, user?.PasswordHash ?? UnknownUserHash);
         if (user is null || user.RevokedAt is not null || !allowedRoles.Contains(user.Role)
             || (user.AccountType == AccountType.Event && user.EventSceneId is null)
-            || !BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
+            || !passwordValid)
         {
             metrics.IncrementAuthFailures();
             return Unauthorized(new ErrorResponse("Invalid username or password."));
@@ -85,26 +89,18 @@ public class AuthController(
         TouchLoginTimestamps(user);
 
         var issued = tokens.IssueUserToken(user);
-        var refresh = await refreshTokens.IssueAsync(user.Id);
-        audit.LogLogin(user.Id, RoleClaim(user.Role), "user", user.Id);
+        var refresh = refreshTokens.Issue(user.Id);
+        audit.LogLogin(user.Id, TokenTypes.For(user.Role)!, "user", user.Id);
         await db.SaveChangesAsync();
         await transaction.CommitAsync();
 
         if (asAdminResponse)
         {
-            var role = user.Role == Role.Admin ? TokenTypes.Admin : TokenTypes.Leitstelle;
-            return Ok(new AdminLoginResponse("ok", issued.Token, refresh.RawToken, user.RequiresPasswordChange, role, user.EventSceneId));
+            return Ok(new AdminLoginResponse("ok", issued.Token, refresh.RawToken, user.RequiresPasswordChange, TokenTypes.For(user.Role)!, user.EventSceneId));
         }
 
         return Ok(new UserLoginResponse("ok", issued.Token, refresh.RawToken, user.RequiresPasswordChange));
     }
-
-    private static string RoleClaim(Role role) => role switch
-    {
-        Role.Admin => TokenTypes.Admin,
-        Role.Leitstelle => TokenTypes.Leitstelle,
-        _ => TokenTypes.User,
-    };
 
     [HttpPost("refresh-token")]
     [AllowAnonymous]
@@ -141,7 +137,7 @@ public class AuthController(
     [AllowPendingPasswordChange]
     public IActionResult ValidateToken()
     {
-        var role = User.FindFirst(TokenTypes.ClaimType)?.Value ?? "unknown";
+        var role = User.TokenType() ?? "unknown";
         return Ok(new ValidateTokenResponse(true, role));
     }
 
@@ -174,7 +170,7 @@ public class AuthController(
         TouchLoginTimestamps(user);
 
         var issued = tokens.IssueUserToken(user, devPasswordChangeBypass: true);
-        audit.LogLogin(user.Id, RoleClaim(user.Role), "user", user.Id);
+        audit.LogLogin(user.Id, TokenTypes.For(user.Role)!, "user", user.Id);
         await db.SaveChangesAsync();
 
         return Ok(new DevLoginResponse("ok", issued.Token, user.Username, false));

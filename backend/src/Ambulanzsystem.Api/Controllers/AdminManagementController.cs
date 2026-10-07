@@ -29,7 +29,7 @@ public class AdminManagementController(AppDbContext db, RefreshTokenService refr
         if (accountType is not null) query = query.Where(u => u.AccountType == accountType);
         if (status == "active") query = query.Where(u => u.RevokedAt == null);
         if (status == "revoked") query = query.Where(u => u.RevokedAt != null);
-        page = Math.Max(page, 1); pageSize = Math.Clamp(pageSize, 1, 100);
+        (page, pageSize) = Paging(page, pageSize);
         var total = await query.CountAsync();
         return Ok(new AdminUserPage(total, await query.OrderBy(u => u.Username).Skip((page - 1) * pageSize).Take(pageSize).Select(u => UserResponse.From(u)).ToListAsync()));
     }
@@ -91,26 +91,26 @@ public class AdminManagementController(AppDbContext db, RefreshTokenService refr
         }
         if (operationSceneId is not null) query = query.Where(p => p.OperationSceneId == operationSceneId);
         if (status is "draft" or "finalized") query = query.Where(p => (p.AmbulanzprotokollPage1 == null ? "draft" : p.AmbulanzprotokollPage1.Status) == status);
-        page = Math.Max(page, 1); pageSize = Math.Clamp(pageSize, 1, 100);
+        (page, pageSize) = Paging(page, pageSize);
         var total = await query.CountAsync();
         var patients = await query.OrderByDescending(p => p.UpdatedAt).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
         audit.LogRead(User, "admin_patient_search", null);
         await db.SaveChangesAsync();
-        return Ok(new AdminPatientPage(total, patients.Select(p => AdminPatientResponse.From(p, p.AmbulanzprotokollPage1?.Status, ProtectPatientId(p.Id))).ToList()));
+        return Ok(new AdminPatientPage(total, patients.Select(p => AdminPatientResponse.From(p, p.AmbulanzprotokollPage1?.Status, Protect(patientReferences, p.Id))).ToList()));
     }
 
     [HttpPut("patients/{reference}")]
     public async Task<IActionResult> UpdatePatient(string reference, [FromBody] JsonElement body)
     {
         if (body.ValueKind != JsonValueKind.Object) return BadRequest(new ErrorResponse("Patient update must be a JSON object."));
-        var id = UnprotectPatientId(reference);
+        var id = Unprotect(patientReferences, reference);
         if (id is null) return NotFound();
         var patient = await RowLocks.PatientAsync(db, id.Value);
         if (patient is null) return NotFound();
         var clinical = new[] { "name", "triagefarbe", "atmung", "blutung", "radialispuls", "transport", "dringend", "kontaminiert", "latitudePatient", "longitudePatient", "locationSource", "locationAccuracyMeters", "indoorLocation" };
         var present = body.EnumerateObject().Select(x => x.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var reason = body.TryGetProperty("correctionReason", out var r) && r.ValueKind == JsonValueKind.String ? r.GetString() : null;
-        if (present.Overlaps(clinical) && (string.IsNullOrWhiteSpace(reason) || reason.Length > 500)) return BadRequest(new ErrorResponse("correctionReason must be 1 to 500 characters for clinical corrections."));
+        if (present.Overlaps(clinical) && !ExternalStringLimits.IsValidCorrectionReason(reason)) return BadRequest(new ErrorResponse("correctionReason must be 1 to 500 characters for clinical corrections."));
         if (body.TryGetProperty("operationSceneId", out var scene) && scene.ValueKind != JsonValueKind.Number) return BadRequest(new ErrorResponse("operationSceneId must be a number."));
         if (scene.ValueKind == JsonValueKind.Number && scene.GetInt32() != patient.OperationSceneId) {
             var hasTeam = await db.Teams.AnyAsync(t => t.OperationSceneId == patient.OperationSceneId && t.AssignedPatientId == id);
@@ -119,33 +119,36 @@ public class AdminManagementController(AppDbContext db, RefreshTokenService refr
             patient.OperationSceneId = scene.GetInt32();
         }
         foreach (var property in body.EnumerateObject()) ApplyPatientProperty(patient, property);
-        audit.LogFieldsWrite(User, "patient", patient.Id, patient.Id, present.Where(x => x != "correctionReason").ToDictionary(x => x, _ => ((object?)null, (object?)"admin correction")), reason);
-        await db.SaveChangesAsync(); return Ok(AdminPatientResponse.From(patient, await db.AmbulanzprotokollPage1s.Where(p => p.PatientId == id).Select(p => p.Status).FirstOrDefaultAsync(), ProtectPatientId(patient.Id)));
+        // Clinical corrections must be reconstructable: log the tracked original and new value of
+        // every submitted field (JSON names match the entity properties case-insensitively).
+        var entry = db.Entry(patient);
+        var changes = present.Where(x => !x.Equals("correctionReason", StringComparison.OrdinalIgnoreCase)).ToDictionary(
+            x => x,
+            x =>
+            {
+                var property = entry.Properties.First(p => p.Metadata.Name.Equals(x, StringComparison.OrdinalIgnoreCase));
+                return (property.OriginalValue, property.CurrentValue);
+            });
+        audit.LogFieldsWrite(User, "patient", patient.Id, patient.Id, changes, reason);
+        await db.SaveChangesAsync(); return Ok(AdminPatientResponse.From(patient, await db.AmbulanzprotokollPage1s.Where(p => p.PatientId == id).Select(p => p.Status).FirstOrDefaultAsync(), Protect(patientReferences, patient.Id)));
     }
 
     [HttpGet("patients/{reference}/details")]
     public async Task<ActionResult<AdminPatientDetails>> PatientDetails(string reference)
     {
-        var id = UnprotectPatientId(reference);
-        if (id is null) return NotFound();
-        var patient = await db.Patients.AsNoTracking().Include(p => p.AmbulanzprotokollPage1).Include(p => p.QrCodePatient).FirstOrDefaultAsync(p => p.Id == id.Value);
-        if (patient is null) return NotFound();
-        var bodyJson = await db.Bodies.AsNoTracking().Where(b => b.PatientId == id.Value).Select(b => b.BodyPartsJson).FirstOrDefaultAsync();
-        var parts = bodyJson is null ? new Dictionary<string, int>() : JsonSerializer.Deserialize<Dictionary<string, int>>(bodyJson)!;
-        var formJson = FormStateMerge.WithDefaults(patient.AmbulanzprotokollPage1?.FormStateJson ?? "{}");
-        var protocol = new AdminProtocolResponse(patient.AmbulanzprotokollPage1?.Status ?? "draft", JsonDocument.Parse(formJson).RootElement.Clone(), patient.AmbulanzprotokollPage1?.UpdatedAt ?? DateTime.UnixEpoch, patient.AmbulanzprotokollPage1?.FinalizedAt);
-        var auditRows = await db.AuditLogs.AsNoTracking().Where(a => a.PatientId == id.Value).OrderByDescending(a => a.Timestamp).Take(10).ToListAsync();
-        var entries = auditRows.Select(a => new AdminPatientAuditEntry(a.Timestamp, a.ActorRole, a.Action, a.EntityType, a.ChangedFieldsJson is null ? null : JsonSerializer.Deserialize<string[]>(a.ChangedFieldsJson), a.Reason)).ToList();
-        audit.LogRead(User, "admin_patient_details", id.Value); await db.SaveChangesAsync();
-        return Ok(new AdminPatientDetails(AdminPatientResponse.From(patient, patient.AmbulanzprotokollPage1?.Status, ProtectPatientId(patient.Id)), parts, protocol, patient.QrCodePatient is not null, entries));
+        var id = Unprotect(patientReferences, reference);
+        var details = id is null ? null : await DetailsFor(id.Value);
+        if (details is null) return NotFound();
+        audit.LogRead(User, "admin_patient_details", id!.Value); await db.SaveChangesAsync();
+        return Ok(details);
     }
 
     [HttpPut("patients/{reference}/body-parts")]
     public async Task<ActionResult<AdminPatientDetails>> UpdateBodyParts(string reference, AdminBodyPartsUpdate request)
     {
-        var id = UnprotectPatientId(reference);
+        var id = Unprotect(patientReferences, reference);
         if (id is null) return NotFound();
-        if (string.IsNullOrWhiteSpace(request.CorrectionReason) || request.CorrectionReason.Length > 500) return BadRequest(new ErrorResponse("correctionReason must be 1 to 500 characters for clinical corrections."));
+        if (!ExternalStringLimits.IsValidCorrectionReason(request.CorrectionReason)) return BadRequest(new ErrorResponse("correctionReason must be 1 to 500 characters for clinical corrections."));
         if (request.BodyParts.Keys.Any(key => !BodyRegions.AllKeys.Contains(key)) || request.BodyParts.Values.Any(value => value is not (0 or 1))) return BadRequest(new ErrorResponse("bodyParts must contain only canonical keys with values 0 or 1."));
         var body = await RowLocks.BodyAsync(db, id.Value);
         if (body is null) return NotFound();
@@ -154,34 +157,35 @@ public class AdminManagementController(AppDbContext db, RefreshTokenService refr
         body.BodyPartsJson = JsonSerializer.Serialize(request.BodyParts);
         audit.LogFieldsWrite(User, "body", body.Id, id.Value, before.Where(x => request.BodyParts[x.Key] != x.Value).ToDictionary(x => x.Key, x => ((object?)x.Value, (object?)request.BodyParts[x.Key])), request.CorrectionReason);
         await db.SaveChangesAsync();
-        return Ok(await DetailsFor(id.Value));
+        return Ok((await DetailsFor(id.Value))!);
     }
 
-    private async Task<AdminPatientDetails> DetailsFor(int id)
+    private async Task<AdminPatientDetails?> DetailsFor(int id)
     {
-        var patient = await db.Patients.AsNoTracking().Include(p => p.AmbulanzprotokollPage1).Include(p => p.QrCodePatient).SingleAsync(p => p.Id == id);
+        var patient = await db.Patients.AsNoTracking().Include(p => p.AmbulanzprotokollPage1).Include(p => p.QrCodePatient).FirstOrDefaultAsync(p => p.Id == id);
+        if (patient is null) return null;
         var bodyJson = await db.Bodies.AsNoTracking().Where(b => b.PatientId == id).Select(b => b.BodyPartsJson).FirstOrDefaultAsync();
         var formJson = FormStateMerge.WithDefaults(patient.AmbulanzprotokollPage1?.FormStateJson ?? "{}");
         var auditRows = await db.AuditLogs.AsNoTracking().Where(a => a.PatientId == id).OrderByDescending(a => a.Timestamp).Take(10).ToListAsync();
         var entries = auditRows.Select(a => new AdminPatientAuditEntry(a.Timestamp, a.ActorRole, a.Action, a.EntityType, a.ChangedFieldsJson is null ? null : JsonSerializer.Deserialize<string[]>(a.ChangedFieldsJson), a.Reason)).ToList();
-        return new(AdminPatientResponse.From(patient, patient.AmbulanzprotokollPage1?.Status, ProtectPatientId(id)), bodyJson is null ? [] : JsonSerializer.Deserialize<Dictionary<string, int>>(bodyJson)!, new(patient.AmbulanzprotokollPage1?.Status ?? "draft", JsonDocument.Parse(formJson).RootElement.Clone(), patient.AmbulanzprotokollPage1?.UpdatedAt ?? DateTime.UnixEpoch, patient.AmbulanzprotokollPage1?.FinalizedAt), patient.QrCodePatient is not null, entries);
+        return new(AdminPatientResponse.From(patient, patient.AmbulanzprotokollPage1?.Status, Protect(patientReferences, id)), bodyJson is null ? [] : JsonSerializer.Deserialize<Dictionary<string, int>>(bodyJson)!, new(patient.AmbulanzprotokollPage1?.Status ?? "draft", JsonDocument.Parse(formJson).RootElement.Clone(), patient.AmbulanzprotokollPage1?.UpdatedAt ?? DateTime.UnixEpoch, patient.AmbulanzprotokollPage1?.FinalizedAt), patient.QrCodePatient is not null, entries);
     }
 
     [HttpGet("patient-qr-codes/available")]
     public async Task<ActionResult<AvailablePatientQrCodePage>> AvailablePatientQrCodes([FromQuery] int page = 1, [FromQuery] int pageSize = 50)
     {
-        page = Math.Max(page, 1); pageSize = Math.Clamp(pageSize, 1, 100);
+        (page, pageSize) = Paging(page, pageSize);
         var query = db.QrCodePatients.AsNoTracking().Where(code => code.PatientId == null);
         var total = await query.CountAsync();
         var codes = await query.OrderByDescending(code => code.CreatedAt).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
         return Ok(new AvailablePatientQrCodePage(total, codes.Select(code => new AvailablePatientQrCode(
-            ProtectQrId(code.Id), $"Erzeugt {code.CreatedAt:dd.MM.yyyy HH:mm}", code.CreatedAt)).ToList()));
+            Protect(qrReferences, code.Id), $"Erzeugt {code.CreatedAt:dd.MM.yyyy HH:mm}", code.CreatedAt)).ToList()));
     }
 
     [HttpPost("patients/{reference}/assign-qr-code")]
     public async Task<ActionResult<AssignAdminPatientQrCodeResponse>> AssignQrCode(string reference, AssignAdminPatientQrCodeRequest request)
     {
-        var id = UnprotectPatientId(reference);
+        var id = Unprotect(patientReferences, reference);
         if (id is null) return NotFound();
         if (request.Source is not ("existing" or "new") || request.Source == "existing" && string.IsNullOrWhiteSpace(request.QrReference))
             return BadRequest(new ErrorResponse("source must be existing with qrReference or new."));
@@ -197,7 +201,7 @@ public class AdminManagementController(AppDbContext db, RefreshTokenService refr
         }
         else
         {
-            var qrId = UnprotectQrId(request.QrReference!);
+            var qrId = Unprotect(qrReferences, request.QrReference!);
             if (qrId is null) return NotFound(new ErrorResponse("Unknown QR code."));
             var existing = await db.QrCodePatients.FromSqlInterpolated($"SELECT * FROM qr_code_patients WHERE id = {qrId.Value} FOR UPDATE").SingleOrDefaultAsync();
             if (existing is null) return NotFound(new ErrorResponse("Unknown QR code."));
@@ -209,28 +213,23 @@ public class AdminManagementController(AppDbContext db, RefreshTokenService refr
         audit.LogFieldWrite(User, "patient", patient.Id, patient.Id, "qr_code", old?.QrToken, code.QrToken);
         await db.SaveChangesAsync(); await tx.CommitAsync();
         var status = await db.AmbulanzprotokollPage1s.Where(p => p.PatientId == id).Select(p => p.Status).FirstOrDefaultAsync();
-        return Ok(new AssignAdminPatientQrCodeResponse(AdminPatientResponse.From(patient, status, ProtectPatientId(patient.Id)), request.Source == "new" ? code.QrToken : null));
+        return Ok(new AssignAdminPatientQrCodeResponse(AdminPatientResponse.From(patient, status, Protect(patientReferences, patient.Id)), request.Source == "new" ? code.QrToken : null));
     }
 
-    private string ProtectPatientId(int id) => patientReferences.Protect(id.ToString(System.Globalization.CultureInfo.InvariantCulture));
-    private string ProtectQrId(int id) => qrReferences.Protect(id.ToString(System.Globalization.CultureInfo.InvariantCulture));
+    private static string Protect(IDataProtector protector, int id) => protector.Protect(id.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
-    private int? UnprotectPatientId(string reference)
+    private static int? Unprotect(IDataProtector protector, string reference)
     {
-        try { return int.TryParse(patientReferences.Unprotect(reference), out var id) ? id : null; }
+        try { return int.TryParse(protector.Unprotect(reference), out var id) ? id : null; }
         catch { return null; }
     }
 
-    private int? UnprotectQrId(string reference)
-    {
-        try { return int.TryParse(qrReferences.Unprotect(reference), out var id) ? id : null; }
-        catch { return null; }
-    }
+    private static (int Page, int PageSize) Paging(int page, int pageSize) => (Math.Max(page, 1), Math.Clamp(pageSize, 1, 100));
 
     private static void ApplyPatientProperty(Patient p, JsonProperty x)
     {
         if (x.NameEquals("name")) p.Name = x.Value.ValueKind == JsonValueKind.Null ? null : x.Value.GetString();
-        else if (x.NameEquals("triagefarbe")) { var v = x.Value.ValueKind == JsonValueKind.Null ? null : x.Value.GetString(); if (v is not null && v is not ("rot" or "gelb" or "gruen" or "schwarz")) throw new BadHttpRequestException("triagefarbe is invalid."); p.Triagefarbe = v; }
+        else if (x.NameEquals("triagefarbe")) { var v = x.Value.ValueKind == JsonValueKind.Null ? null : x.Value.GetString(); string? n = null; if (v is not null && !TriageColors.TryNormalize(v, out n)) throw new BadHttpRequestException("triagefarbe is invalid."); p.Triagefarbe = n; }
         else if (x.NameEquals("atmung")) p.Atmung = x.Value.ValueKind == JsonValueKind.Null ? null : x.Value.GetBoolean();
         else if (x.NameEquals("blutung")) p.Blutung = x.Value.ValueKind == JsonValueKind.Null ? null : x.Value.GetBoolean();
         else if (x.NameEquals("radialispuls")) p.Radialispuls = x.Value.ValueKind == JsonValueKind.Null ? null : x.Value.GetBoolean();

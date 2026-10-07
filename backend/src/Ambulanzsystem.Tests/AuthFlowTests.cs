@@ -2,6 +2,8 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Xunit;
 
@@ -194,6 +196,35 @@ public class AuthFlowTests(WebApplicationFactory<Program> factory) : IClassFixtu
     }
 
     [Fact]
+    public async Task RefreshToken_ReuseAfterGrace_EndsEverySessionOfTheAccount()
+    {
+        var admin = Client();
+        admin.DefaultRequestHeaders.Authorization = new("Bearer", await AdminLoginAsync(admin));
+        var username = $"refresh-reuse-{Guid.NewGuid():N}";
+        (await admin.PostAsJsonAsync("/api/users", new { username, password = "somePassword1", role = "responder" }))
+            .EnsureSuccessStatusCode();
+        var login = await Client().PostAsJsonAsync("/api/user-login", new { username, password = "somePassword1" });
+        var stolen = (await login.Content.ReadFromJsonAsync<TokenBearing>())!.refreshToken!;
+        var rotated = await (await Client().PostAsJsonAsync("/api/refresh-token", new { refreshToken = stolen }))
+            .Content.ReadFromJsonAsync<TokenBearing>();
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<Ambulanzsystem.Api.Data.AppDbContext>();
+            await db.RefreshTokens.Where(t => t.RotatedAt != null && t.User.Username == username)
+                .ExecuteUpdateAsync(u => u.SetProperty(t => t.RotatedAt, DateTime.UtcNow.AddMinutes(-1)));
+        }
+
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await Client().PostAsJsonAsync("/api/refresh-token", new { refreshToken = stolen })).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await Client().PostAsJsonAsync("/api/refresh-token", new { refreshToken = rotated!.refreshToken })).StatusCode);
+        var responder = Client();
+        responder.DefaultRequestHeaders.Authorization = new("Bearer", rotated.token);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await responder.PostAsync("/api/validate-token", null)).StatusCode);
+    }
+
+    [Fact]
     public async Task RefreshAndLogout_MalformedTokens_ReturnControlledResponses()
     {
         foreach (var refreshToken in new[] { "", "not-base64!", new string('A', 1024) })
@@ -209,6 +240,21 @@ public class AuthFlowTests(WebApplicationFactory<Program> factory) : IClassFixtu
             var logout = await admin.PostAsJsonAsync("/api/logout", new { refreshToken });
             Assert.Contains(logout.StatusCode, new[] { HttpStatusCode.BadRequest, HttpStatusCode.Unauthorized });
         }
+    }
+
+    [Fact]
+    public async Task LoginRateLimit_IsConfigurable()
+    {
+        await using var limitedFactory = factory.WithWebHostBuilder(builder => builder.UseSetting("RateLimiting:LoginPermitLimit", "2"));
+        var client = limitedFactory.CreateClient();
+
+        for (var request = 0; request < 2; request++)
+        {
+            var response = await client.PostAsJsonAsync("/api/admin-login", new { username = "nobody", password = "wrong-password" });
+            Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        }
+        var limited = await client.PostAsJsonAsync("/api/admin-login", new { username = "nobody", password = "wrong-password" });
+        Assert.Equal(HttpStatusCode.TooManyRequests, limited.StatusCode);
     }
 
     [Fact]

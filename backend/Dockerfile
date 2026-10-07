@@ -1,4 +1,4 @@
-# Build context is the repo root (see docker-compose.yml `build.context`) because the API
+# Build context is the repo root (see deploy/make-bundle.sh) because the API
 # project links contract/*.json files that live outside backend/.
 FROM node:24-alpine AS frontend
 WORKDIR /src
@@ -21,5 +21,9 @@ FROM mcr.microsoft.com/dotnet/aspnet:8.0
 WORKDIR /app
 COPY --from=build /app .
 COPY --from=frontend /src/frontend/dist/ambulanzsystem-frontend/browser/ wwwroot/
+# The image's built-in non-root user. The key directory is pre-created with its ownership so a
+# fresh named volume mounted there (deploy/docker-compose.yml) inherits it.
+RUN mkdir -p /home/app/.aspnet/DataProtection-Keys && chown -R app:app /home/app/.aspnet
 ENV ASPNETCORE_ENVIRONMENT=Production
+USER app
 ENTRYPOINT ["dotnet", "Ambulanzsystem.Api.dll"]

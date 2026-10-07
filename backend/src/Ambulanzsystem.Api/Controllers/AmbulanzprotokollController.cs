@@ -55,11 +55,6 @@ public class AmbulanzprotokollController(AppDbContext db, AuditService audit, Sc
             return BadRequest(new ErrorResponse("status must be draft or finalized."));
         }
 
-        if (request.ClientUpdatedAt is DateTime clientUpdatedAt && clientUpdatedAt > DateTime.UtcNow.AddMinutes(5))
-        {
-            return BadRequest(new ErrorResponse("clientUpdatedAt must not be more than 5 minutes in the future."));
-        }
-
         if (!AmbulanzprotokollSchemaValidator.TryValidatePartial(request.FormState, out var partialError))
         {
             return BadRequest(new ErrorResponse(partialError!));
@@ -72,7 +67,7 @@ public class AmbulanzprotokollController(AppDbContext db, AuditService audit, Sc
         {
             return Forbid();
         }
-        if (wasFinalized && (string.IsNullOrWhiteSpace(request.CorrectionReason) || request.CorrectionReason.Length > 500))
+        if (wasFinalized && !ExternalStringLimits.IsValidCorrectionReason(request.CorrectionReason))
         {
             return BadRequest(new ErrorResponse("correctionReason must be 1 to 500 characters for finalized protocol corrections."));
         }
@@ -87,7 +82,10 @@ public class AmbulanzprotokollController(AppDbContext db, AuditService audit, Sc
         {
             var incoming = JsonNode.Parse(request.FormState.GetRawText()) ?? new JsonObject();
             var merge = FieldMerge.Load(record.FieldTimestampsJson);
-            record.FormStateJson = FormStateMerge.Apply(record.FormStateJson, incoming, merge, request.ClientUpdatedAt, now);
+            // A device clock running ahead must not win every later merge, nor get its offline
+            // write rejected (which would strand it in the device queue): clamp to server time.
+            var clientUpdatedAt = request.ClientUpdatedAt > now ? now : request.ClientUpdatedAt;
+            record.FormStateJson = FormStateMerge.Apply(record.FormStateJson, incoming, merge, clientUpdatedAt, now);
             record.FieldTimestampsJson = merge.Save();
             record.FormStateJson = ApplyGcsAutoSum(record.FormStateJson);
         }
@@ -149,9 +147,7 @@ public class AmbulanzprotokollController(AppDbContext db, AuditService audit, Sc
         }
         await tx.CommitAsync();
 
-        var bodyPartsJson = await db.Bodies.Where(b => b.PatientId == patientId).Select(b => b.BodyPartsJson).FirstOrDefaultAsync();
-        var bodyParts = bodyPartsJson is null ? [] : JsonSerializer.Deserialize<Dictionary<string, int>>(bodyPartsJson)!;
-        notifier.PatientUpdated(patient.OperationSceneId, PatientResponse.From(patient), bodyParts, false, record.Status);
+        await notifier.PatientUpdatedAsync(patient, false, record.Status);
 
         var formStateOut = JsonDocument.Parse(FormStateMerge.WithDefaults(record.FormStateJson)).RootElement;
         return Ok(new ProtokollRecordResponse(patientId, record.Status, formStateOut, record.UpdatedAt, record.FinalizedAt, warnings));

@@ -1,9 +1,19 @@
-import { JsonPipe } from '@angular/common';
-import { Component, ElementRef, inject, OnDestroy, signal, viewChild } from '@angular/core';
+import {
+  Component,
+  computed,
+  ElementRef,
+  inject,
+  OnDestroy,
+  signal,
+  viewChild,
+} from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
 import { Subscription } from 'rxjs';
 
 import { apiErrorMessage, ApiClient } from '../../api/api-client';
+import { AuthStore } from '../../auth/auth.store';
 import { MyAccess } from '../../auth/components/my-access';
 import { ResponderStateStore } from '../../responder/services/responder-state';
 import { OfflineQueueService } from '../../sync/offline-queue.service';
@@ -366,7 +376,7 @@ const zones = [
 
 @Component({
   selector: 'app-ambulanzprotokoll-page',
-  imports: [JsonPipe, MyAccess],
+  imports: [MyAccess, NgTemplateOutlet],
   template: `
     <section class="protocol-workspace">
       <app-my-access />
@@ -374,8 +384,18 @@ const zones = [
         <strong>Patient {{ patientId() }}</strong>
         <span>{{ status() === 'finalized' ? 'Finalisiert' : 'Entwurf' }}</span>
         <span role="status" aria-live="polite">{{ saveState() }}</span>
-        <button type="button" (click)="save('draft')">Speichern</button>
-        <button type="button" (click)="save('finalized')">Finalisieren</button>
+        @if (locked()) {
+          @if (canCorrect()) {
+            <button type="button" (click)="startCorrection()">Korrektur beginnen</button>
+          } @else {
+            <span>Korrektur nur durch Leitstelle/Admin</span>
+          }
+        } @else if (correctionReason() !== null) {
+          <button type="button" (click)="save('finalized')">Korrektur abschließen</button>
+        } @else {
+          <button type="button" (click)="save('draft')">Speichern</button>
+          <button type="button" (click)="save('finalized')">Finalisieren</button>
+        }
         <button type="button" (click)="downloadExport()">JSON Export</button>
         <button type="button" (click)="print()">Drucken</button>
         <button type="button" (click)="back()">Zurück</button>
@@ -389,307 +409,297 @@ const zones = [
         </ul>
       }
 
-      <div class="protocol-scale">
-        <div class="protocol-page">
-          @for (zone of zones; track zone[0]) {
-            <section
-              class="protocol-zone"
-              [style.left.%]="zone[1]"
-              [style.top.%]="zone[2]"
-              [style.width.%]="zone[3]"
-              [style.height.%]="zone[4]"
-            >
-              <span>{{ zone[5] }}</span>
-            </section>
-          }
-
-          @for (field of fields; track field.path) {
-            <label
-              class="protocol-field"
-              [style.left.%]="field.x"
-              [style.top.%]="field.y"
-              [style.width.%]="field.w"
-              [style.height.%]="field.h"
-            >
-              <span>{{ field.label }}</span>
-              @if (field.type === 'textarea') {
-                <textarea
-                  [value]="value(field.path)"
-                  (input)="setValue(field.path, $any($event.target).value)"
-                ></textarea>
-              } @else {
-                <input
-                  [type]="field.type || 'text'"
-                  [value]="value(field.path)"
-                  (input)="setValue(field.path, $any($event.target).value)"
-                />
-              }
-            </label>
-          }
-
-          @for (group of optionGroups; track group.path) {
-            <fieldset
-              class="protocol-checks protocol-option-group"
-              [class.primary-options]="group.path.startsWith('assessment_primary')"
-              [class.footer-options]="group.path.startsWith('disposition')"
-              [style.left.%]="group.x"
-              [style.top.%]="group.y"
-              [style.width.%]="group.w"
-            >
-              <legend>{{ group.label }}</legend>
-              @for (item of group.options; track item) {
-                <label>
-                  <input
-                    [type]="group.single ? 'radio' : 'checkbox'"
-                    [name]="group.path"
-                    [checked]="has(group.path, item) || value(group.path) === item"
-                    (change)="toggleOption(group, item, $any($event.target).checked)"
-                  />
-                  {{ displayOption(item) }}
-                </label>
-              }
-            </fieldset>
-          }
-
-          @for (field of measureFields; track field.path) {
-            <label
-              class="protocol-field"
-              [style.left.%]="field.x"
-              [style.top.%]="field.y"
-              [style.width.%]="field.w"
-              [style.height.%]="field.h"
-            >
-              <span>{{ field.label }}</span>
-              <input
-                [type]="field.type || 'text'"
-                [value]="value(field.path)"
-                (input)="setValue(field.path, $any($event.target).value)"
-              />
-            </label>
-          }
-
-          <div class="protocol-emergency-time">
-            <strong>Angen. Notfallzeit</strong>
-            <input
-              type="time"
-              [value]="value('assessment_primary.angen_notfallzeit.zeit')"
-              (input)="
-                setValue('assessment_primary.angen_notfallzeit.zeit', $any($event.target).value)
-              "
-            />
-            <label
-              ><input
-                type="checkbox"
-                [checked]="value('assessment_primary.angen_notfallzeit.gt24h')"
-                (change)="
-                  setValue(
-                    'assessment_primary.angen_notfallzeit.gt24h',
-                    $any($event.target).checked
-                  )
-                "
-              />
-              &gt;24h</label
-            >
-            <label
-              ><input
-                type="checkbox"
-                [checked]="value('assessment_primary.angen_notfallzeit.unbekannt')"
-                (change)="
-                  setValue(
-                    'assessment_primary.angen_notfallzeit.unbekannt',
-                    $any($event.target).checked
-                  )
-                "
-              />
-              unbekannt</label
-            >
-          </div>
-
-          <div class="protocol-checks vitals">
-            <strong>GCS / Messwerte</strong>
-            <label
-              >Augen
-              <select
-                [value]="value('vitals.gcs_augenoeffnen')"
-                (change)="setNumber('vitals.gcs_augenoeffnen', $any($event.target).value)"
+      <fieldset class="protocol-lock" [disabled]="locked()">
+        <div class="protocol-scale">
+          <div class="protocol-page">
+            @for (zone of zones; track zone[0]) {
+              <section
+                class="protocol-zone"
+                [style.left.%]="zone[1]"
+                [style.top.%]="zone[2]"
+                [style.width.%]="zone[3]"
+                [style.height.%]="zone[4]"
               >
-                <option value="">-</option>
-                <option value="4">4 spontan</option>
-                <option value="3">3 auf Ansprache</option>
-                <option value="2">2 auf Schmerz</option>
-                <option value="1">1 keine</option>
-              </select>
-            </label>
-            <label
-              >Verbal
-              <select
-                [value]="value('vitals.gcs_verbale_reaktion')"
-                (change)="setNumber('vitals.gcs_verbale_reaktion', $any($event.target).value)"
-              >
-                <option value="">-</option>
-                <option value="5">5 orientiert</option>
-                <option value="4">4 verwirrt</option>
-                <option value="3">3 Worte</option>
-                <option value="2">2 Laute</option>
-                <option value="1">1 keine</option>
-              </select>
-            </label>
-            <label
-              >Motorik
-              <select
-                [value]="value('vitals.gcs_motorische_reaktion')"
-                (change)="setNumber('vitals.gcs_motorische_reaktion', $any($event.target).value)"
-              >
-                <option value="">-</option>
-                <option value="6">6 befolgt</option>
-                <option value="5">5 lokalisiert</option>
-                <option value="4">4 Abwehr</option>
-                <option value="3">3 Beugung</option>
-                <option value="2">2 Streckung</option>
-                <option value="1">1 keine</option>
-              </select>
-            </label>
-            <span>GCS-Summe: {{ value('vitals.gcs_summe') || '-' }}</span>
-            <label
-              >Schmerz
-              <input
-                type="number"
-                min="0"
-                max="10"
-                [value]="value('vitals.schmerz')"
-                (input)="setNumber('vitals.schmerz', $any($event.target).value)"
-            /></label>
-            <label
-              ><input
-                type="checkbox"
-                [checked]="value('vitals.schmerz_nicht_beurteilbar')"
-                (change)="setValue('vitals.schmerz_nicht_beurteilbar', $any($event.target).checked)"
-              />
-              nicht beurteilbar</label
-            >
-            <label
-              ><input
-                type="checkbox"
-                [checked]="value('vitals.keine')"
-                (change)="setValue('vitals.keine', $any($event.target).checked)"
-              />
-              keine Messwerte</label
-            >
-            @for (vital of vitalFields; track vital.path) {
+                <span>{{ zone[5] }}</span>
+              </section>
+            }
+
+            <ng-template #protocolField let-field>
               <label
-                >{{ vital.label }}
-                <input
-                  [value]="value(vital.path)"
-                  (input)="setValue(vital.path, $any($event.target).value)"
-              /></label>
-            }
-          </div>
-
-          <div class="medication-grid">
-            <strong>Akutmedikation</strong>
-            @for (row of medicationRows; track row) {
-              <div class="medication-entry">
-                <span>{{ row + 1 }}</span>
-                <input
-                  aria-label="Medikament"
-                  placeholder="Medikament"
-                  [value]="med(row, 'medikament')"
-                  (input)="setMed(row, 'medikament', $any($event.target).value)"
-                />
-                <input
-                  aria-label="Dosis"
-                  placeholder="Dosis"
-                  [value]="med(row, 'dosis')"
-                  (input)="setMed(row, 'dosis', $any($event.target).value)"
-                />
-                <input
-                  aria-label="Art"
-                  placeholder="Art"
-                  [value]="med(row, 'art')"
-                  (input)="setMed(row, 'art', $any($event.target).value)"
-                />
-                <input
-                  aria-label="Uhrzeit"
-                  type="time"
-                  [value]="med(row, 'uhrzeit')"
-                  (input)="setMed(row, 'uhrzeit', $any($event.target).value)"
-                />
-              </div>
-            }
-          </div>
-
-          <div class="protocol-bodymap" (click)="addMarker($event)">
-            <div class="protocol-bodymap-toolbar" (click)="$event.stopPropagation()">
-              <button
-                type="button"
-                [class.active]="bodyView() === 'front'"
-                (click)="bodyView.set('front')"
+                class="protocol-field"
+                [style.left.%]="field.x"
+                [style.top.%]="field.y"
+                [style.width.%]="field.w"
+                [style.height.%]="field.h"
               >
-                Vorne
-              </button>
-              <button
-                type="button"
-                [class.active]="bodyView() === 'back'"
-                (click)="bodyView.set('back')"
-              >
-                Hinten
-              </button>
-              <select
-                aria-label="Markertyp"
-                [value]="markerType()"
-                (change)="markerType.set($any($event.target).value)"
-              >
-                @for (type of markerTypes; track type) {
-                  <option [value]="type">{{ displayOption(type) }}</option>
+                <span>{{ field.label }}</span>
+                @if (field.type === 'textarea') {
+                  <textarea
+                    [value]="value(field.path)"
+                    (input)="setValue(field.path, $any($event.target).value)"
+                  ></textarea>
+                } @else {
+                  <input
+                    [type]="field.type || 'text'"
+                    [value]="value(field.path)"
+                    (input)="setValue(field.path, $any($event.target).value)"
+                  />
                 }
-              </select>
-            </div>
-            <svg
-              class="protocol-silhouette"
-              viewBox="0 0 240 560"
-              role="img"
-              [attr.aria-label]="bodyView() === 'front' ? 'Körper vorne' : 'Körper hinten'"
-            >
-              <circle cx="120" cy="48" r="30" />
-              <path
-                d="M91 82 Q120 70 149 82 L164 225 Q150 260 148 300 L158 510 L132 510 L120 312 L108 510 L82 510 L92 300 Q90 260 76 225 Z"
-              />
-              <path d="M82 95 L42 250 L62 256 L100 142 M158 95 L198 250 L178 256 L140 142" />
-            </svg>
-            @for (marker of visibleMarkers(); track $index) {
-              <button
-                type="button"
-                class="body-marker"
-                [style.left.%]="marker.x"
-                [style.top.%]="marker.y"
-                [attr.aria-label]="displayOption(marker.marker) + ' entfernen'"
-                (click)="removeMarker(marker); $event.stopPropagation()"
-              >
-                {{ marker.marker[0].toUpperCase() }}
-              </button>
-            }
-          </div>
+              </label>
+            </ng-template>
 
-          <div class="signature-box">
-            <span>Unterschrift - Entlass. San/NA</span>
-            <canvas
-              #signatureCanvas
-              width="300"
-              height="90"
-              (pointerdown)="startSignature($event)"
-              (pointermove)="drawSignature($event)"
-              (pointerup)="endSignature()"
-              (pointerleave)="endSignature()"
-            ></canvas>
-            <button type="button" (click)="clearSignature()">Löschen</button>
+            @for (field of fields; track field.path) {
+              <ng-container *ngTemplateOutlet="protocolField; context: { $implicit: field }" />
+            }
+
+            @for (group of optionGroups; track group.path) {
+              <fieldset
+                class="protocol-checks protocol-option-group"
+                [class.primary-options]="group.path.startsWith('assessment_primary')"
+                [class.footer-options]="group.path.startsWith('disposition')"
+                [style.left.%]="group.x"
+                [style.top.%]="group.y"
+                [style.width.%]="group.w"
+              >
+                <legend>{{ group.label }}</legend>
+                @for (item of group.options; track item) {
+                  <label>
+                    <input
+                      [type]="group.single ? 'radio' : 'checkbox'"
+                      [name]="group.path"
+                      [checked]="has(group.path, item) || value(group.path) === item"
+                      (change)="toggleOption(group, item, $any($event.target).checked)"
+                    />
+                    {{ displayOption(item) }}
+                  </label>
+                }
+              </fieldset>
+            }
+
+            @for (field of measureFields; track field.path) {
+              <ng-container *ngTemplateOutlet="protocolField; context: { $implicit: field }" />
+            }
+
+            <div class="protocol-emergency-time">
+              <strong>Angen. Notfallzeit</strong>
+              <input
+                type="time"
+                [value]="value('assessment_primary.angen_notfallzeit.zeit')"
+                (input)="
+                  setValue('assessment_primary.angen_notfallzeit.zeit', $any($event.target).value)
+                "
+              />
+              <label
+                ><input
+                  type="checkbox"
+                  [checked]="value('assessment_primary.angen_notfallzeit.gt24h')"
+                  (change)="
+                    setValue(
+                      'assessment_primary.angen_notfallzeit.gt24h',
+                      $any($event.target).checked
+                    )
+                  "
+                />
+                &gt;24h</label
+              >
+              <label
+                ><input
+                  type="checkbox"
+                  [checked]="value('assessment_primary.angen_notfallzeit.unbekannt')"
+                  (change)="
+                    setValue(
+                      'assessment_primary.angen_notfallzeit.unbekannt',
+                      $any($event.target).checked
+                    )
+                  "
+                />
+                unbekannt</label
+              >
+            </div>
+
+            <div class="protocol-checks vitals">
+              <strong>GCS / Messwerte</strong>
+              <label
+                >Augen
+                <select
+                  [value]="value('vitals.gcs_augenoeffnen')"
+                  (change)="setNumber('vitals.gcs_augenoeffnen', $any($event.target).value)"
+                >
+                  <option value="">-</option>
+                  <option value="4">4 spontan</option>
+                  <option value="3">3 auf Ansprache</option>
+                  <option value="2">2 auf Schmerz</option>
+                  <option value="1">1 keine</option>
+                </select>
+              </label>
+              <label
+                >Verbal
+                <select
+                  [value]="value('vitals.gcs_verbale_reaktion')"
+                  (change)="setNumber('vitals.gcs_verbale_reaktion', $any($event.target).value)"
+                >
+                  <option value="">-</option>
+                  <option value="5">5 orientiert</option>
+                  <option value="4">4 verwirrt</option>
+                  <option value="3">3 Worte</option>
+                  <option value="2">2 Laute</option>
+                  <option value="1">1 keine</option>
+                </select>
+              </label>
+              <label
+                >Motorik
+                <select
+                  [value]="value('vitals.gcs_motorische_reaktion')"
+                  (change)="setNumber('vitals.gcs_motorische_reaktion', $any($event.target).value)"
+                >
+                  <option value="">-</option>
+                  <option value="6">6 befolgt</option>
+                  <option value="5">5 lokalisiert</option>
+                  <option value="4">4 Abwehr</option>
+                  <option value="3">3 Beugung</option>
+                  <option value="2">2 Streckung</option>
+                  <option value="1">1 keine</option>
+                </select>
+              </label>
+              <span>GCS-Summe: {{ value('vitals.gcs_summe') || '-' }}</span>
+              <label
+                >Schmerz
+                <input
+                  type="number"
+                  min="0"
+                  max="10"
+                  [value]="value('vitals.schmerz')"
+                  (input)="setNumber('vitals.schmerz', $any($event.target).value)"
+              /></label>
+              <label
+                ><input
+                  type="checkbox"
+                  [checked]="value('vitals.schmerz_nicht_beurteilbar')"
+                  (change)="
+                    setValue('vitals.schmerz_nicht_beurteilbar', $any($event.target).checked)
+                  "
+                />
+                nicht beurteilbar</label
+              >
+              <label
+                ><input
+                  type="checkbox"
+                  [checked]="value('vitals.keine')"
+                  (change)="setValue('vitals.keine', $any($event.target).checked)"
+                />
+                keine Messwerte</label
+              >
+              @for (vital of vitalFields; track vital.path) {
+                <label
+                  >{{ vital.label }}
+                  <input
+                    [value]="value(vital.path)"
+                    (input)="setValue(vital.path, $any($event.target).value)"
+                /></label>
+              }
+            </div>
+
+            <div class="medication-grid">
+              <strong>Akutmedikation</strong>
+              @for (row of medicationRows; track row) {
+                <div class="medication-entry">
+                  <span>{{ row + 1 }}</span>
+                  <input
+                    aria-label="Medikament"
+                    placeholder="Medikament"
+                    [value]="med(row, 'medikament')"
+                    (input)="setMed(row, 'medikament', $any($event.target).value)"
+                  />
+                  <input
+                    aria-label="Dosis"
+                    placeholder="Dosis"
+                    [value]="med(row, 'dosis')"
+                    (input)="setMed(row, 'dosis', $any($event.target).value)"
+                  />
+                  <input
+                    aria-label="Art"
+                    placeholder="Art"
+                    [value]="med(row, 'art')"
+                    (input)="setMed(row, 'art', $any($event.target).value)"
+                  />
+                  <input
+                    aria-label="Uhrzeit"
+                    type="time"
+                    [value]="med(row, 'uhrzeit')"
+                    (input)="setMed(row, 'uhrzeit', $any($event.target).value)"
+                  />
+                </div>
+              }
+            </div>
+
+            <div class="protocol-bodymap" (click)="addMarker($event)">
+              <div class="protocol-bodymap-toolbar" (click)="$event.stopPropagation()">
+                <button
+                  type="button"
+                  [class.active]="bodyView() === 'front'"
+                  (click)="bodyView.set('front')"
+                >
+                  Vorne
+                </button>
+                <button
+                  type="button"
+                  [class.active]="bodyView() === 'back'"
+                  (click)="bodyView.set('back')"
+                >
+                  Hinten
+                </button>
+                <select
+                  aria-label="Markertyp"
+                  [value]="markerType()"
+                  (change)="markerType.set($any($event.target).value)"
+                >
+                  @for (type of markerTypes; track type) {
+                    <option [value]="type">{{ displayOption(type) }}</option>
+                  }
+                </select>
+              </div>
+              <svg
+                class="protocol-silhouette"
+                viewBox="0 0 240 560"
+                role="img"
+                [attr.aria-label]="bodyView() === 'front' ? 'Körper vorne' : 'Körper hinten'"
+              >
+                <circle cx="120" cy="48" r="30" />
+                <path
+                  d="M91 82 Q120 70 149 82 L164 225 Q150 260 148 300 L158 510 L132 510 L120 312 L108 510 L82 510 L92 300 Q90 260 76 225 Z"
+                />
+                <path d="M82 95 L42 250 L62 256 L100 142 M158 95 L198 250 L178 256 L140 142" />
+              </svg>
+              @for (marker of visibleMarkers(); track $index) {
+                <button
+                  type="button"
+                  class="body-marker"
+                  [style.left.%]="marker.x"
+                  [style.top.%]="marker.y"
+                  [attr.aria-label]="displayOption(marker.marker) + ' entfernen'"
+                  (click)="removeMarker(marker); $event.stopPropagation()"
+                >
+                  {{ marker.marker[0].toUpperCase() }}
+                </button>
+              }
+            </div>
+
+            <div class="signature-box">
+              <span>Unterschrift - Entlass. San/NA</span>
+              <canvas
+                #signatureCanvas
+                width="300"
+                height="90"
+                (pointerdown)="startSignature($event)"
+                (pointermove)="drawSignature($event)"
+                (pointerup)="endSignature()"
+                (pointerleave)="endSignature()"
+              ></canvas>
+              <button type="button" (click)="clearSignature()">Löschen</button>
+            </div>
           </div>
         </div>
-      </div>
-
-      <details>
-        <summary>FormState JSON</summary>
-        <pre>{{ form() | json }}</pre>
-      </details>
+      </fieldset>
     </section>
   `,
 })
@@ -724,6 +734,18 @@ export class AmbulanzprotokollPage implements OnDestroy {
   protected readonly form = signal<FormState>(defaultState());
   protected readonly status = signal<Status>('draft');
   protected readonly finalizedAt = signal<string | null>(null);
+  // Non-null while an authorised user corrects a finalized protocol; sent with every save.
+  protected readonly correctionReason = signal<string | null>(null);
+  protected readonly locked = computed(
+    () => this.status() === 'finalized' && this.correctionReason() === null,
+  );
+  private readonly auth = inject(AuthStore);
+  // QR sessions are anonymous and can never correct finalized records; the server also checks
+  // record ownership for user accounts.
+  protected readonly canCorrect = computed(() => {
+    const type = this.auth.activeSession()?.tokenType;
+    return type === 'admin' || type === 'leitstelle' || type === 'user';
+  });
   protected readonly saveState = signal('lokal bereit');
   protected readonly warnings = signal<string[]>([]);
 
@@ -737,15 +759,14 @@ export class AmbulanzprotokollPage implements OnDestroy {
   private readonly currentPatientId = signal(0);
   private editVersion = 0;
   private currentWriteId: string | undefined;
-  private readonly savedSub: Subscription;
   private loadGeneration = 0;
   private loadSub: Subscription | null = null;
-  private readonly routeSub: Subscription;
   private signaturePoint: { x: number; y: number } | null = null;
 
   constructor() {
-    this.savedSub = this.offlineQueue.protocolSaved.subscribe(
-      ({ patientId, sourcePatientId, writeId, record }) => {
+    this.offlineQueue.protocolSaved
+      .pipe(takeUntilDestroyed())
+      .subscribe(({ patientId, sourcePatientId, writeId, record }) => {
         if (
           (patientId !== this.patientId() && sourcePatientId !== this.patientId()) ||
           writeId !== this.currentWriteId
@@ -755,9 +776,8 @@ export class AmbulanzprotokollPage implements OnDestroy {
         this.finalizedAt.set(record.finalizedAt ?? null);
         this.warnings.set(record.warnings);
         this.saveState.set(`server ${new Date(record.updatedAt).toLocaleTimeString()}`);
-      },
-    );
-    this.routeSub = this.route.paramMap.subscribe((params) => {
+      });
+    this.route.paramMap.pipe(takeUntilDestroyed()).subscribe((params) => {
       const patientId = Number(params.get('patientId') ?? this.responderState.patient()?.id ?? 0);
       if (!patientId || patientId === this.currentPatientId()) return;
       this.currentWriteId = undefined;
@@ -768,6 +788,7 @@ export class AmbulanzprotokollPage implements OnDestroy {
       this.form.set(defaultState());
       this.status.set('draft');
       this.finalizedAt.set(null);
+      this.correctionReason.set(null);
       this.saveState.set('lokal bereit');
       this.warnings.set([]);
       this.load(patientId, generation);
@@ -775,10 +796,8 @@ export class AmbulanzprotokollPage implements OnDestroy {
   }
 
   ngOnDestroy(): void {
-    this.savedSub.unsubscribe();
     this.loadGeneration++;
     this.loadSub?.unsubscribe();
-    this.routeSub.unsubscribe();
   }
 
   protected patientId(): number {
@@ -798,8 +817,9 @@ export class AmbulanzprotokollPage implements OnDestroy {
   }
 
   protected setValue(path: string, value: unknown): void {
+    if (this.locked()) return;
     this.form.update((current) => setPath(current, path, value));
-    this.queueAutosave();
+    this.persistSnapshot();
   }
 
   protected setNumber(path: string, value: string): void {
@@ -860,16 +880,18 @@ export class AmbulanzprotokollPage implements OnDestroy {
     key: 'medikament' | 'dosis' | 'art' | 'uhrzeit',
     value: string,
   ): void {
+    if (this.locked()) return;
     this.form.update((current) => {
       const rows = [...current.medications_administered];
       const row = rows[index] ?? { medikament: '', dosis: '', art: '', uhrzeit: null };
       rows[index] = { ...row, [key]: value || (key === 'uhrzeit' ? null : '') };
       return { ...current, medications_administered: rows };
     });
-    this.queueAutosave();
+    this.persistSnapshot();
   }
 
   protected addMarker(event: MouseEvent): void {
+    if (this.locked()) return;
     const target = event.currentTarget as HTMLElement;
     const box = target.getBoundingClientRect();
     const x = ((event.clientX - box.left) / box.width) * 100;
@@ -884,7 +906,7 @@ export class AmbulanzprotokollPage implements OnDestroy {
         ],
       },
     }));
-    this.queueAutosave();
+    this.persistSnapshot();
   }
 
   protected visibleMarkers(): FormState['assessment_secondary']['bodymap'] {
@@ -894,6 +916,7 @@ export class AmbulanzprotokollPage implements OnDestroy {
   }
 
   protected removeMarker(marker: FormState['assessment_secondary']['bodymap'][number]): void {
+    if (this.locked()) return;
     this.form.update((current) => ({
       ...current,
       assessment_secondary: {
@@ -901,10 +924,11 @@ export class AmbulanzprotokollPage implements OnDestroy {
         bodymap: current.assessment_secondary.bodymap.filter((item) => item !== marker),
       },
     }));
-    this.queueAutosave();
+    this.persistSnapshot();
   }
 
   protected startSignature(event: PointerEvent): void {
+    if (this.locked()) return;
     const canvas = this.signatureCanvas()?.nativeElement;
     if (!canvas) {
       return;
@@ -941,18 +965,32 @@ export class AmbulanzprotokollPage implements OnDestroy {
   }
 
   protected clearSignature(): void {
+    if (this.locked()) return;
     const canvas = this.signatureCanvas()?.nativeElement;
     canvas?.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height);
     this.setValue('signatures.entlass_san_na', null);
   }
 
+  protected startCorrection(): void {
+    const reason = window.prompt('Grund der Korrektur (Pflichtfeld, max. 500 Zeichen):')?.trim();
+    if (!reason) return;
+    if (reason.length > 500) {
+      this.warnings.set(['Der Korrekturgrund darf höchstens 500 Zeichen lang sein.']);
+      return;
+    }
+    this.correctionReason.set(reason);
+  }
+
   protected save(status: Status): void {
+    if (this.locked()) return;
     this.warnings.set(status === 'finalized' ? this.collectWarnings() : []);
     this.status.set(status);
     if (status === 'finalized' && !this.finalizedAt()) {
       this.finalizedAt.set(new Date().toISOString());
     }
     this.persistSnapshot(true);
+    // Finalizing ends a correction; the snapshot above already carries the reason.
+    if (status === 'finalized') this.correctionReason.set(null);
   }
 
   private persistSnapshot(flush = false): void {
@@ -960,10 +998,12 @@ export class AmbulanzprotokollPage implements OnDestroy {
     const generation = this.loadGeneration;
     const version = ++this.editVersion;
     this.currentWriteId = undefined;
+    const correctionReason = this.correctionReason();
     const body = {
       status: this.status(),
       formState: this.form() as unknown as Record<string, never>,
       clientUpdatedAt: new Date().toISOString(),
+      ...(correctionReason ? { correctionReason } : {}),
     };
     this.saveState.set('lokal wird gespeichert');
     this.offlineQueue
@@ -1061,10 +1101,6 @@ export class AmbulanzprotokollPage implements OnDestroy {
       },
       error: () => undefined,
     });
-  }
-
-  private queueAutosave(): void {
-    this.persistSnapshot();
   }
 
   private computeGcs(): void {

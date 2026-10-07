@@ -11,4 +11,7 @@ const javascript = readdirSync(browserDir)
 assert.doesNotMatch(javascript, /DEV (Admin|Responder)/);
 assert.doesNotMatch(javascript, /localhost:4010|localhost:5042/);
 
+const worker = readFileSync(join(browserDir, 'sw.js'), 'utf8');
+assert.doesNotMatch(worker, /__BUILD_HASH__/, 'sw.js cache name was not versioned by postbuild');
+
 console.log('production bundle contains no DEV controls or localhost API URLs');

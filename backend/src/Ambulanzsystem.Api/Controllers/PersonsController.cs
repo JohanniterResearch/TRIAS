@@ -18,19 +18,6 @@ namespace Ambulanzsystem.Api.Controllers;
 [Authorize]
 public class PersonsController(AppDbContext db, AuditService audit, SceneNotifier notifier) : ControllerBase
 {
-    private static readonly HashSet<string> TriageUpdateFields =
-    [
-        "triageColor", "respiration", "blutung", "radialispuls", "transport", "dringend",
-        "kontaminiert", "clientUpdatedAt"
-    ];
-
-    private static readonly HashSet<string> LocationFields =
-    [
-        "lat", "lng", "source", "accuracyMeters", "indoorLocation", "clientUpdatedAt"
-    ];
-
-    private static readonly HashSet<string> RespirationFields = ["respiration", "clientUpdatedAt"];
-
     [HttpGet("persons")]
     [Authorize(Policy = AuthPolicies.TriageWrite)]
     [AuditRead("patient_list", AuditIdSource.Query, "operationSceneId")]
@@ -83,7 +70,7 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
             await db.SaveChangesAsync();
             await tx.CommitAsync();
 
-            await PublishPatientUpdatedAsync(existing, false);
+            await notifier.PatientUpdatedAsync(existing, false);
             if (previousScene != request.OperationSceneId)
             {
                 await PublishScenePatientListAsync(previousScene);
@@ -105,7 +92,7 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
         await tx.CommitAsync();
 
         patient.QrCodePatient = code;
-        await PublishPatientUpdatedAsync(patient, true);
+        await notifier.PatientUpdatedAsync(patient, true);
         await PublishScenePatientListAsync(request.OperationSceneId);
 
         return StatusCode(201, new VerifyQrResult(PatientResponse.From(patient), true));
@@ -163,7 +150,7 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
         await db.SaveChangesAsync();
         await tx.CommitAsync();
 
-        await PublishPatientUpdatedAsync(patient, true);
+        await notifier.PatientUpdatedAsync(patient, true);
         await PublishScenePatientListAsync(patient.OperationSceneId);
 
         return StatusCode(201, PatientResponse.From(patient));
@@ -202,23 +189,16 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
         return Ok(PatientResponse.From(patient));
     }
 
-    // triageColor/respiration/blutung/... are all independently optional (contract) and, unlike
-    // Team fields, are never meant to be explicitly cleared back to null via this endpoint — so a
-    // raw JsonElement presence check (not a nullable-record DTO) is what tells "omitted" apart
-    // from a JSON literal null, same fix class as the B2/B3 silent-default bugs.
+    // Every field is optional and null means "not sent": unlike Teams, nothing here is cleared to null.
     [HttpPost("persons/{id:int}/update-triage-color")]
     [Authorize(Policy = AuthPolicies.TriageWrite)]
-    public async Task<IActionResult> UpdateTriageColor(int id, [FromBody] JsonElement body)
+    public async Task<IActionResult> UpdateTriageColor(int id, TriageUpdateRequest update)
     {
         await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
         var patient = await RowLocks.PatientAsync(db, id);
         if (patient is null) return NotFound();
         if (!await SceneAccess.CanAccessAsync(User, db, patient.OperationSceneId)) return Forbid();
 
-        if (!TryReadTriageUpdate(body, out var update, out var error))
-        {
-            return BadRequest(error);
-        }
 
         var merge = FieldMerge.Load(patient.FieldTimestampsJson);
         var now = DateTime.UtcNow;
@@ -253,18 +233,9 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
         patient.FieldTimestampsJson = merge.Save();
         await db.SaveChangesAsync();
         await tx.CommitAsync();
-        await PublishPatientUpdatedAsync(patient, false);
+        await notifier.PatientUpdatedAsync(patient, false);
 
         return Ok(PatientResponse.From(patient));
-    }
-
-    private async Task PublishPatientUpdatedAsync(Patient patient, bool created)
-    {
-        var bodyPartsJson = await db.Bodies.Where(b => b.PatientId == patient.Id).Select(b => b.BodyPartsJson).FirstOrDefaultAsync();
-        var bodyParts = bodyPartsJson is null ? [] : JsonSerializer.Deserialize<Dictionary<string, int>>(bodyPartsJson)!;
-        var protokollStatus = await db.AmbulanzprotokollPage1s.Where(r => r.PatientId == patient.Id).Select(r => r.Status).FirstOrDefaultAsync();
-
-        notifier.PatientUpdated(patient.OperationSceneId, PatientResponse.From(patient), bodyParts, created, protokollStatus);
     }
 
     private async Task PublishScenePatientListAsync(int sceneId)
@@ -286,53 +257,35 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
 
     [HttpPost("persons/{id:int}/respiration")]
     [Authorize(Policy = AuthPolicies.TriageWrite)]
-    public async Task<IActionResult> UpdateRespiration(int id, [FromBody] JsonElement body)
+    public async Task<IActionResult> UpdateRespiration(int id, RespirationUpdateRequest request)
     {
         await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
         var patient = await RowLocks.PatientAsync(db, id);
         if (patient is null) return NotFound();
         if (!await SceneAccess.CanAccessAsync(User, db, patient.OperationSceneId)) return Forbid();
 
-        if (body.ValueKind != JsonValueKind.Object || TryFindUnknownProperty(body, RespirationFields, out _))
-        {
-            return BadRequest(new ErrorResponse("respiration and optional clientUpdatedAt are the only accepted fields."));
-        }
-        if (!TryReadOptionalBool(body, "respiration", out var respiration, out var error) || respiration is null)
-        {
-            return BadRequest(error ?? new ErrorResponse("respiration is required."));
-        }
-        if (!TryReadClientUpdatedAt(body, out var clientUpdatedAt, out error))
-        {
-            return BadRequest(error);
-        }
-
         var merge = FieldMerge.Load(patient.FieldTimestampsJson);
-        if (merge.TryApply("atmung", clientUpdatedAt, DateTime.UtcNow))
+        if (merge.TryApply("atmung", request.ClientUpdatedAt, DateTime.UtcNow))
         {
-            audit.LogFieldWrite(User, "patient", id, id, "atmung", patient.Atmung, respiration);
-            patient.Atmung = respiration;
+            audit.LogFieldWrite(User, "patient", id, id, "atmung", patient.Atmung, request.Respiration);
+            patient.Atmung = request.Respiration;
             patient.FieldTimestampsJson = merge.Save();
         }
 
         await db.SaveChangesAsync();
         await tx.CommitAsync();
-        await PublishPatientUpdatedAsync(patient, false);
+        await notifier.PatientUpdatedAsync(patient, false);
         return Ok(PatientResponse.From(patient));
     }
 
     [HttpPost("persons/{id:int}/location")]
     [Authorize(Policy = AuthPolicies.TriageWrite)]
-    public async Task<IActionResult> UpdateLocation(int id, [FromBody] JsonElement body)
+    public async Task<IActionResult> UpdateLocation(int id, LocationRequest request)
     {
         await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
         var patient = await RowLocks.PatientAsync(db, id);
         if (patient is null) return NotFound();
         if (!await SceneAccess.CanAccessAsync(User, db, patient.OperationSceneId)) return Forbid();
-
-        if (!TryReadLocation(body, out var request, out var error))
-        {
-            return BadRequest(error);
-        }
 
         var merge = FieldMerge.Load(patient.FieldTimestampsJson);
         if (merge.TryApply("location", request.ClientUpdatedAt, DateTime.UtcNow))
@@ -343,7 +296,7 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
 
             patient.LatitudePatient = request.Lat;
             patient.LongitudePatient = request.Lng;
-            patient.LocationSource = request.Source;
+            patient.LocationSource = request.Source ?? "gps";
             patient.LocationAccuracyMeters = request.AccuracyMeters;
             patient.IndoorLocation = request.IndoorLocation;
             patient.LocationUpdatedAt = DateTime.UtcNow;
@@ -352,7 +305,7 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
 
         await db.SaveChangesAsync();
         await tx.CommitAsync();
-        await PublishPatientUpdatedAsync(patient, false);
+        await notifier.PatientUpdatedAsync(patient, false);
         return Ok(PatientResponse.From(patient));
     }
 
@@ -382,230 +335,4 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
 
         return Ok(history);
     }
-
-    private static bool TryReadTriageUpdate(JsonElement body, out TriageUpdateRequest request, out ErrorResponse error)
-    {
-        request = default;
-        if (body.ValueKind != JsonValueKind.Object)
-        {
-            error = new ErrorResponse("triage update body must be a JSON object.");
-            return false;
-        }
-
-        if (TryFindUnknownProperty(body, TriageUpdateFields, out var unknown))
-        {
-            error = new ErrorResponse($"Unknown triage field: {unknown}.");
-            return false;
-        }
-
-        if (!TryReadClientUpdatedAt(body, out var clientUpdatedAt, out error))
-        {
-            return false;
-        }
-
-        if (!TryReadOptionalString(body, "triageColor", out var triageColor, out error)
-            || !TryReadOptionalBool(body, "respiration", out var respiration, out error)
-            || !TryReadOptionalBool(body, "blutung", out var blutung, out error)
-            || !TryReadOptionalBool(body, "radialispuls", out var radialispuls, out error)
-            || !TryReadOptionalBool(body, "transport", out var transport, out error)
-            || !TryReadOptionalBool(body, "dringend", out var dringend, out error)
-            || !TryReadOptionalBool(body, "kontaminiert", out var kontaminiert, out error))
-        {
-            return false;
-        }
-
-        request = new TriageUpdateRequest(triageColor, respiration, blutung, radialispuls, transport, dringend, kontaminiert, clientUpdatedAt);
-        error = null!;
-        return true;
-    }
-
-    private static bool TryReadLocation(JsonElement body, out LocationRequest request, out ErrorResponse error)
-    {
-        request = default!;
-        if (body.ValueKind != JsonValueKind.Object)
-        {
-            error = new ErrorResponse("location body must be a JSON object.");
-            return false;
-        }
-
-        if (TryFindUnknownProperty(body, LocationFields, out var unknown))
-        {
-            error = new ErrorResponse($"Unknown location field: {unknown}.");
-            return false;
-        }
-
-        if (!TryReadRequiredDouble(body, "lat", -90, 90, out var lat, out error)
-            || !TryReadRequiredDouble(body, "lng", -180, 180, out var lng, out error)
-            || !TryReadOptionalNonNegativeFiniteDouble(body, "accuracyMeters", out var accuracyMeters, out error)
-            || !TryReadOptionalString(body, "indoorLocation", out var indoorLocation, out error, ExternalStringLimits.ShortText)
-            || !TryReadClientUpdatedAt(body, out var clientUpdatedAt, out error))
-        {
-            return false;
-        }
-
-        var source = "gps";
-        if (body.TryGetProperty("source", out var sourceElement) && sourceElement.ValueKind != JsonValueKind.Null)
-        {
-            if (sourceElement.ValueKind != JsonValueKind.String)
-            {
-                error = new ErrorResponse("source must be gps or manual.");
-                return false;
-            }
-
-            source = sourceElement.GetString() ?? "";
-            if (source is not ("gps" or "manual"))
-            {
-                error = new ErrorResponse("source must be gps or manual.");
-                return false;
-            }
-        }
-
-        request = new LocationRequest(lat, lng, source, accuracyMeters, indoorLocation, clientUpdatedAt);
-        error = null!;
-        return true;
-    }
-
-    private static bool TryReadClientUpdatedAt(JsonElement body, out DateTime? clientUpdatedAt, out ErrorResponse error)
-    {
-        clientUpdatedAt = null;
-        if (!body.TryGetProperty("clientUpdatedAt", out var element) || element.ValueKind == JsonValueKind.Null)
-        {
-            error = null!;
-            return true;
-        }
-
-        if (element.ValueKind != JsonValueKind.String || !element.TryGetDateTime(out var parsed))
-        {
-            error = new ErrorResponse("clientUpdatedAt must be a valid timestamp.");
-            return false;
-        }
-
-        if (parsed > DateTime.UtcNow.AddMinutes(5))
-        {
-            error = new ErrorResponse("clientUpdatedAt must not be more than 5 minutes in the future.");
-            return false;
-        }
-
-        clientUpdatedAt = parsed;
-        error = null!;
-        return true;
-    }
-
-    private static bool TryReadOptionalString(
-        JsonElement body,
-        string propertyName,
-        out string? value,
-        out ErrorResponse error,
-        int? maxLength = null)
-    {
-        value = null;
-        if (!body.TryGetProperty(propertyName, out var element) || element.ValueKind == JsonValueKind.Null)
-        {
-            error = null!;
-            return true;
-        }
-
-        if (element.ValueKind != JsonValueKind.String)
-        {
-            error = new ErrorResponse($"{propertyName} must be a string.");
-            return false;
-        }
-
-        value = element.GetString();
-        if (maxLength is int limit && value!.Length > limit)
-        {
-            error = new ErrorResponse($"{propertyName} must not exceed {limit} characters.");
-            return false;
-        }
-
-        error = null!;
-        return true;
-    }
-
-    private static bool TryReadOptionalBool(JsonElement body, string propertyName, out bool? value, out ErrorResponse error)
-    {
-        value = null;
-        if (!body.TryGetProperty(propertyName, out var element) || element.ValueKind == JsonValueKind.Null)
-        {
-            error = null!;
-            return true;
-        }
-
-        if (element.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
-        {
-            error = new ErrorResponse($"{propertyName} must be a boolean.");
-            return false;
-        }
-
-        value = element.GetBoolean();
-        error = null!;
-        return true;
-    }
-
-    private static bool TryReadRequiredDouble(
-        JsonElement body, string propertyName, double min, double max, out double value, out ErrorResponse error)
-    {
-        value = default;
-        if (!body.TryGetProperty(propertyName, out var element) || element.ValueKind != JsonValueKind.Number || !element.TryGetDouble(out value))
-        {
-            error = new ErrorResponse($"{propertyName} must be a number.");
-            return false;
-        }
-
-        if (double.IsNaN(value) || double.IsInfinity(value) || value < min || value > max)
-        {
-            error = new ErrorResponse($"{propertyName} is out of range.");
-            return false;
-        }
-
-        error = null!;
-        return true;
-    }
-
-    private static bool TryReadOptionalNonNegativeFiniteDouble(
-        JsonElement body, string propertyName, out double? value, out ErrorResponse error)
-    {
-        value = null;
-        if (!body.TryGetProperty(propertyName, out var element) || element.ValueKind == JsonValueKind.Null)
-        {
-            error = null!;
-            return true;
-        }
-
-        if (element.ValueKind != JsonValueKind.Number || !element.TryGetDouble(out var parsed)
-            || double.IsNaN(parsed) || double.IsInfinity(parsed) || parsed < 0)
-        {
-            error = new ErrorResponse($"{propertyName} must be a non-negative finite number.");
-            return false;
-        }
-
-        value = parsed;
-        error = null!;
-        return true;
-    }
-
-    private static bool TryFindUnknownProperty(JsonElement body, HashSet<string> allowedProperties, out string propertyName)
-    {
-        foreach (var property in body.EnumerateObject())
-        {
-            if (!allowedProperties.Contains(property.Name))
-            {
-                propertyName = property.Name;
-                return true;
-            }
-        }
-
-        propertyName = "";
-        return false;
-    }
-
-    private readonly record struct TriageUpdateRequest(
-        string? TriageColor,
-        bool? Respiration,
-        bool? Blutung,
-        bool? Radialispuls,
-        bool? Transport,
-        bool? Dringend,
-        bool? Kontaminiert,
-        DateTime? ClientUpdatedAt);
 }

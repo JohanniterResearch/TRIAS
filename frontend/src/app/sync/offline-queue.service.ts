@@ -1,7 +1,7 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { firstValueFrom, Subject } from 'rxjs';
 
-import { apiErrorMessage, ApiClient, ApiRequestError } from '../api/api-client';
+import { apiErrorMessage, ApiClient, ApiRequestError, type JsonBody } from '../api/api-client';
 import type { components, paths } from '../api/openapi-types';
 import {
   ProtokollDraftRecord,
@@ -9,15 +9,15 @@ import {
 } from '../protokoll/services/protokoll-draft-store';
 import { ResponderStateStore } from '../responder/services/responder-state';
 import { TriageDraftStore } from '../responder/services/triage-draft-store';
+import { request, transactionDone } from '../shared/idb';
 import { SyncStatusService } from './sync-status.service';
 
 type Patient = components['schemas']['Patient'];
-type ManualPatientRequest =
-  paths['/api/persons/manual']['post']['requestBody']['content']['application/json'];
-type TriageUpdateRequest =
-  paths['/api/persons/{id}/update-triage-color']['post']['requestBody']['content']['application/json'];
-type SaveProtokollRequest =
-  paths['/api/persons/{patientId}/ambulanzprotokoll-page1']['put']['requestBody']['content']['application/json'];
+type ManualPatientRequest = JsonBody<'/api/persons/manual', 'post'>;
+type TriageUpdateRequest = JsonBody<'/api/persons/{id}/update-triage-color', 'post'>;
+type LocationRequest = JsonBody<'/api/persons/{id}/location', 'post'>;
+type BodyPartRequest = JsonBody<'/api/body-parts', 'put'>;
+type SaveProtokollRequest = JsonBody<'/api/persons/{patientId}/ambulanzprotokoll-page1', 'put'>;
 
 type ProtocolResponse =
   paths['/api/persons/{patientId}/ambulanzprotokoll-page1']['put']['responses'][200]['content']['application/json'];
@@ -37,32 +37,27 @@ type QueueMetadata = {
   errorStatus?: number | null;
   nextAttemptAt?: string | null;
 };
-type QueueItem = QueueMetadata &
-  (
+type QueueItem = QueueMetadata & { id: string; createdAt: string } & (
+    | { type: 'manual-patient'; body: ManualPatientRequest; provisionalId: number }
+    | { type: 'triage'; patientId: number; body: TriageUpdateRequest }
+    | { type: 'location'; patientId: number; body: LocationRequest }
+    | { type: 'body-part'; patientId: number; body: BodyPartRequest }
     | {
-        id: string;
-        type: 'manual-patient';
-        body: ManualPatientRequest;
-        provisionalId: number;
-        createdAt: string;
-      }
-    | {
-        id: string;
-        type: 'triage';
-        patientId: number;
-        body: TriageUpdateRequest;
-        createdAt: string;
-      }
-    | {
-        id: string;
         type: 'protocol';
         patientId: number;
         body: SaveProtokollRequest;
         sceneId?: number;
         finalizedAt?: string | null;
-        createdAt: string;
       }
   );
+export interface BlockedItem {
+  id: string;
+  type: QueueItem['type'];
+  patientId: number;
+  errorStatus: number | null;
+  lastError: string | null;
+  createdAt: string;
+}
 type PendingWrite = Exclude<QueueItem, { type: 'manual-patient' }>;
 type ProtocolWrite = Extract<QueueItem, { type: 'protocol' }>;
 type PatientMapping = { provisionalId: number; realId: number; patient: Patient };
@@ -87,6 +82,8 @@ export class OfflineQueueService {
   private persistence: Promise<void> = Promise.resolve();
   private readonly unsavedProtocols = new Map<number, ProtocolWrite>();
   readonly localWrites = signal(0);
+  readonly blockedItems = signal<BlockedItem[]>([]);
+  private readonly exportedIds = new Set<string>();
   readonly hasPendingWork = computed(
     () =>
       this.localWrites() > 0 || !this.syncStatus.queueReady() || this.syncStatus.pendingCount() > 0,
@@ -153,6 +150,32 @@ export class OfflineQueueService {
       withMetadata({
         id: `triage:${patientId}:${crypto.randomUUID()}`,
         type: 'triage',
+        patientId,
+        body,
+        createdAt: new Date().toISOString(),
+      }),
+    );
+  }
+
+  // One key per patient (location) or per region (body part): a newer intent replaces the older
+  // unsent one, since both are absolute values rather than increments.
+  async queueLocation(patientId: number, body: LocationRequest): Promise<void> {
+    await this.add(
+      withMetadata({
+        id: `location:${patientId}`,
+        type: 'location',
+        patientId,
+        body: { ...body, clientUpdatedAt: body.clientUpdatedAt ?? new Date().toISOString() },
+        createdAt: new Date().toISOString(),
+      }),
+    );
+  }
+
+  async queueBodyPart(patientId: number, body: BodyPartRequest): Promise<void> {
+    await this.add(
+      withMetadata({
+        id: `body-part:${patientId}:${body.bodyPartId}`,
+        type: 'body-part',
         patientId,
         body,
         createdAt: new Date().toISOString(),
@@ -229,7 +252,9 @@ export class OfflineQueueService {
             (!immediate && (this.protocolNotBefore.get(item.patientId) ?? 0) > Date.now()))
         )
           continue;
-        if (item.state === 'blocked' && item.errorStatus !== 401 && item.errorStatus !== 403) {
+        // Only an expired/invalid session is retried automatically; other rejections wait for
+        // an explicit retry, export, or discard so they cannot stall unrelated writes.
+        if (item.state === 'blocked' && item.errorStatus !== 401) {
           continue;
         }
         if (item.nextAttemptAt && Date.parse(item.nextAttemptAt) > Date.now()) {
@@ -239,11 +264,7 @@ export class OfflineQueueService {
           if (item.type === 'manual-patient') {
             const patient = await firstValueFrom(this.api.createManualPatient(item.body));
             await this.commitPatientMapping(item.id, item.provisionalId, patient);
-            await this.reconcilePatient({
-              provisionalId: item.provisionalId,
-              realId: patient.id,
-              patient,
-            });
+            await this.reconcilePatientIds(item.provisionalId, patient.id, patient);
             continue;
           }
           const result = await this.replay(item);
@@ -316,12 +337,74 @@ export class OfflineQueueService {
     await this.refreshStatus();
   }
 
+  /** Patient IDs (provisional and real) that still have unsent writes on this device. */
+  async pendingPatientIds(): Promise<Set<number>> {
+    const ids = new Set<number>(this.unsavedProtocols.keys());
+    for (const item of await this.items()) {
+      const id = item.type === 'manual-patient' ? item.provisionalId : item.patientId;
+      ids.add(id);
+      ids.add(await this.realPatientId(id));
+    }
+    return ids;
+  }
+
+  async retry(id: string): Promise<void> {
+    const item = (await this.items()).find((candidate) => candidate.id === id);
+    if (!item) return;
+    await this.replaceIfCurrent(item, { ...item, state: 'pending', nextAttemptAt: null });
+    await this.refreshStatus();
+    await this.flush(true);
+  }
+
+  /** JSON backup of a blocked item and every queued write that depends on it. */
+  async exportBlocked(id: string): Promise<Blob> {
+    const related = await this.withDependents(id);
+    if (!related.length) throw new Error('Eintrag nicht gefunden.');
+    for (const item of related) this.exportedIds.add(item.id);
+    const payload = { exportedAt: new Date().toISOString(), items: related };
+    return new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  }
+
+  /** Removes a blocked item and its dependents; refused until they were exported. */
+  async discard(id: string): Promise<void> {
+    const related = await this.withDependents(id);
+    if (related.some((item) => !this.exportedIds.has(item.id))) {
+      throw new Error('Eintrag zuerst als Datei sichern.');
+    }
+    await this.withStore(queueStore, 'readwrite', async (store) => {
+      for (const item of related) await request(store.delete(item.id));
+    });
+    await this.refreshStatus();
+  }
+
+  private async withDependents(id: string): Promise<QueueItem[]> {
+    const items = await this.items();
+    const root = items.find((item) => item.id === id);
+    if (!root) return [];
+    if (root.type !== 'manual-patient') return [root];
+    return [
+      root,
+      ...items.filter(
+        (item) => item.type !== 'manual-patient' && item.patientId === root.provisionalId,
+      ),
+    ];
+  }
+
   private async replay(item: PendingWrite): Promise<boolean | ProtocolSaveResult> {
     const patientId = await this.realPatientId(item.patientId);
     if (patientId < 0) return false;
     if (item.type === 'triage') {
       const patient = await firstValueFrom(this.api.updateTriage(patientId, item.body));
       this.responderState.replacePatient(patientId, patient);
+      return true;
+    }
+    if (item.type === 'location') {
+      const patient = await firstValueFrom(this.api.updatePatientLocation(patientId, item.body));
+      this.responderState.replacePatient(patientId, patient);
+      return true;
+    }
+    if (item.type === 'body-part') {
+      await firstValueFrom(this.api.toggleBodyPart({ ...item.body, idpatient: patientId }));
       return true;
     }
     const record = await firstValueFrom(this.api.saveProtokollPage1(patientId, item.body));
@@ -369,8 +452,11 @@ export class OfflineQueueService {
 
   private async recordFailure(item: QueueItem, error: unknown): Promise<boolean> {
     const status = error instanceof ApiRequestError ? error.status : null;
-    const authBlocked = status === 401 || status === 403;
-    const permanentlyBlocked = status !== null && status >= 400 && status < 500;
+    // 401 invalidates every protected write, so the flush pauses. Any other rejection (e.g. 403
+    // after a scene closed) blocks only this item; 408/429 are transient and retried.
+    const authBlocked = status === 401;
+    const permanentlyBlocked =
+      status !== null && status >= 400 && status < 500 && status !== 408 && status !== 429;
     const attemptCount = (item.attemptCount ?? 0) + 1;
     const retryDelay = Math.min(60_000, 1000 * 2 ** Math.min(attemptCount - 1, 6));
     await this.replaceIfCurrent(item, {
@@ -438,13 +524,9 @@ export class OfflineQueueService {
           );
         }
       } else {
-        await this.reconcilePatient(mapping);
+        await this.reconcilePatientIds(mapping.provisionalId, mapping.realId, mapping.patient);
       }
     }
-  }
-
-  private async reconcilePatient(mapping: PatientMapping): Promise<void> {
-    await this.reconcilePatientIds(mapping.provisionalId, mapping.realId, mapping.patient);
   }
 
   private async reconcilePatientIds(
@@ -478,6 +560,20 @@ export class OfflineQueueService {
       return;
     }
     const failed = items.filter((item) => item.lastError);
+    this.blockedItems.set(
+      items
+        // 401 items resume after re-login, but an expired QR code or closed account can never
+        // log in again, so they must stay exportable too.
+        .filter((item) => item.state === 'blocked')
+        .map((item) => ({
+          id: item.id,
+          type: item.type,
+          patientId: item.type === 'manual-patient' ? item.provisionalId : item.patientId,
+          errorStatus: item.errorStatus ?? null,
+          lastError: item.lastError ?? null,
+          createdAt: item.createdAt,
+        })),
+    );
     this.syncStatus.setPending(
       items.length,
       items[0]?.createdAt ?? null,
@@ -547,20 +643,5 @@ function openDb(): Promise<IDBDatabase> {
     };
     openRequest.onsuccess = () => resolve(openRequest.result);
     openRequest.onerror = () => reject(openRequest.error);
-  });
-}
-
-function request<T>(idbRequest: IDBRequest<T>): Promise<T> {
-  return new Promise((resolve, reject) => {
-    idbRequest.onsuccess = () => resolve(idbRequest.result);
-    idbRequest.onerror = () => reject(idbRequest.error);
-  });
-}
-
-function transactionDone(transaction: IDBTransaction): Promise<void> {
-  return new Promise((resolve, reject) => {
-    transaction.oncomplete = () => resolve();
-    transaction.onerror = () => reject(transaction.error);
-    transaction.onabort = () => reject(transaction.error);
   });
 }

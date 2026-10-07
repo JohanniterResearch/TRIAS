@@ -141,7 +141,7 @@ paths:
     post:
       tags: [auth]
       operationId: refreshToken
-      description: Consumes one valid refresh token and rotates it into a new access and refresh token pair.
+      description: Consumes one valid refresh token and rotates it into a new access and refresh token pair. Presenting an already rotated token again (after a 30-second grace window) is treated as theft and revokes every session of the account.
       summary: Rotate a refresh token (old is revoked, new pair issued).
       security: []
       requestBody:
@@ -851,7 +851,7 @@ paths:
                 transport: { type: boolean }
                 dringend: { type: boolean }
                 kontaminiert: { type: boolean }
-                clientUpdatedAt: { type: string, format: date-time, description: Client-side write timestamp for offline replay merge; must not be more than five minutes ahead of server UTC. Older timestamps remain valid. }
+                clientUpdatedAt: { type: string, format: date-time, description: Client-side write timestamp for offline replay merge; values ahead of server UTC are clamped to server time. Older timestamps remain valid. }
       responses:
         "200":
           description: Updated patient.
@@ -879,7 +879,7 @@ paths:
               required: [respiration]
               properties:
                 respiration: { type: boolean }
-                clientUpdatedAt: { type: string, format: date-time, description: Must not be more than five minutes ahead of server UTC. Older timestamps remain valid. }
+                clientUpdatedAt: { type: string, format: date-time, description: Values ahead of server UTC are clamped to server time. Older timestamps remain valid. }
       responses:
         "200":
           description: Updated patient.
@@ -911,7 +911,7 @@ paths:
                 source: { type: string, enum: [gps, manual], default: gps, description: Only device GPS or explicit manual correction is accepted. }
                 accuracyMeters: { type: number, minimum: 0, description: "Finite, non-negative reported GPS accuracy; UI flags >10m as unreliable (FR-LOC-07)." }
                 indoorLocation: { type: string, description: "Optional free text: tent/sector/room/floor/treatment bay (FR-LOC-08)." }
-                clientUpdatedAt: { type: string, format: date-time, description: Client-side write timestamp for offline replay merge (NFR-SAFE-08/09); must not be more than five minutes ahead of server UTC. Older timestamps remain valid. }
+                clientUpdatedAt: { type: string, format: date-time, description: Client-side write timestamp for offline replay merge (NFR-SAFE-08/09); values ahead of server UTC are clamped to server time. Older timestamps remain valid. }
       responses:
         "200":
           description: Updated patient.
@@ -1007,7 +1007,7 @@ paths:
                 status: { type: string, enum: [draft, finalized] }
                 formState:
                   $ref: "#/components/schemas/ProtokollFormState"
-                clientUpdatedAt: { type: string, format: date-time, description: Local edit timestamp for newer-wins comparison; must not be more than five minutes ahead of server UTC. Older timestamps remain valid. }
+                clientUpdatedAt: { type: string, format: date-time, description: Local edit timestamp for newer-wins comparison; values ahead of server UTC are clamped to server time. Older timestamps remain valid. }
                 correctionReason: { type: string, minLength: 1, maxLength: 500, description: Required when correcting an already-finalized protocol. }
       responses:
         "200":

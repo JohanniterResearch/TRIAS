@@ -288,14 +288,12 @@ label.check-row {
   }
 }
 
-.admin-list,
-.print-sheet {
+.admin-list {
   display: grid;
   gap: 0.75rem;
 }
 
-.admin-list article,
-.print-token {
+.admin-list article {
   border: 1px solid #d7dde5;
   border-radius: 0.35rem;
   display: grid;
@@ -439,6 +437,13 @@ label.check-row {
   flex-wrap: wrap;
   gap: 0.75rem;
   padding: 0.75rem;
+}
+
+.protocol-lock {
+  border: 0;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
 }
 
 .protocol-scale {
@@ -699,6 +704,10 @@ label.check-row {
 }
 
 @media print {
+  .update-banner {
+    display: none;
+  }
+
   @page {
     margin: 0;
     size: A4 portrait;
@@ -970,4 +979,12 @@ label.check-row {
 .qr-modal-token {
   font-size: 0.7rem;
   overflow-wrap: anywhere;
+}
+
+.update-banner {
+  bottom: 1rem;
+  left: 50%;
+  position: fixed;
+  transform: translateX(-50%);
+  z-index: 1000;
 }

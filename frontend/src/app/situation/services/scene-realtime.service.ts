@@ -7,7 +7,6 @@ import {
 } from '@microsoft/signalr';
 import { Observable, Subject } from 'rxjs';
 
-import { environment } from '../../../environments/environment';
 import type { components } from '../../api/openapi-types';
 import { AuthStore } from '../../auth/auth.store';
 
@@ -46,6 +45,8 @@ export type SceneRealtimeEvent =
   | { type: 'patient-list'; payload: ScenePatientList }
   | { type: 'state'; payload: 'connected' | 'polling' };
 
+const maxRetryDelayMs = 30_000;
+
 @Injectable({ providedIn: 'root' })
 export class SceneRealtimeService {
   private readonly auth = inject(AuthStore);
@@ -60,11 +61,14 @@ export class SceneRealtimeService {
       this.disconnect(this.sceneId);
     }
     const events = new Subject<SceneRealtimeEvent>();
-    const hubUrl = `${environment.apiBaseUrl.replace(/\/$/, '')}/hubs/scene`;
 
     const connection = new HubConnectionBuilder()
-      .withUrl(hubUrl, { accessTokenFactory: () => this.auth.bearerToken() ?? '' })
-      .withAutomaticReconnect()
+      .withUrl('/hubs/scene', { accessTokenFactory: () => this.auth.bearerToken() ?? '' })
+      // Never give up: the default policy stops after ~42 s and would leave the room frozen.
+      .withAutomaticReconnect({
+        nextRetryDelayInMilliseconds: ({ previousRetryCount }) =>
+          Math.min(maxRetryDelayMs, 1000 * 2 ** previousRetryCount),
+      })
       .configureLogging(LogLevel.Warning)
       .build();
     const generation = ++this.generation;
@@ -102,6 +106,7 @@ export class SceneRealtimeService {
         emit({ type: 'patient-list', payload });
       }
     });
+    connection.onreconnecting(() => emit({ type: 'state', payload: 'polling' }));
     connection.onreconnected(() => {
       if (current()) {
         connection
@@ -111,11 +116,26 @@ export class SceneRealtimeService {
       }
     });
 
-    connection
-      .start()
-      .then(() => (current() ? connection.invoke('JoinScene', sceneId) : undefined))
-      .then(() => emit({ type: 'state', payload: 'connected' }))
-      .catch(() => emit({ type: 'state', payload: 'polling' }));
+    // Initial start failures and closes (e.g. CloseOnAuthenticationExpiration) are not covered by
+    // automatic reconnect; fall back to polling and restart with a fresh token.
+    const start = (): void => {
+      if (!current()) return;
+      connection
+        .start()
+        .then(() => (current() ? connection.invoke('JoinScene', sceneId) : undefined))
+        .then(() => emit({ type: 'state', payload: 'connected' }))
+        .catch(() => {
+          emit({ type: 'state', payload: 'polling' });
+          setTimeout(start, maxRetryDelayMs);
+        });
+    };
+    connection.onclose(() => {
+      if (!current()) return;
+      emit({ type: 'state', payload: 'polling' });
+      // Usually the access token expired (every 15 min); restart at once with a fresh one.
+      start();
+    });
+    start();
 
     return events.asObservable();
   }

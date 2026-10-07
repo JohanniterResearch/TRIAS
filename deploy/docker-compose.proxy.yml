@@ -1,0 +1,11 @@
+# Proxy mode: enabled via COMPOSE_FILE in .env (see README, "Behind a reverse proxy").
+services:
+  caddy:
+    environment:
+      TRUSTED_PROXY: ${TRUSTED_PROXY:?set TRUSTED_PROXY in .env}
+    ports: !override
+      - "${HTTP_PORT:-8080}:8080"
+    volumes: !override
+      - ./Caddyfile.proxy:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config

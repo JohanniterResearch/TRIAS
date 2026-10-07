@@ -1,0 +1,77 @@
+# Production stack for an Ubuntu VM/LXC. All values come from .env, which install.sh
+# generates once and never overwrites (see install.sh for why).
+# Fixed project name: renaming the folder must not switch to new, empty volumes.
+name: ambulanzsystem
+
+# Docker keeps container logs forever by default; cap them so they cannot fill the disk.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      POSTGRES_DB: ambulanzsystem
+      POSTGRES_USER: pls
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?run install.sh first}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pls -d ambulanzsystem"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    # make-bundle.sh tags every build with its git SHA too; pin APP_IMAGE in .env to roll back.
+    image: ${APP_IMAGE:-ambulanzsystem-backend:bundle}
+    restart: unless-stopped
+    logging: *logging
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__Default: Host=db;Database=ambulanzsystem;Username=pls;Password=${DB_PASSWORD}
+      Jwt__Secret: ${JWT_SECRET:?run install.sh first}
+      Bootstrap__AdminPassword: ${BOOTSTRAP_ADMIN_PASSWORD:?run install.sh first}
+      PLS_ALLOWED_ORIGINS: https://${SITE_ADDRESS}
+      BACKUP_EXPECTED_DEPLOYMENT_ID: ${BACKUP_EXPECTED_DEPLOYMENT_ID:?run install.sh first}
+      # Logins per minute per client IP. Raise it (in .env) when many devices share one venue NAT.
+      RateLimiting__LoginPermitLimit: ${LOGIN_RATE_LIMIT:-10}
+      RateLimiting__RefreshPermitLimit: ${REFRESH_RATE_LIMIT:-10}
+    volumes:
+      # AdminManagementController protects patient/QR references with these keys; keep them across upgrades.
+      # The app runs as the non-root "app" user. The earlier root-owned "dpkeys" volume is no longer
+      # mounted; losing those keys only invalidates admin patient/QR links, not data.
+      - dataprotection:/home/app/.aspnet/DataProtection-Keys
+    # Deliberately no published ports: the API trusts one X-Forwarded-For hop from any source
+    # (Program.cs), so it must only be reachable through Caddy on the compose network.
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    logging: *logging
+    depends_on: [backend]
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS}
+      TLS_ISSUER: ${TLS_ISSUER:-internal}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Persists certificates and the local root CA; losing it makes every device distrust the site.
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  pgdata:
+  dataprotection:
+  caddy_data:
+  caddy_config:

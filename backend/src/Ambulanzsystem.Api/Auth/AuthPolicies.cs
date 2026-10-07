@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc.Controllers;
 
 namespace Ambulanzsystem.Api.Auth;
 
@@ -50,11 +49,6 @@ public static class AuthPolicies
         }
 
         var endpoint = ctx.Resource as Endpoint ?? (ctx.Resource as HttpContext)?.GetEndpoint();
-        var descriptor = endpoint?.Metadata.GetMetadata<ControllerActionDescriptor>();
-        var exempt = descriptor?.MethodInfo
-            .GetCustomAttributes(typeof(AllowPendingPasswordChangeAttribute), inherit: false)
-            .Length > 0;
-
-        return exempt;
+        return endpoint?.Metadata.GetMetadata<AllowPendingPasswordChangeAttribute>() is not null;
     }
 }

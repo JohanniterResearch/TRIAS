@@ -1,0 +1,36 @@
+name: Nightly
+
+# Slower checks against real browsers and the production image.
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+jobs:
+  production-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Builds the image from this commit and checks health, headers, login and export end to end.
+      - run: bash deploy/scripts/smoke.sh
+
+  browser:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chrome
+      - run: npm run test:e2e
+      # Runs against the production build (service worker, versioned shell cache).
+      - run: npm run test:offline

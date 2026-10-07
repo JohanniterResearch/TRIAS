@@ -27,7 +27,10 @@ describe('MyAccess logout protection', () => {
             clear: vi.fn(),
           },
         },
-        { provide: OfflineQueueService, useValue: { hasPendingWork: pending } },
+        {
+          provide: OfflineQueueService,
+          useValue: { hasPendingWork: pending, blockedItems: () => [] },
+        },
         { provide: LocalWorkspaceService, useValue: { clear } },
       ],
     });
@@ -62,7 +65,10 @@ describe('MyAccess logout', () => {
             clear: authClear,
           },
         },
-        { provide: OfflineQueueService, useValue: { hasPendingWork: () => false } },
+        {
+          provide: OfflineQueueService,
+          useValue: { hasPendingWork: () => false, blockedItems: () => [] },
+        },
         { provide: LocalWorkspaceService, useValue: { clear } },
       ],
     });

@@ -1,0 +1,10 @@
+[Unit]
+Description=Run the Ambulanzsystem database backup nightly
+
+[Timer]
+# Before the Proxmox Backup Server job, so each container snapshot holds a fresh, consistent dump.
+OnCalendar=*-*-* 01:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

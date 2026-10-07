@@ -5,5 +5,7 @@
 </header>
 
 <main class="app-shell">
+  <!-- Global, so rejected writes stay reachable on the login page after a session ended. -->
+  <app-sync-issues />
   <router-outlet />
 </main>

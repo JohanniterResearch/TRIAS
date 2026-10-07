@@ -376,7 +376,8 @@ describe('route guard failure modes', () => {
     auth.sessionMatches.mockReturnValue(false);
     auth.markExpired.mockImplementation(() => (session = { ...session, expired: true }));
     const rootGuard = routes.find((route) => route.path === '')!.canActivate![0] as CanActivateFn;
-    const loginGuard = routes.find((route) => route.path === 'login')!.canActivate![0] as CanActivateFn;
+    const loginGuard = routes.find((route) => route.path === 'login')!
+      .canActivate![0] as CanActivateFn;
 
     expect(await run(rootGuard, '/')).toEqual({ redirect: '/login' });
     expect(auth.markExpired).toHaveBeenCalledOnce();

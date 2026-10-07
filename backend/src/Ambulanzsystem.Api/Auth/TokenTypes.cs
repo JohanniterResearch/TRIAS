@@ -1,3 +1,5 @@
+using Ambulanzsystem.Api.Domain;
+
 namespace Ambulanzsystem.Api.Auth;
 
 // The JWT `type` claim value — four distinct values so a QR-scanner session can never be
@@ -8,6 +10,14 @@ public static class TokenTypes
     public const string Leitstelle = "leitstelle";
     public const string User = "user";
     public const string Qr = "qr";
+
+    public static string? For(Role role) => role switch
+    {
+        Role.Admin => Admin,
+        Role.Leitstelle => Leitstelle,
+        Role.Responder => User,
+        _ => null,
+    };
 
     public const string ClaimType = "type";
     public const string SecurityStampClaimType = "security_stamp";

@@ -18,6 +18,6 @@ import { MyAccess } from '../auth/components/my-access';
 })
 export class PagePlaceholder {
   readonly title = input.required<string>();
-  readonly stage = input('F1 route');
-  readonly description = input('Diese Route ist für die nächste Ausbaustufe vorbereitet.');
+  readonly stage = input.required<string>();
+  readonly description = input.required<string>();
 }

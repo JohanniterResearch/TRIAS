@@ -17,3 +17,16 @@ scripts/__pycache__/
 !/docs/pilot/
 !/docs/KnownIssues.md
 !/docs/remediationPlan.md
+
+# ruflo/agentdb tooling state
+/agentdb.rvf
+/agentdb.rvf.lock
+
+# deploy bundle build and install state (never commit secrets or images)
+/deploy/.env
+/deploy/images.tar.gz
+/deploy/VERSION
+/deploy/backups/
+
+# CI configuration is versioned despite the dot-directory rule above
+!/.github/

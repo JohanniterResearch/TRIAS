@@ -87,11 +87,6 @@ export const routes: Routes = [
     path: 'admin',
     children: [
       {
-        path: '',
-        loadComponent: () =>
-          import('./admin/pages/admin-dashboard').then((module) => module.AdminDashboard),
-      },
-      {
         path: '**',
         loadComponent: () =>
           import('./admin/pages/admin-dashboard').then((module) => module.AdminDashboard),

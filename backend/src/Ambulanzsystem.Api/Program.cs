@@ -4,6 +4,7 @@ using System.Text.Json.Serialization;
 using Ambulanzsystem.Api.Auth;
 using Ambulanzsystem.Api.Config;
 using Ambulanzsystem.Api.Data;
+using Ambulanzsystem.Api.Dtos;
 using Ambulanzsystem.Api.Endpoints;
 using Ambulanzsystem.Api.Filters;
 using Ambulanzsystem.Api.Middleware;
@@ -12,6 +13,7 @@ using Ambulanzsystem.Api.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 
@@ -21,16 +23,21 @@ StartupValidation.Validate(builder.Configuration, builder.Environment);
 
 builder.Services
     .AddControllers(options => options.Filters.Add<AuditReadFilter>())
-    .AddJsonOptions(o => o.JsonSerializerOptions.Converters.Add(
-        new JsonStringEnumConverter(JsonNamingPolicy.CamelCase)));
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+    // Contract errors are {status, message}; the frontend shows `message`, never ProblemDetails.
+    // Framework binding messages are English and can name internal types, so none reach the client.
+    .ConfigureApiBehaviorOptions(o => o.InvalidModelStateResponseFactory = _ =>
+        new BadRequestObjectResult(new ErrorResponse(ErrorResponse.InvalidRequest)))
+    .AddJsonOptions(o =>
+    {
+        o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
+        o.AllowInputFormatterExceptionMessages = false;
+    });
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
     options.ForwardLimit = 1;
-    // Both Compose definitions bind the API to loopback, so production traffic can only arrive
-    // through a host-local reverse proxy. Trust exactly one forwarding hop; otherwise Docker's
+    // deploy/docker-compose.yml publishes no API port, so production traffic can only arrive
+    // through the Caddy container on the Compose network. Trust exactly one forwarding hop; otherwise Docker's
     // bridge source address collapses every client into one rate-limit partition.
     options.KnownNetworks.Clear();
     options.KnownProxies.Clear();
@@ -105,12 +112,6 @@ using (var scope = app.Services.CreateScope())
     await DataSeeder.SeedAsync(db, app.Configuration, app.Environment);
 }
 
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
-
 if (app.Environment.IsProduction())
 {
     app.UseHsts();
@@ -147,6 +148,9 @@ if (File.Exists(spaIndex))
             context.Response.StatusCode = StatusCodes.Status404NotFound;
             return;
         }
+        // SendFileAsync sets no Content-Type; with the nosniff header browsers would download the
+        // page or show it as text. This fallback also serves "/" (it wins over UseDefaultFiles).
+        context.Response.ContentType = "text/html; charset=utf-8";
         await context.Response.SendFileAsync(spaIndex);
     });
 }

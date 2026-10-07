@@ -2,7 +2,7 @@ import { Component, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 
-import { apiErrorMessage, ApiClient } from '../../api/api-client';
+import { apiErrorMessage, ApiClient, isRetryableFailure } from '../../api/api-client';
 import { MyAccess } from '../../auth/components/my-access';
 import { QrScanner } from '../../shared/qr-scanner';
 import { OfflineQueueService } from '../../sync/offline-queue.service';
@@ -117,10 +117,12 @@ export class PatientScanPage {
           await this.captureLocation(patient.id);
           this.router.navigateByUrl(`/patient/${patient.id}`);
         },
+        // "Online" Wi-Fi without uplink, or a proxy 5xx, must not lose the intake: queue it with the
+        // same clientGeneratedId, which the server treats idempotently if the request did arrive.
         error: (error: unknown) =>
-          navigator.onLine
-            ? this.fail(apiErrorMessage(error, 'Patient konnte nicht angelegt werden.'))
-            : this.createManualOffline(clientGeneratedId),
+          isRetryableFailure(error)
+            ? this.createManualOffline(clientGeneratedId)
+            : this.fail(apiErrorMessage(error, 'Patient konnte nicht angelegt werden.')),
       });
   }
 
@@ -134,14 +136,22 @@ export class PatientScanPage {
       return;
     }
 
-    this.api
-      .updatePatientLocation(patientId, {
-        lat: fix.lat,
-        lng: fix.lng,
-        source: 'gps',
-        accuracyMeters: fix.accuracyMeters,
-      })
-      .subscribe({ next: (patient) => this.state.setPatient(patient), error: () => undefined });
+    const body = {
+      lat: fix.lat,
+      lng: fix.lng,
+      source: 'gps' as const,
+      accuracyMeters: fix.accuracyMeters,
+      clientUpdatedAt: new Date().toISOString(),
+    };
+    const queue = () => this.offlineQueue.queueLocation(patientId, body).catch(() => undefined);
+    if (patientId < 0) {
+      await queue();
+      return;
+    }
+    this.api.updatePatientLocation(patientId, body).subscribe({
+      next: (patient) => this.state.setPatient(patient),
+      error: (error: unknown) => (isRetryableFailure(error) ? void queue() : undefined),
+    });
   }
 
   private async createManualOffline(clientGeneratedId = crypto.randomUUID()): Promise<void> {
@@ -157,6 +167,8 @@ export class PatientScanPage {
     });
     this.state.setPatient(patient);
     this.busy.set(false);
+    // GPS works without network; the fix is replayed once the patient exists on the server.
+    void this.captureLocation(patient.id).catch(() => undefined);
     this.router.navigateByUrl(`/patient/${patient.id}`);
   }
 

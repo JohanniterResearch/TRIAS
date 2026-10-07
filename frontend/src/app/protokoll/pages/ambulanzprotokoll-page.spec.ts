@@ -3,6 +3,7 @@ import { ActivatedRoute, convertToParamMap, Router } from '@angular/router';
 import { BehaviorSubject, of, Subject } from 'rxjs';
 
 import { ApiClient } from '../../api/api-client';
+import { AuthStore } from '../../auth/auth.store';
 import { ResponderStateStore } from '../../responder/services/responder-state';
 import { OfflineQueueService } from '../../sync/offline-queue.service';
 import { ProtokollDraftStore } from '../services/protokoll-draft-store';
@@ -117,6 +118,7 @@ describe('AmbulanzprotokollPage route reuse', () => {
           useValue: offline,
         },
         { provide: ResponderStateStore, useValue: { patient: () => null, scene: () => null } },
+        { provide: AuthStore, useValue: { activeSession: () => ({ tokenType: 'leitstelle' }) } },
       ],
     });
     const page = TestBed.runInInjectionContext(() => new AmbulanzprotokollPage());
@@ -144,10 +146,20 @@ describe('AmbulanzprotokollPage route reuse', () => {
     expect((page as any).status()).toBe('finalized');
     expect((page as any).finalizedAt()).toBe('2026-01-01T12:00:00Z');
     expect(offline.flush).toHaveBeenCalledWith(true);
+
+    // A finalized protocol is read-only until a correction with a reason is started.
+    (page as any).setValue('patient.vorname', 'Ignored');
+    expect(offline.queueProtocol).toHaveBeenCalledTimes(1);
+    expect((page as any).locked()).toBe(true);
+
+    vi.spyOn(window, 'prompt').mockReturnValue('Name falsch erfasst');
+    (page as any).startCorrection();
     (page as any).setValue('patient.vorname', 'Newest');
     expect(offline.queueProtocol).toHaveBeenLastCalledWith(
       1,
       expect.objectContaining({
+        status: 'finalized',
+        correctionReason: 'Name falsch erfasst',
         formState: expect.objectContaining({
           patient: expect.objectContaining({ vorname: 'Newest' }),
         }),
@@ -157,6 +169,44 @@ describe('AmbulanzprotokollPage route reuse', () => {
     page.ngOnDestroy();
     await tick();
     expect(offline.queueProtocol).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('AmbulanzprotokollPage finalized lock', () => {
+  it('offers QR sessions no correction and ignores their edits', async () => {
+    const offline = queue();
+    TestBed.configureTestingModule({
+      providers: [
+        {
+          provide: ActivatedRoute,
+          useValue: { paramMap: new BehaviorSubject(convertToParamMap({ patientId: '1' })) },
+        },
+        { provide: Router, useValue: { navigateByUrl: vi.fn() } },
+        {
+          provide: ApiClient,
+          useValue: {
+            getProtokollPage1: () =>
+              of({ ...record('Final'), status: 'finalized', updatedAt: '2026-01-01T12:00:00Z' }),
+          },
+        },
+        {
+          provide: ProtokollDraftStore,
+          useValue: { get: () => Promise.resolve(null), put: () => Promise.resolve() },
+        },
+        { provide: OfflineQueueService, useValue: offline },
+        { provide: ResponderStateStore, useValue: { patient: () => null, scene: () => null } },
+        { provide: AuthStore, useValue: { activeSession: () => ({ tokenType: 'qr' }) } },
+      ],
+    });
+    const page = TestBed.runInInjectionContext(() => new AmbulanzprotokollPage());
+    await tick();
+
+    expect((page as any).locked()).toBe(true);
+    expect((page as any).canCorrect()).toBe(false);
+    (page as any).setValue('patient.vorname', 'Changed');
+    (page as any).save('draft');
+    expect(offline.queueProtocol).not.toHaveBeenCalled();
+    expect((page as any).form().patient.vorname).toBe('Final');
   });
 });
 

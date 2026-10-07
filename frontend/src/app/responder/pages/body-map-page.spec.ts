@@ -2,18 +2,18 @@ import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute } from '@angular/router';
 import { of, Subject } from 'rxjs';
 
-import { ApiClient } from '../../api/api-client';
+import { ApiClient, ApiRequestError } from '../../api/api-client';
+import { OfflineQueueService } from '../../sync/offline-queue.service';
 import { ResponderStateStore } from '../services/responder-state';
 import { BodyMapPage } from './body-map-page';
 
 describe('BodyMapPage intent ordering', () => {
-  it('reconciles an ambiguous failed toggle without letting the initial load overwrite it', () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(() =>
-        Promise.resolve({ json: () => Promise.resolve({ front: ['kopf_vorne'], back: [] }) }),
-      ),
-    );
+  let queue: { queueBodyPart: ReturnType<typeof vi.fn> };
+  beforeEach(() => {
+    queue = { queueBodyPart: vi.fn().mockResolvedValue(undefined) };
+  });
+
+  it('queues a toggle whose response was lost and keeps it over the initial load', async () => {
     const initialLoad = new Subject<any>();
     const reconciliationLoad = new Subject<any>();
     const toggle = new Subject<any>();
@@ -27,6 +27,7 @@ describe('BodyMapPage intent ordering', () => {
     TestBed.configureTestingModule({
       providers: [
         { provide: ApiClient, useValue: api },
+        { provide: OfflineQueueService, useValue: queue },
         { provide: ResponderStateStore, useValue: { patient: () => ({ id: 7 }) } },
         {
           provide: ActivatedRoute,
@@ -39,20 +40,19 @@ describe('BodyMapPage intent ordering', () => {
     initialLoad.next({ bodyParts: { kopf_vorne: 0 } });
     (page as any).toggle('kopf_vorne');
     toggle.error(new Error('response lost after server update'));
-    reconciliationLoad.next({ bodyParts: { kopf_vorne: 1 } });
+    await Promise.resolve();
     initialLoad.next({ bodyParts: { kopf_vorne: 0 } });
 
-    expect(api.getBodyParts).toHaveBeenCalledTimes(2);
+    expect(queue.queueBodyPart).toHaveBeenCalledWith(7, {
+      idpatient: 7,
+      bodyPartId: 'kopf_vorne',
+      isClicked: true,
+    });
+    expect(api.getBodyParts).toHaveBeenCalledTimes(1);
     expect((page as any).isMarked('kopf_vorne')).toBe(true);
   });
 
   it('keeps the final marked state when the initial load resolves after rapid writes', () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(() =>
-        Promise.resolve({ json: () => Promise.resolve({ front: ['kopf_vorne'], back: [] }) }),
-      ),
-    );
     const initialLoad = new Subject<any>();
     const first = new Subject<any>();
     const second = new Subject<any>();
@@ -68,6 +68,7 @@ describe('BodyMapPage intent ordering', () => {
     TestBed.configureTestingModule({
       providers: [
         { provide: ApiClient, useValue: api },
+        { provide: OfflineQueueService, useValue: queue },
         { provide: ResponderStateStore, useValue: { patient: () => ({ id: 7 }) } },
         {
           provide: ActivatedRoute,
@@ -92,12 +93,6 @@ describe('BodyMapPage intent ordering', () => {
   });
 
   it('returns to the confirmed unmarked state when both rapid toggles fail', () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(() =>
-        Promise.resolve({ json: () => Promise.resolve({ front: ['kopf_vorne'], back: [] }) }),
-      ),
-    );
     const first = new Subject<any>();
     const second = new Subject<any>();
     const api = {
@@ -107,6 +102,7 @@ describe('BodyMapPage intent ordering', () => {
     TestBed.configureTestingModule({
       providers: [
         { provide: ApiClient, useValue: api },
+        { provide: OfflineQueueService, useValue: queue },
         { provide: ResponderStateStore, useValue: { patient: () => ({ id: 7 }) } },
         {
           provide: ActivatedRoute,
@@ -118,19 +114,13 @@ describe('BodyMapPage intent ordering', () => {
 
     (page as any).toggle('kopf_vorne');
     (page as any).toggle('kopf_vorne');
-    first.error(new Error('first failed'));
-    second.error(new Error('second failed'));
+    first.error(new ApiRequestError(400, {}));
+    second.error(new ApiRequestError(400, {}));
 
     expect((page as any).isMarked('kopf_vorne')).toBe(false);
   });
 
   it('keeps the final intent when rapid responses would otherwise arrive reversed', () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(() =>
-        Promise.resolve({ json: () => Promise.resolve({ front: ['kopf_vorne'], back: [] }) }),
-      ),
-    );
     const first = new Subject<any>();
     const second = new Subject<any>();
     const api = {
@@ -140,6 +130,7 @@ describe('BodyMapPage intent ordering', () => {
     TestBed.configureTestingModule({
       providers: [
         { provide: ApiClient, useValue: api },
+        { provide: OfflineQueueService, useValue: queue },
         { provide: ResponderStateStore, useValue: { patient: () => ({ id: 7 }) } },
         {
           provide: ActivatedRoute,
@@ -162,12 +153,6 @@ describe('BodyMapPage intent ordering', () => {
   });
 
   it('uses the second server response when the first toggle fails', () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(() =>
-        Promise.resolve({ json: () => Promise.resolve({ front: ['kopf_vorne'], back: [] }) }),
-      ),
-    );
     const first = new Subject<any>();
     const second = new Subject<any>();
     const api = {
@@ -177,6 +162,7 @@ describe('BodyMapPage intent ordering', () => {
     TestBed.configureTestingModule({
       providers: [
         { provide: ApiClient, useValue: api },
+        { provide: OfflineQueueService, useValue: queue },
         { provide: ResponderStateStore, useValue: { patient: () => ({ id: 7 }) } },
         {
           provide: ActivatedRoute,
@@ -188,19 +174,13 @@ describe('BodyMapPage intent ordering', () => {
 
     (page as any).toggle('kopf_vorne');
     (page as any).toggle('kopf_vorne');
-    first.error(new Error('first failed'));
+    first.error(new ApiRequestError(400, {}));
     second.next({ bodyParts: { kopf_vorne: 0 } });
 
     expect((page as any).isMarked('kopf_vorne')).toBe(false);
   });
 
   it('returns to the first successful server response when the second toggle fails', () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(() =>
-        Promise.resolve({ json: () => Promise.resolve({ front: ['kopf_vorne'], back: [] }) }),
-      ),
-    );
     const first = new Subject<any>();
     const second = new Subject<any>();
     const api = {
@@ -213,6 +193,7 @@ describe('BodyMapPage intent ordering', () => {
     TestBed.configureTestingModule({
       providers: [
         { provide: ApiClient, useValue: api },
+        { provide: OfflineQueueService, useValue: queue },
         { provide: ResponderStateStore, useValue: { patient: () => ({ id: 7 }) } },
         {
           provide: ActivatedRoute,
@@ -226,7 +207,7 @@ describe('BodyMapPage intent ordering', () => {
     (page as any).toggle('kopf_vorne');
     first.next({ bodyParts: { kopf_vorne: 1 } });
     first.complete();
-    second.error(new Error('second failed'));
+    second.error(new ApiRequestError(400, {}));
 
     expect((page as any).isMarked('kopf_vorne')).toBe(true);
   });

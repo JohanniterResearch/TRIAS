@@ -108,7 +108,9 @@ describe('AdminDashboard disabled submit reasons', () => {
 describe('AdminDashboard management search', () => {
   it('passes all user dropdown filters to the API and opens results in the modal', () => {
     const adminUsers = vi.fn().mockReturnValue(of({ total: 0, items: [] }));
-    TestBed.configureTestingModule({ providers: [{ provide: ApiClient, useValue: { adminUsers } }] });
+    TestBed.configureTestingModule({
+      providers: [{ provide: ApiClient, useValue: { adminUsers } }],
+    });
     const dashboard = TestBed.runInInjectionContext(() => new AdminDashboard());
 
     dashboard['userSearchForm'].setValue({
@@ -124,8 +126,12 @@ describe('AdminDashboard management search', () => {
   });
 
   it('loads user autocomplete suggestions only after two characters', () => {
-    const adminUsers = vi.fn().mockReturnValue(of({ total: 1, items: [{ id: 3, username: 'anna' }] }));
-    TestBed.configureTestingModule({ providers: [{ provide: ApiClient, useValue: { adminUsers } }] });
+    const adminUsers = vi
+      .fn()
+      .mockReturnValue(of({ total: 1, items: [{ id: 3, username: 'anna' }] }));
+    TestBed.configureTestingModule({
+      providers: [{ provide: ApiClient, useValue: { adminUsers } }],
+    });
     const dashboard = TestBed.runInInjectionContext(() => new AdminDashboard());
 
     dashboard['suggestManagedUsers'](inputEvent('a'));
@@ -139,8 +145,12 @@ describe('AdminDashboard management search', () => {
   it('allows a numeric patient ID to request autocomplete suggestions', () => {
     const adminPatients = vi
       .fn()
-      .mockReturnValue(of({ total: 1, items: [{ editReference: 'opaque', humanReadableId: 'P-1' }] }));
-    TestBed.configureTestingModule({ providers: [{ provide: ApiClient, useValue: { adminPatients } }] });
+      .mockReturnValue(
+        of({ total: 1, items: [{ editReference: 'opaque', humanReadableId: 'P-1' }] }),
+      );
+    TestBed.configureTestingModule({
+      providers: [{ provide: ApiClient, useValue: { adminPatients } }],
+    });
     const dashboard = TestBed.runInInjectionContext(() => new AdminDashboard());
 
     dashboard['patientSearchForm'].controls.search.setValue('1');
@@ -154,7 +164,9 @@ describe('AdminDashboard management search', () => {
 
   it('populates the patient-search scene dropdown on focus', () => {
     const listScenes = vi.fn().mockReturnValue(of([{ id: 3, name: 'Sommerfest', active: true }]));
-    TestBed.configureTestingModule({ providers: [{ provide: ApiClient, useValue: { listScenes } }] });
+    TestBed.configureTestingModule({
+      providers: [{ provide: ApiClient, useValue: { listScenes } }],
+    });
     const dashboard = TestBed.runInInjectionContext(() => new AdminDashboard());
 
     dashboard['ensureScenesLoaded']();
@@ -165,16 +177,38 @@ describe('AdminDashboard management search', () => {
   it('loads detailed patient corrections only through the opaque edit reference', () => {
     const adminPatientDetails = vi.fn().mockReturnValue(
       of({
-        patient: { editReference: 'opaque', operationSceneId: 3, protocolStatus: 'draft', createdAt: '', updatedAt: '' },
+        patient: {
+          editReference: 'opaque',
+          operationSceneId: 3,
+          protocolStatus: 'draft',
+          createdAt: '',
+          updatedAt: '',
+        },
         bodyParts: { kopf_vorne: 0 },
         protocol: { status: 'draft', formState: {}, updatedAt: '' },
         qrCodeBound: false,
         auditEntries: [],
       }),
     );
-    TestBed.configureTestingModule({ providers: [{ provide: ApiClient, useValue: { adminPatientDetails, availableAdminPatientQrCodes: () => of({ total: 0, items: [] }) } }] });
+    TestBed.configureTestingModule({
+      providers: [
+        {
+          provide: ApiClient,
+          useValue: {
+            adminPatientDetails,
+            availableAdminPatientQrCodes: () => of({ total: 0, items: [] }),
+          },
+        },
+      ],
+    });
     const dashboard = TestBed.runInInjectionContext(() => new AdminDashboard());
-    dashboard['selectManagedPatient']({ editReference: 'opaque', operationSceneId: 3, protocolStatus: 'draft', createdAt: '', updatedAt: '' });
+    dashboard['selectManagedPatient']({
+      editReference: 'opaque',
+      operationSceneId: 3,
+      protocolStatus: 'draft',
+      createdAt: '',
+      updatedAt: '',
+    });
 
     dashboard['openManagedPatientDetails']();
 
@@ -186,39 +220,90 @@ describe('AdminDashboard management search', () => {
 describe('AdminDashboard detailed patient display', () => {
   it('allows detailed corrections without a reason', () => {
     const updateAdminPatientBodyParts = vi.fn().mockReturnValue(of({}));
-    TestBed.configureTestingModule({ providers: [{ provide: ApiClient, useValue: { updateAdminPatientBodyParts } }] });
+    TestBed.configureTestingModule({
+      providers: [{ provide: ApiClient, useValue: { updateAdminPatientBodyParts } }],
+    });
     const dashboard = TestBed.runInInjectionContext(() => new AdminDashboard());
-    dashboard['managedPatient'].set({ editReference: 'opaque', operationSceneId: 3, protocolStatus: 'draft', createdAt: '', updatedAt: '' });
+    dashboard['managedPatient'].set({
+      editReference: 'opaque',
+      operationSceneId: 3,
+      protocolStatus: 'draft',
+      createdAt: '',
+      updatedAt: '',
+    });
     dashboard['managedPatientDetails'].set({ bodyParts: { kopf_vorne: 0 } } as never);
 
     expect(dashboard['managedPatientForm'].controls.correctionReason.valid).toBe(true);
     expect(dashboard['managedBodyPartsForm'].controls.correctionReason.valid).toBe(true);
     dashboard['saveManagedBodyParts']();
-    expect(updateAdminPatientBodyParts).toHaveBeenCalledWith('opaque', { bodyParts: { kopf_vorne: 0 } });
+    expect(updateAdminPatientBodyParts).toHaveBeenCalledWith('opaque', {
+      bodyParts: { kopf_vorne: 0 },
+    });
   });
 
   it('saves the yes/no stammdaten as checkbox booleans', () => {
-    const updateAdminPatient = vi.fn().mockReturnValue(of({ editReference: 'opaque', operationSceneId: 3, protocolStatus: 'draft', createdAt: '', updatedAt: '' }));
-    TestBed.configureTestingModule({ providers: [{ provide: ApiClient, useValue: { updateAdminPatient } }] });
+    const updateAdminPatient = vi.fn().mockReturnValue(
+      of({
+        editReference: 'opaque',
+        operationSceneId: 3,
+        protocolStatus: 'draft',
+        createdAt: '',
+        updatedAt: '',
+      }),
+    );
+    TestBed.configureTestingModule({
+      providers: [{ provide: ApiClient, useValue: { updateAdminPatient } }],
+    });
     const dashboard = TestBed.runInInjectionContext(() => new AdminDashboard());
-    dashboard['selectManagedPatient']({ editReference: 'opaque', operationSceneId: 3, protocolStatus: 'draft', createdAt: '', updatedAt: '', atmung: true, blutung: false });
+    dashboard['selectManagedPatient']({
+      editReference: 'opaque',
+      operationSceneId: 3,
+      protocolStatus: 'draft',
+      createdAt: '',
+      updatedAt: '',
+      atmung: true,
+      blutung: false,
+    });
     dashboard['managedPatientForm'].controls.atmung.markAsDirty();
     dashboard['managedPatientForm'].controls.blutung.markAsDirty();
 
     dashboard['saveManagedPatient']();
 
-    expect(updateAdminPatient).toHaveBeenCalledWith('opaque', expect.objectContaining({ correctionReason: '', atmung: true, blutung: false }));
+    expect(updateAdminPatient).toHaveBeenCalledWith(
+      'opaque',
+      expect.objectContaining({ correctionReason: '', atmung: true, blutung: false }),
+    );
   });
 
   it('does not overwrite unknown yes/no values when another correction is saved', () => {
-    const updateAdminPatient = vi.fn().mockReturnValue(of({ editReference: 'opaque', operationSceneId: 3, protocolStatus: 'draft', createdAt: '', updatedAt: '' }));
-    TestBed.configureTestingModule({ providers: [{ provide: ApiClient, useValue: { updateAdminPatient } }] });
+    const updateAdminPatient = vi.fn().mockReturnValue(
+      of({
+        editReference: 'opaque',
+        operationSceneId: 3,
+        protocolStatus: 'draft',
+        createdAt: '',
+        updatedAt: '',
+      }),
+    );
+    TestBed.configureTestingModule({
+      providers: [{ provide: ApiClient, useValue: { updateAdminPatient } }],
+    });
     const dashboard = TestBed.runInInjectionContext(() => new AdminDashboard());
-    dashboard['selectManagedPatient']({ editReference: 'opaque', operationSceneId: 3, protocolStatus: 'draft', createdAt: '', updatedAt: '', atmung: null });
+    dashboard['selectManagedPatient']({
+      editReference: 'opaque',
+      operationSceneId: 3,
+      protocolStatus: 'draft',
+      createdAt: '',
+      updatedAt: '',
+      atmung: null,
+    });
 
     dashboard['saveManagedPatient']();
 
-    expect(updateAdminPatient).toHaveBeenCalledWith('opaque', expect.not.objectContaining({ atmung: expect.anything() }));
+    expect(updateAdminPatient).toHaveBeenCalledWith(
+      'opaque',
+      expect.not.objectContaining({ atmung: expect.anything() }),
+    );
   });
 
   it('renders only populated protocol values in the read-only summary', () => {
@@ -238,22 +323,50 @@ describe('AdminDashboard detailed patient display', () => {
       { label: 'vitals · puls', value: '80' },
     ]);
     expect(sections.find((section) => section.title === 'Abschluss')?.entries[0]).toEqual({
-      label: 'Status', value: 'Finalisiert',
+      label: 'Status',
+      value: 'Finalisiert',
     });
   });
 
   it('uses a selected opaque QR reference and never a text token', () => {
-    const assignAdminPatientQrCode = vi.fn().mockReturnValue(of({
-      patient: { editReference: 'opaque', operationSceneId: 3, protocolStatus: 'draft', createdAt: '', updatedAt: '' },
-      printableQrToken: null,
-    }));
-    TestBed.configureTestingModule({ providers: [{ provide: ApiClient, useValue: { assignAdminPatientQrCode, availableAdminPatientQrCodes: () => of({ total: 0, items: [] }) } }] });
+    const assignAdminPatientQrCode = vi.fn().mockReturnValue(
+      of({
+        patient: {
+          editReference: 'opaque',
+          operationSceneId: 3,
+          protocolStatus: 'draft',
+          createdAt: '',
+          updatedAt: '',
+        },
+        printableQrToken: null,
+      }),
+    );
+    TestBed.configureTestingModule({
+      providers: [
+        {
+          provide: ApiClient,
+          useValue: {
+            assignAdminPatientQrCode,
+            availableAdminPatientQrCodes: () => of({ total: 0, items: [] }),
+          },
+        },
+      ],
+    });
     const dashboard = TestBed.runInInjectionContext(() => new AdminDashboard());
-    dashboard['managedPatient'].set({ editReference: 'opaque', operationSceneId: 3, protocolStatus: 'draft', createdAt: '', updatedAt: '' });
+    dashboard['managedPatient'].set({
+      editReference: 'opaque',
+      operationSceneId: 3,
+      protocolStatus: 'draft',
+      createdAt: '',
+      updatedAt: '',
+    });
     dashboard['managedQrForm'].controls.qrReference.setValue('opaque-qr');
 
     dashboard['assignManagedPatientQr']('existing');
 
-    expect(assignAdminPatientQrCode).toHaveBeenCalledWith('opaque', { source: 'existing', qrReference: 'opaque-qr' });
+    expect(assignAdminPatientQrCode).toHaveBeenCalledWith('opaque', {
+      source: 'existing',
+      qrReference: 'opaque-qr',
+    });
   });
 });

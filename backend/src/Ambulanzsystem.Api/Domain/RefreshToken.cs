@@ -13,4 +13,8 @@ public class RefreshToken : AuditableEntity
 
     public DateTime ExpiresAt { get; set; }
     public bool IsRevoked { get; set; }
+
+    // Set only when the token was exchanged for a new one (not on logout/admin revocation), so a
+    // later second use of it can be recognised as theft.
+    public DateTime? RotatedAt { get; set; }
 }

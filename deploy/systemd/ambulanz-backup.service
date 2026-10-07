@@ -1,0 +1,9 @@
+[Unit]
+Description=Ambulanzsystem nightly database backup
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+# install.sh replaces @ROOT@ with the install folder.
+ExecStart=/usr/bin/env bash @ROOT@/scripts/backup.sh

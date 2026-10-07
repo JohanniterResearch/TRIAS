@@ -27,6 +27,26 @@ describe('AuthStore session matching', () => {
     expect(auth.sessionIdentity()).not.toBe(replaced);
   });
 
+  it('adopts tokens rotated in another tab without replacing the session identity', () => {
+    const auth = TestBed.inject(AuthStore);
+    auth.setResponderSession({ token: 'first', refreshToken: 'first-refresh', tokenType: 'user' });
+    const identity = auth.sessionIdentity();
+    const rotated = JSON.parse(localStorage.getItem('ambulanzsystem.auth.v1')!);
+    rotated.responder.refreshToken = 'second-refresh';
+    localStorage.setItem('ambulanzsystem.auth.v1', JSON.stringify(rotated));
+
+    window.dispatchEvent(new StorageEvent('storage', { key: 'ambulanzsystem.auth.v1' }));
+
+    expect(auth.activeSession()?.refreshToken).toBe('second-refresh');
+    expect(auth.sessionIdentity()).toBe(identity);
+
+    const ended = { ...rotated, responder: { ...rotated.responder, expired: true } };
+    localStorage.setItem('ambulanzsystem.auth.v1', JSON.stringify(ended));
+    window.dispatchEvent(new StorageEvent('storage', { key: 'ambulanzsystem.auth.v1' }));
+    expect(auth.activeSession()?.expired).toBe(true);
+    expect(auth.sessionIdentity()).not.toBe(identity);
+  });
+
   it.each(['user', 'qr'] as const)(
     'rejects an unflagged expired %s JWT for responder/QR access',
     (tokenType) => {

@@ -9,8 +9,6 @@ public static class AmbulanzprotokollDefaults
 {
     private static readonly Lazy<string> _json = new(LoadJson);
 
-    public static string DefaultFormStateJson => _json.Value;
-
     public static JsonObject FreshTemplate() => (JsonNode.Parse(_json.Value) as JsonObject)!;
 
     private static string LoadJson()

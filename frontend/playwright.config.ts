@@ -1,9 +1,9 @@
 import { defineConfig } from '@playwright/test';
 
 const dbHostPort = process.env.DB_HOST_PORT ?? '5435';
-const backendPort = process.env.BACKEND_PORT ?? '5042';
 const frontendPort = process.env.FRONTEND_PORT ?? '4200';
-const backendUrl = `http://127.0.0.1:${backendPort}`;
+// proxy.conf.json forwards /api and /hubs here.
+const backendUrl = 'http://127.0.0.1:5042';
 const frontendUrl = `http://127.0.0.1:${frontendPort}`;
 
 export default defineConfig({
@@ -31,7 +31,7 @@ export default defineConfig({
       timeout: 120_000,
     },
     {
-      command: `bash scripts/run-e2e-dev-server.sh --host 127.0.0.1 --port ${frontendPort}`,
+      command: `npm start -- --host 127.0.0.1 --port ${frontendPort}`,
       url: `${frontendUrl}/login`,
       reuseExistingServer: false,
       timeout: 120_000,

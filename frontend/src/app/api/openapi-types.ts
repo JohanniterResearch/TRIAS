@@ -75,7 +75,7 @@ export interface paths {
         put?: never;
         /**
          * Rotate a refresh token (old is revoked, new pair issued).
-         * @description Consumes one valid refresh token and rotates it into a new access and refresh token pair.
+         * @description Consumes one valid refresh token and rotates it into a new access and refresh token pair. Presenting an already rotated token again (after a 30-second grace window) is treated as theft and revokes every session of the account.
          */
         post: operations["refreshToken"];
         delete?: never;
@@ -2542,7 +2542,7 @@ export interface operations {
                     kontaminiert?: boolean;
                     /**
                      * Format: date-time
-                     * @description Client-side write timestamp for offline replay merge; must not be more than five minutes ahead of server UTC. Older timestamps remain valid.
+                     * @description Client-side write timestamp for offline replay merge; values ahead of server UTC are clamped to server time. Older timestamps remain valid.
                      */
                     clientUpdatedAt?: string;
                 };
@@ -2578,7 +2578,7 @@ export interface operations {
                     respiration: boolean;
                     /**
                      * Format: date-time
-                     * @description Must not be more than five minutes ahead of server UTC. Older timestamps remain valid.
+                     * @description Values ahead of server UTC are clamped to server time. Older timestamps remain valid.
                      */
                     clientUpdatedAt?: string;
                 };
@@ -2627,7 +2627,7 @@ export interface operations {
                     indoorLocation?: string;
                     /**
                      * Format: date-time
-                     * @description Client-side write timestamp for offline replay merge (NFR-SAFE-08/09); must not be more than five minutes ahead of server UTC. Older timestamps remain valid.
+                     * @description Client-side write timestamp for offline replay merge (NFR-SAFE-08/09); values ahead of server UTC are clamped to server time. Older timestamps remain valid.
                      */
                     clientUpdatedAt?: string;
                 };
@@ -2756,7 +2756,7 @@ export interface operations {
                     formState: components["schemas"]["ProtokollFormState"];
                     /**
                      * Format: date-time
-                     * @description Local edit timestamp for newer-wins comparison; must not be more than five minutes ahead of server UTC. Older timestamps remain valid.
+                     * @description Local edit timestamp for newer-wins comparison; values ahead of server UTC are clamped to server time. Older timestamps remain valid.
                      */
                     clientUpdatedAt?: string;
                     /** @description Required when correcting an already-finalized protocol. */

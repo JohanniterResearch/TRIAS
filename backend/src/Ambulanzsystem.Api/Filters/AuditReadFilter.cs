@@ -1,7 +1,6 @@
 using Ambulanzsystem.Api.Auth;
 using Ambulanzsystem.Api.Data;
 using Ambulanzsystem.Api.Domain;
-using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.Mvc.Filters;
 
 namespace Ambulanzsystem.Api.Filters;
@@ -18,10 +17,7 @@ public class AuditReadFilter(AppDbContext db) : IAsyncActionFilter
         if (executed.Exception is not null || executed.Canceled) return;
         if (executed.Result is not Microsoft.AspNetCore.Mvc.ObjectResult { StatusCode: null or >= 200 and < 300 }) return;
 
-        var attribute = (context.ActionDescriptor as ControllerActionDescriptor)?.MethodInfo
-            .GetCustomAttributes(typeof(AuditReadAttribute), inherit: false)
-            .Cast<AuditReadAttribute>()
-            .FirstOrDefault();
+        var attribute = context.ActionDescriptor.EndpointMetadata.OfType<AuditReadAttribute>().FirstOrDefault();
         if (attribute is null) return;
 
         var id = attribute.IdSource switch

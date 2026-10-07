@@ -118,7 +118,7 @@ public class EventScopeDeletionTests(WebApplicationFactory<Program> factory) : I
         db.Users.Add(user);
         await db.SaveChangesAsync();
         var oldAccess = scope.ServiceProvider.GetRequiredService<TokenService>().IssueUserToken(user);
-        var oldRefresh = await scope.ServiceProvider.GetRequiredService<RefreshTokenService>().IssueAsync(user.Id);
+        var oldRefresh = scope.ServiceProvider.GetRequiredService<RefreshTokenService>().Issue(user.Id);
         await db.SaveChangesAsync();
         var client = factory.CreateClient();
         Assert.Equal(HttpStatusCode.Unauthorized, (await client.PostAsJsonAsync(loginPath,

@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Ambulanzsystem.Api.Data;
+using Ambulanzsystem.Api.Dtos;
 using Ambulanzsystem.Api.Services;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
@@ -73,7 +74,7 @@ public class ApiTrustBoundaryTests(WebApplicationFactory<Program> factory) : ICl
     }
 
     [Fact]
-    public async Task TriageUpdate_RejectsUnknownField_MalformedBoolean_AndFutureTimestamp()
+    public async Task TriageUpdate_RejectsUnknownField_AndMalformedBoolean()
     {
         var admin = await AdminClientAsync();
         var sceneId = await CreateSceneAsync(admin);
@@ -88,13 +89,74 @@ public class ApiTrustBoundaryTests(WebApplicationFactory<Program> factory) : ICl
             new { respiration = "yes" });
         Assert.Equal(HttpStatusCode.BadRequest, malformed.StatusCode);
 
-        var future = await admin.PostAsJsonAsync($"/api/persons/{patient.id}/update-triage-color",
-            new { triageColor = "rot", clientUpdatedAt = DateTime.UtcNow.AddMinutes(6) });
-        Assert.Equal(HttpStatusCode.BadRequest, future.StatusCode);
+    }
+
+    [Fact]
+    public async Task PatientWrites_RequireValueFields_DefaultNullSource_AndReturnContractErrors()
+    {
+        var admin = await AdminClientAsync();
+        var sceneId = await CreateSceneAsync(admin);
+        var patient = await (await admin.PostAsJsonAsync("/api/persons/manual", new { operationSceneId = sceneId }))
+            .Content.ReadFromJsonAsync<PatientBearing>();
+
+        // Missing required value fields (no silent false/0), malformed JSON, wrong types, unknown
+        // fields and out-of-range values all get the contract shape and a fixed German message.
+        var invalid = new (string Path, string Json)[]
+        {
+            ("respiration", "{}"),
+            ("location", """{"lng":16.3}"""),
+            ("location", """{"lat":48.2,"lng":"""),
+            ("respiration", """{"respiration":"yes"}"""),
+            ("respiration", """{"respiration":true,"extra":1}"""),
+            ("location", """{"lat":91,"lng":16.3}"""),
+        };
+        foreach (var (path, json) in invalid)
+        {
+            var response = await admin.PostAsync($"/api/persons/{patient!.id}/{path}",
+                new StringContent(json, System.Text.Encoding.UTF8, "application/json"));
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            var error = await response.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal("error", error.GetProperty("status").GetString());
+            Assert.Equal(ErrorResponse.InvalidRequest, error.GetProperty("message").GetString());
+        }
+
+        var nullSource = await admin.PostAsJsonAsync($"/api/persons/{patient!.id}/location",
+            new { lat = 48.2, lng = 16.3, source = (string?)null });
+        Assert.Equal(HttpStatusCode.OK, nullSource.StatusCode);
+        var located = await nullSource.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("gps", located.GetProperty("locationSource").GetString());
+
+        var longName = await admin.PostAsJsonAsync("/api/persons/manual",
+            new { operationSceneId = sceneId, name = new string('x', 256) });
+        Assert.Equal(HttpStatusCode.BadRequest, longName.StatusCode);
+        var longNameError = await longName.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("error", longNameError.GetProperty("status").GetString());
+        Assert.Equal(ErrorResponse.InvalidRequest, longNameError.GetProperty("message").GetString());
+    }
+
+    [Fact]
+    public async Task FutureClientTimestamps_AreClampedToServerTime_NotRejected()
+    {
+        var admin = await AdminClientAsync();
+        var sceneId = await CreateSceneAsync(admin);
+        var patient = await (await admin.PostAsJsonAsync("/api/persons/manual", new { operationSceneId = sceneId }))
+            .Content.ReadFromJsonAsync<PatientBearing>();
+
+        // A device clock one hour fast must neither strand the write nor win every later edit.
+        var future = await admin.PostAsJsonAsync($"/api/persons/{patient!.id}/update-triage-color",
+            new { triageColor = "rot", clientUpdatedAt = DateTime.UtcNow.AddHours(1) });
+        Assert.Equal(HttpStatusCode.OK, future.StatusCode);
 
         var respirationFuture = await admin.PostAsJsonAsync($"/api/persons/{patient.id}/respiration",
-            new { respiration = true, clientUpdatedAt = DateTime.UtcNow.AddMinutes(6) });
-        Assert.Equal(HttpStatusCode.BadRequest, respirationFuture.StatusCode);
+            new { respiration = true, clientUpdatedAt = DateTime.UtcNow.AddHours(1) });
+        Assert.Equal(HttpStatusCode.OK, respirationFuture.StatusCode);
+
+        await Task.Delay(50);
+        var later = await admin.PostAsJsonAsync($"/api/persons/{patient.id}/update-triage-color",
+            new { triageColor = "gelb", clientUpdatedAt = DateTime.UtcNow });
+        Assert.Equal(HttpStatusCode.OK, later.StatusCode);
+        var body = await later.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        Assert.Equal("gelb", body.GetProperty("triagefarbe").GetString());
     }
 
     [Fact]

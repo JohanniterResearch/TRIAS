@@ -1,0 +1,21 @@
+# TLS_ISSUER is either "internal" (self-signed local CA, for IPs / LAN names) or an
+# e-mail address (Let's Encrypt; needs a public DNS name and port 80 reachable).
+{
+	# Clients send no SNI when connecting to a bare IP; without this the handshake fails.
+	default_sni {$SITE_ADDRESS}
+}
+
+{$SITE_ADDRESS} {
+	tls {$TLS_ISSUER}
+	encode zstd gzip
+	# The API's SPA fallback (Program.cs MapFallback) sends index.html without a Content-Type; with
+	# nosniff, browsers then download it or show it as text whenever Caddy doesn't compress (and so
+	# doesn't sniff). Label extensionless app routes only; files and the API keep their own types.
+	@spa {
+		method GET HEAD
+		not path /api/* /hubs/* /health
+		not path_regexp \.[^/]*$
+	}
+	header @spa ?Content-Type "text/html; charset=utf-8"
+	reverse_proxy backend:8080
+}

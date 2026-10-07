@@ -1,10 +1,8 @@
 import { expect, Page, test } from '@playwright/test';
 
-declare const process: { env: Record<string, string | undefined> };
-
 test.describe.configure({ mode: 'serial' });
 
-const apiUrl = `http://127.0.0.1:${process.env.BACKEND_PORT ?? '5042'}`;
+const apiUrl = 'http://127.0.0.1:5042';
 
 let loginPartition = 10;
 

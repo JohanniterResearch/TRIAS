@@ -13,15 +13,15 @@ import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import * as L from 'leaflet';
 
-import { apiErrorMessage, ApiClient } from '../../api/api-client';
+import { apiErrorMessage, ApiClient, isRetryableFailure } from '../../api/api-client';
 import type { components } from '../../api/openapi-types';
+import { DEFAULT_MAP_CENTER, osmMap } from '../../shared/osm-map';
+import { TRIAGE_COLORS, type TriageColor } from '../../shared/triage';
 import { MyAccess } from '../../auth/components/my-access';
 import { OfflineQueueService } from '../../sync/offline-queue.service';
 import { SyncStatusService } from '../../sync/sync-status.service';
 import { ResponderStateStore } from '../services/responder-state';
 import { TriageDraftStore } from '../services/triage-draft-store';
-
-type TriageColor = components['schemas']['TriageColor'];
 
 @Component({
   selector: 'app-triage-page',
@@ -137,12 +137,7 @@ export class TriagePage implements AfterViewInit, OnDestroy {
     lng: [null as number | null],
     indoorLocation: [''],
   });
-  protected readonly colors: Array<{ value: TriageColor; label: string }> = [
-    { value: 'rot', label: 'Rot' },
-    { value: 'gelb', label: 'Gelb' },
-    { value: 'gruen', label: 'Grün' },
-    { value: 'schwarz', label: 'Schwarz' },
-  ];
+  protected readonly colors = TRIAGE_COLORS;
   protected readonly flags = [
     { name: 'respiration', label: 'Atmung' },
     { name: 'blutung', label: 'Blutung' },
@@ -161,6 +156,7 @@ export class TriagePage implements AfterViewInit, OnDestroy {
   private map: L.Map | null = null;
   private marker: L.CircleMarker | null = null;
   private flagsRevision = 0;
+  private flagsEdited = false;
 
   constructor() {
     effect(() => {
@@ -183,12 +179,9 @@ export class TriagePage implements AfterViewInit, OnDestroy {
       return;
     }
     const patient = this.state.patient();
-    const lat = patient?.latitudePatient ?? 48.2082;
-    const lng = patient?.longitudePatient ?? 16.3738;
-    this.map = L.map(element).setView([lat, lng], patient?.latitudePatient == null ? 13 : 17);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap contributors',
-    }).addTo(this.map);
+    const lat = patient?.latitudePatient ?? DEFAULT_MAP_CENTER[0];
+    const lng = patient?.longitudePatient ?? DEFAULT_MAP_CENTER[1];
+    this.map = osmMap(element, [lat, lng], patient?.latitudePatient == null ? 13 : 17);
     if (patient?.latitudePatient != null && patient.longitudePatient != null) {
       this.setMarker(patient.latitudePatient, patient.longitudePatient);
       this.locationForm.patchValue({
@@ -208,22 +201,29 @@ export class TriagePage implements AfterViewInit, OnDestroy {
   }
 
   protected saveFlags(flag: (typeof this.flags)[number]['name']): void {
+    // A tap supersedes any restore still in flight; otherwise the restore can reset the box.
+    this.flagsEdited = true;
+    this.flagsRevision++;
     this.save({ [flag]: this.flagsForm.controls[flag].value });
   }
 
   private async restoreFlags(patient: components['schemas']['Patient']): Promise<void> {
     const revision = ++this.flagsRevision;
-    this.flagsForm.patchValue({
+    const server = {
       respiration: patient.atmung ?? null,
       blutung: patient.blutung ?? null,
       radialispuls: patient.radialispuls ?? null,
       transport: patient.transport ?? null,
       dringend: patient.dringend ?? null,
       kontaminiert: patient.kontaminiert ?? null,
-    });
+    };
+    // Show server values at once on first load; after a user edit, only apply them together
+    // with the queued intents so an unsynced tap is never shown as reverted.
+    if (!this.flagsEdited) this.flagsForm.patchValue(server);
     try {
       const pending = await this.offlineQueue.pendingTriage(patient.id);
       if (revision !== this.flagsRevision || this.state.patient()?.id !== patient.id) return;
+      this.flagsForm.patchValue(server);
       for (const intent of pending) this.flagsForm.patchValue(intent);
     } catch {
       this.error.set('Lokale Triage-Änderungen konnten nicht geladen werden.');
@@ -269,21 +269,32 @@ export class TriagePage implements AfterViewInit, OnDestroy {
       return;
     }
 
-    this.api
-      .updatePatientLocation(patient.id, {
-        lat: Number(raw.lat),
-        lng: Number(raw.lng),
-        source: 'manual',
-        indoorLocation: raw.indoorLocation || undefined,
-      })
-      .subscribe({
-        next: (updated) => {
-          this.state.setPatient(updated);
-          this.message.set('Position gespeichert.');
-        },
-        error: (error: unknown) =>
-          this.error.set(apiErrorMessage(error, 'Position konnte nicht gespeichert werden.')),
-      });
+    const body = {
+      lat: Number(raw.lat),
+      lng: Number(raw.lng),
+      source: 'manual' as const,
+      indoorLocation: raw.indoorLocation || undefined,
+      clientUpdatedAt: new Date().toISOString(),
+    };
+    const queue = () =>
+      this.offlineQueue
+        .queueLocation(patient.id, body)
+        .then(() => this.message.set('Lokal gespeichert, Sync ausstehend.'))
+        .catch(() => this.error.set('Lokale Sync-Warteschlange konnte nicht gespeichert werden.'));
+    if (patient.id < 0) {
+      void queue();
+      return;
+    }
+    this.api.updatePatientLocation(patient.id, body).subscribe({
+      next: (updated) => {
+        this.state.setPatient(updated);
+        this.message.set('Position gespeichert.');
+      },
+      error: (error: unknown) =>
+        isRetryableFailure(error)
+          ? void queue()
+          : this.error.set(apiErrorMessage(error, 'Position konnte nicht gespeichert werden.')),
+    });
   }
 
   protected continueToProtocol(): void {

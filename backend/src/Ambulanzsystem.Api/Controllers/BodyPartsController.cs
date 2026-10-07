@@ -54,8 +54,7 @@ public class BodyPartsController(AppDbContext db, AuditService audit, SceneNotif
         await db.SaveChangesAsync();
         await tx.CommitAsync();
 
-        var protokollStatus = await db.AmbulanzprotokollPage1s.Where(r => r.PatientId == request.Idpatient).Select(r => r.Status).FirstOrDefaultAsync();
-        notifier.PatientUpdated(patient.OperationSceneId, PatientResponse.From(patient), parts, false, protokollStatus);
+        await notifier.PatientUpdatedAsync(patient, false, bodyParts: parts);
 
         return Ok(new BodyPartsResponse(request.Idpatient, parts, body.UpdatedAt));
     }
