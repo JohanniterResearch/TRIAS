@@ -1,6 +1,6 @@
 # Build context is the repo root (see deploy/make-bundle.sh) because the API
 # project links contract/*.json files that live outside backend/.
-FROM node:24-alpine AS frontend
+FROM node:26-alpine AS frontend
 WORKDIR /src
 COPY frontend/package.json frontend/package-lock.json frontend/
 RUN cd frontend && npm ci
