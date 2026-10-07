@@ -17,7 +17,7 @@ COPY backend/src/Ambulanzsystem.Api/ backend/src/Ambulanzsystem.Api/
 COPY contract/ contract/
 RUN dotnet publish backend/src/Ambulanzsystem.Api/Ambulanzsystem.Api.csproj -c Release -o /app --no-restore
 
-FROM mcr.microsoft.com/dotnet/aspnet:8.0
+FROM mcr.microsoft.com/dotnet/aspnet:10.0
 WORKDIR /app
 COPY --from=build /app .
 COPY --from=frontend /src/frontend/dist/ambulanzsystem-frontend/browser/ wwwroot/
