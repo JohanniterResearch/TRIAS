@@ -1,0 +1,873 @@
+.ambd-shell {
+  min-height: calc(100vh - 72px);
+  padding: 32px 24px 48px;
+  background:
+    radial-gradient(circle at top, rgba(61, 125, 224, 0.16), transparent 32%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 34%),
+    var(--bg-page);
+  color: var(--text);
+}
+
+.ambd-shell__content {
+  max-width: 1440px;
+  margin: 0 auto;
+}
+
+.ambd-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto;
+  gap: 20px;
+  align-items: start;
+  margin-bottom: 20px;
+  padding: 20px 24px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02)),
+    rgba(26, 26, 46, 0.92);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.22);
+}
+
+.ambd-toolbar__intro {
+  display: grid;
+  gap: 6px;
+}
+
+.ambd-toolbar__eyebrow {
+  font-size: 0.78rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.ambd-toolbar__title {
+  font-size: 1.8rem;
+  line-height: 1.1;
+}
+
+.ambd-toolbar__copy {
+  color: var(--text-muted);
+  max-width: 42rem;
+  font-size: 0.92rem;
+}
+
+.ambd-toolbar__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-content: start;
+}
+
+.ambd-toolbar__meta-item {
+  padding: 7px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 0.82rem;
+  line-height: 1;
+}
+
+.ambd-toolbar__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.ambd-toolbar__button,
+.ambd-signature__clear,
+.ambd-legend-button {
+  font: inherit;
+  cursor: pointer;
+}
+
+.ambd-toolbar__button {
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+}
+
+.ambd-toolbar__button:hover,
+.ambd-signature__clear:hover,
+.ambd-legend-button:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.ambd-toolbar__button--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.ambd-toolbar__button--primary:hover {
+  background: var(--accent-hover);
+}
+
+.ambd-error {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(229, 62, 62, 0.4);
+  background: rgba(229, 62, 62, 0.12);
+  color: #ffd7d7;
+}
+
+.ambd-warning {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border: 1px solid rgba(234, 179, 8, 0.45);
+  border-radius: 12px;
+  background: rgba(234, 179, 8, 0.12);
+  color: #fff1b8;
+}
+
+.ambd-warning ul {
+  margin: 6px 0 0;
+  padding-left: 20px;
+}
+
+.ambd-paper-wrap {
+  display: flex;
+  justify-content: center;
+  overflow: hidden;
+  padding: 6px 0 10px;
+}
+
+.ambd-page {
+  --paper-border: max(1px, 0.08cqw);
+  --paper-thick-border: max(1.6px, 0.12cqw);
+  --paper-gap: 0.48cqw;
+  --paper-gap-lg: 0.7cqw;
+  --paper-pad-x: 0.64cqw;
+  --paper-pad-y: 0.38cqw;
+  --paper-label: 0.74cqw;
+  --paper-text: 0.86cqw;
+  --paper-title: 0.98cqw;
+  --paper-brand: 1.58cqw;
+  --paper-rail: 0.82cqw;
+  position: relative;
+  width: min(100%, 1241px);
+  min-width: 0;
+  aspect-ratio: 1241 / 1755;
+  background: #f7f5f2;
+  border: var(--paper-thick-border) solid #111;
+  box-shadow:
+    0 28px 60px rgba(0, 0, 0, 0.3),
+    0 4px 14px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+  font-family: Arial, Helvetica, sans-serif;
+  color: #111;
+  container-type: inline-size;
+}
+
+.ambd-zone {
+  position: absolute;
+  border: var(--paper-border) solid #111;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.ambd-zone--section {
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.ambd-zone--banded,
+.ambd-zone--paper {
+  background:
+    linear-gradient(180deg, rgba(217, 163, 163, 0.94) 0 5.4%, rgba(255, 255, 255, 0.9) 5.4%);
+}
+
+.ambd-zone-inner {
+  position: relative;
+  height: 100%;
+  padding: var(--paper-pad-y) var(--paper-pad-x);
+}
+
+.ambd-zone--banded .ambd-zone-inner,
+.ambd-zone--paper .ambd-zone-inner {
+  padding-left: 2.7cqw;
+  padding-right: 0.55cqw;
+}
+
+.ambd-zone--branding .ambd-zone-inner {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.35cqw;
+}
+
+.ambd-rail {
+  position: absolute;
+  left: 0.5cqw;
+  top: 0.65cqw;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  font-size: var(--paper-rail);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #3d1d1d;
+}
+
+.ambd-rail--right {
+  left: auto;
+  right: 0.5cqw;
+}
+
+.ambd-branding {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38cqw;
+  color: #d41827;
+  font-size: var(--paper-brand);
+  font-weight: 700;
+}
+
+.ambd-branding__mark {
+  width: 1.65cqw;
+  height: 1.65cqw;
+  border-radius: 50%;
+  border: max(1px, 0.1cqw) solid #d41827;
+  color: #fff;
+  background: #d41827;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.02cqw;
+  line-height: 1;
+}
+
+.ambd-branding__title {
+  font-size: var(--paper-title);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.ambd-grid,
+.ambd-patient-grid,
+.ambd-header-grid,
+.ambd-primary-grid,
+.ambd-anamnese,
+.ambd-findings,
+.ambd-measures,
+.ambd-footer,
+.ambd-footer__top,
+.ambd-footer__bottom,
+.ambd-messwerte__grid,
+.ambd-measures__subline {
+  display: grid;
+  gap: var(--paper-gap);
+}
+
+.ambd-grid--2 {
+  grid-template-columns: 1fr 1fr;
+}
+
+.ambd-header-grid {
+  grid-template-columns: 1.24fr 0.72fr repeat(4, 0.68fr) 1.28fr;
+}
+
+.ambd-patient-grid--row1 {
+  grid-template-columns: 2.26fr 1.54fr 0.92fr 0.96fr 0.86fr;
+  margin-bottom: 0.25cqw;
+}
+
+.ambd-patient-grid--row2 {
+  grid-template-columns: 2fr 1fr 1fr;
+  margin-bottom: 0.25cqw;
+}
+
+.ambd-patient-grid--row3 {
+  grid-template-columns: 1.18fr 1.38fr 0.82fr;
+}
+
+.ambd-field,
+.ambd-textarea-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.14cqw;
+  min-width: 0;
+}
+
+.ambd-field-label,
+.ambd-subtitle,
+.ambd-assessment-card__title,
+.ambd-pupillen__title,
+.ambd-schmerz__title,
+.ambd-messwerte__title,
+.ambd-gcs__title,
+.ambd-gcs__section-title,
+.ambd-measures__title,
+.ambd-medications__title,
+.ambd-medications__heading {
+  font-size: var(--paper-label);
+  line-height: 1.08;
+}
+
+.ambd-field-label {
+  font-weight: 700;
+  color: #7a2a2a;
+}
+
+.ambd-subtitle,
+.ambd-medications__title,
+.ambd-measures__title,
+.ambd-gcs__title,
+.ambd-pupillen__title,
+.ambd-schmerz__title,
+.ambd-messwerte__title,
+.ambd-assessment-card__title {
+  font-weight: 700;
+  color: #6f2626;
+}
+
+.ambd-page .ambd-input,
+.ambd-page .ambd-textarea,
+.ambd-page .ambd-medications__input {
+  width: 100%;
+  border: 0;
+  border-bottom: var(--paper-border) solid #111;
+  background: transparent;
+  color: #111;
+  font: inherit;
+  font-size: var(--paper-text);
+  line-height: 1.1;
+  padding: 0.08cqw 0 0.15cqw;
+  border-radius: 0;
+}
+
+.ambd-page .ambd-input::placeholder,
+.ambd-page .ambd-textarea::placeholder,
+.ambd-page .ambd-medications__input::placeholder {
+  color: rgba(17, 17, 17, 0.35);
+}
+
+.ambd-medications__input {
+  min-height: 1.32cqw;
+}
+
+.ambd-input:focus,
+.ambd-textarea:focus,
+.ambd-medications__input:focus {
+  outline: none;
+  border-bottom-width: var(--paper-thick-border);
+}
+
+.ambd-segmented-shell {
+  position: relative;
+  overflow: hidden;
+}
+
+.ambd-segmented-shell::after {
+  content: '';
+  position: absolute;
+  inset: 0 0 0.18cqw;
+  pointer-events: none;
+  border-bottom: var(--paper-border) solid #111;
+  background:
+    repeating-linear-gradient(
+      to right,
+      transparent 0,
+      transparent calc(16.666% - var(--paper-border)),
+      rgba(17, 17, 17, 0.26) calc(16.666% - var(--paper-border)),
+      rgba(17, 17, 17, 0.26) 16.666%
+    );
+}
+
+.ambd-input--segmented {
+  border-bottom-color: transparent;
+  letter-spacing: 0.28em;
+  padding-right: 0.18cqw;
+}
+
+.ambd-option-list,
+.ambd-option-stack,
+.ambd-radio-inline,
+.ambd-time-flags__checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.22cqw 0.58cqw;
+}
+
+.ambd-option-stack {
+  flex-direction: column;
+}
+
+.ambd-option-list--inline,
+.ambd-radio-inline {
+  align-items: center;
+}
+
+.ambd-option,
+.ambd-radio-inline__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.24cqw;
+  font-size: var(--paper-label);
+  line-height: 1.1;
+  cursor: pointer;
+}
+
+.ambd-option--inline {
+  white-space: nowrap;
+}
+
+.ambd-option-input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ambd-check,
+.ambd-matrix-box {
+  width: 0.82cqw;
+  height: 0.82cqw;
+  border: var(--paper-border) solid #111;
+  display: inline-block;
+  background: #fff;
+  flex: 0 0 auto;
+}
+
+.ambd-check--checked,
+.ambd-matrix-box--checked {
+  background:
+    linear-gradient(45deg, transparent 40%, #111 42%, #111 58%, transparent 60%),
+    linear-gradient(-45deg, transparent 40%, #111 42%, #111 58%, transparent 60%);
+}
+
+.ambd-naca {
+  margin-bottom: 0.35cqw;
+}
+
+.ambd-primary-grid {
+  grid-template-columns: 1.05fr 1.42fr 1.5fr 0.92fr;
+  margin-bottom: 0.35cqw;
+}
+
+.ambd-assessment-card,
+.ambd-pupillen,
+.ambd-schmerz,
+.ambd-messwerte,
+.ambd-gcs,
+.ambd-measures__section {
+  border: var(--paper-border) solid #111;
+  padding: 0.32cqw 0.45cqw;
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.ambd-time-flags {
+  display: grid;
+  grid-template-columns: 0.72fr 1.18fr;
+  gap: var(--paper-gap);
+  align-items: end;
+}
+
+.ambd-lined-textarea {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.ambd-textarea {
+  resize: none;
+  min-height: 100%;
+  border-bottom: 0;
+  line-height: 1.46cqw;
+  padding-top: 0.1cqw;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent calc(1.42cqw - var(--paper-border)),
+    rgba(17, 17, 17, 0.22) calc(1.42cqw - var(--paper-border)),
+    rgba(17, 17, 17, 0.22) 1.42cqw
+  );
+}
+
+.ambd-lined-textarea__line {
+  display: none;
+}
+
+.ambd-anamnese {
+  grid-template-columns: 2.08fr 0.92fr;
+  height: 100%;
+}
+
+.ambd-anamnese__notes,
+.ambd-anamnese__bodymap,
+.ambd-measures__left,
+.ambd-measures__right,
+.ambd-findings__left,
+.ambd-findings__middle,
+.ambd-findings__right {
+  min-height: 0;
+}
+
+.ambd-body-map {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  gap: 0.55cqw;
+  height: 100%;
+}
+
+.ambd-body-map__figures {
+  display: flex;
+  justify-content: center;
+  gap: 1.05cqw;
+  align-items: flex-end;
+}
+
+.ambd-body-map__figure {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.16cqw;
+}
+
+.ambd-body-map__letters {
+  min-height: 0.92cqw;
+  font-size: 1.5cqw;
+  line-height: 1;
+  color: #b2b2b2;
+  font-weight: 700;
+  letter-spacing: 0.42cqw;
+}
+
+.ambd-body-map__svg {
+  width: 7.8cqw;
+  height: 14.7cqw;
+  cursor: crosshair;
+}
+
+.ambd-figure-part {
+  fill: #f2f2f2;
+  stroke: #686868;
+  stroke-width: 1.1;
+}
+
+.ambd-body-map__legend {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.24cqw 0.4cqw;
+}
+
+.ambd-legend-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2cqw;
+  min-height: 1.55cqw;
+  padding: 0 0.32cqw;
+  border: var(--paper-border) solid rgba(17, 17, 17, 0.18);
+  border-radius: 0.28cqw;
+  background: transparent;
+  color: #111;
+  font-size: var(--paper-label);
+}
+
+.ambd-legend-button--active {
+  font-weight: 700;
+  border-color: #111;
+}
+
+.ambd-legend-button__dot {
+  width: 0.62cqw;
+  height: 0.62cqw;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.ambd-medications__title {
+  margin-bottom: 0.28cqw;
+}
+
+.ambd-medications__sheet {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.48cqw;
+}
+
+.ambd-medications__half {
+  display: grid;
+  grid-template-columns: 2fr 0.88fr 0.72fr 0.86fr;
+  gap: 0.24cqw 0.4cqw;
+}
+
+.ambd-findings {
+  grid-template-columns: 1.12fr 1.26fr 0.98fr;
+  height: 100%;
+}
+
+.ambd-findings__left,
+.ambd-findings__middle,
+.ambd-findings__right {
+  display: grid;
+  gap: var(--paper-gap);
+}
+
+.ambd-pupillen__head,
+.ambd-pupillen__row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 0.42cqw;
+  align-items: center;
+}
+
+.ambd-pupillen__head,
+.ambd-pupillen__label {
+  font-size: var(--paper-label);
+}
+
+.ambd-matrix-box {
+  padding: 0;
+}
+
+.ambd-schmerz__ticks {
+  display: flex;
+  gap: 0.32cqw;
+  align-items: flex-end;
+  margin: 0.34cqw 0;
+}
+
+.ambd-scale-point {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.14cqw;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--paper-label);
+  color: #111;
+}
+
+.ambd-scale-point__tick {
+  width: max(1px, 0.08cqw);
+  height: 0.96cqw;
+  background: #666;
+}
+
+.ambd-scale-point--active .ambd-scale-point__tick {
+  background: #c93d3d;
+}
+
+.ambd-messwerte__grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ambd-messwerte__keine {
+  grid-column: 1 / -1;
+}
+
+.ambd-checkbox-pair {
+  display: flex;
+  gap: 0.46cqw;
+  align-items: center;
+}
+
+.ambd-gcs__columns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.42cqw;
+}
+
+.ambd-gcs__summe {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 0.36cqw;
+  font-size: var(--paper-text);
+}
+
+.ambd-gcs__summe-box {
+  min-width: 3.3cqw;
+  min-height: 1.34cqw;
+  border-bottom: var(--paper-border) solid #c93d3d;
+  text-align: center;
+}
+
+.ambd-measures {
+  grid-template-columns: 1.25fr 0.94fr;
+  height: 100%;
+}
+
+.ambd-measures__left,
+.ambd-measures__right {
+  display: grid;
+  gap: var(--paper-gap);
+}
+
+.ambd-measures__subline {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.ambd-measures__subline--4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.ambd-measures__subline--2 {
+  grid-template-columns: 0.44fr 1fr;
+}
+
+.ambd-footer {
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  height: 100%;
+}
+
+.ambd-footer__top,
+.ambd-footer__bottom {
+  min-height: 0;
+}
+
+.ambd-footer__top {
+  grid-template-columns: 1.7fr 1.28fr 0.74fr 0.56fr 0.56fr 0.72fr;
+}
+
+.ambd-footer__bottom {
+  grid-template-columns: 1.45fr 1.26fr 1.04fr;
+}
+
+.ambd-signature {
+  display: flex;
+  flex-direction: column;
+  gap: 0.26cqw;
+}
+
+.ambd-signature__canvas {
+  width: 100%;
+  height: 2.2cqw;
+  border: var(--paper-border) solid #111;
+  background: #fff;
+  touch-action: none;
+}
+
+.ambd-signature__clear {
+  align-self: flex-start;
+  min-height: 1.55cqw;
+  padding: 0 0.55cqw;
+  border: var(--paper-border) solid #7d746e;
+  border-radius: 0.3cqw;
+  background: #f4efe9;
+  color: #111;
+  font-size: var(--paper-label);
+}
+
+@media (max-width: 1280px) {
+  .ambd-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .ambd-toolbar__actions {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 1040px) {
+  .ambd-shell {
+    padding-inline: 14px;
+  }
+
+}
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
+
+  html,
+  body,
+  #root,
+  .header,
+  .ambd-shell {
+    background: #fff !important;
+  }
+
+  html,
+  body,
+  #root {
+    width: 210mm;
+    height: 297mm;
+    margin: 0;
+  }
+
+  .ambd-shell {
+    min-height: auto;
+    padding: 0;
+  }
+
+  .ambd-shell__content {
+    width: 210mm;
+    height: 297mm;
+    margin: 0;
+  }
+
+  .header,
+  .sync-bar,
+  .update-banner,
+  .ambd-toolbar,
+  .ambd-error,
+  .ambd-warning,
+  .ambd-signature__clear {
+    display: none;
+  }
+
+  .ambd-paper-wrap {
+    overflow: visible;
+    padding: 0;
+  }
+
+  .ambd-page {
+    box-sizing: border-box;
+    width: 210mm;
+    min-width: 0;
+    height: 297mm;
+    break-inside: avoid;
+    box-shadow: none;
+  }
+}
+
+/* Read-only finalized protocol (WP 4.3): no layout box, values print and read as on paper. */
+fieldset.ambd-readonly {
+  display: contents;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+fieldset.ambd-readonly:disabled input,
+fieldset.ambd-readonly:disabled textarea,
+fieldset.ambd-readonly:disabled select {
+  color: inherit;
+  -webkit-text-fill-color: currentColor;
+  opacity: 1;
+}
+
+fieldset.ambd-readonly:disabled canvas,
+fieldset.ambd-readonly:disabled svg {
+  pointer-events: none;
+}
+
+.ambd-correction {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 8px 0;
+}
+
+.ambd-correction textarea {
+  flex: 1 1 100%;
+  min-height: 3em;
+}
+
+@media print {
+  .ambd-correction {
+    display: none;
+  }
+}

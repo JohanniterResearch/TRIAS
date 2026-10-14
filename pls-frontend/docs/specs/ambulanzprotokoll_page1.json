@@ -1,0 +1,686 @@
+{
+  "meta": {
+    "sourceOfTruth": true,
+    "scope": "page1-paper-mirror-layout",
+    "mustReadBeforeImplementation": true
+  },
+  "document": {
+    "id": "johanniter_ambdoku_page1_paper_mirror",
+    "title": "Johanniter Ambulanzprotokoll - Seite 1",
+    "language": "de-AT",
+    "sourcePage": 1,
+    "pageAspectRatio": "A4-portrait",
+    "baseCanvas": { "width": 1241, "height": 1755 },
+    "uxMode": "paper-mirror"
+  },
+  "renderRules": {
+    "preserveZonePlacement": true,
+    "preserveSectionOrder": true,
+    "preserveOriginalLabels": true,
+    "preserveCheckboxOrdering": true,
+    "preservePaperVisualAnchors": true,
+    "responsiveStrategy": "scale-page-not-reflow-page",
+    "maxAllowedReflow": "inside-zone-only",
+    "visualStyle": {
+      "sectionBandColor": "#d9a3a3",
+      "borderColor": "#111111",
+      "backgroundColor": "#f6f6f6",
+      "inputStyle": "paper-line",
+      "checkboxStyle": "paper-square",
+      "fontTone": "clinical-minimal"
+    }
+  },
+  "contracts": {
+    "assessment_secondary_bodymap": {
+      "bind": "assessment_secondary.bodymap",
+      "type": "array",
+      "items": {
+        "view": {
+          "type": "string",
+          "enum": ["front", "back"]
+        },
+        "marker": {
+          "type": "string",
+          "enum": ["wunde", "fraktur", "schmerz", "prellung", "amputation", "verbrennung", "luxation"]
+        },
+        "x": {
+          "type": "number",
+          "unit": "percent"
+        },
+        "y": {
+          "type": "number",
+          "unit": "percent"
+        }
+      }
+    },
+    "medications_administered": {
+      "bind": "medications_administered",
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "medikament": { "type": "string" },
+        "dosis": { "type": "string" },
+        "art": { "type": "string" },
+        "uhrzeit": {
+          "type": ["string", "null"],
+          "format": "HH:mm"
+        }
+      }
+    },
+    "vitals_schmerz": {
+      "bind": "vitals.schmerz",
+      "type": ["integer", "null"],
+      "minimum": 0,
+      "maximum": 10,
+      "naBind": "vitals.schmerz_nicht_beurteilbar"
+    },
+    "signatures_entlass_san_na": {
+      "bind": "signatures.entlass_san_na",
+      "type": ["string", "null"],
+      "format": "data-url-png"
+    }
+  },
+  "zones": [
+    {
+      "id": "brand_header",
+      "rectPct": { "x": 0, "y": 0, "w": 23, "h": 6 },
+      "type": "static_branding",
+      "content": ["JOHANNITER", "AMBULANZPROTOKOLL"]
+    },
+    {
+      "id": "incident_header",
+      "rectPct": { "x": 23, "y": 0, "w": 77, "h": 6 },
+      "type": "group",
+      "rows": [
+        {
+          "fields": [
+            { "id": "ambulanzort", "label": "Ambulanzort", "type": "line_text", "bind": "incident.ambulanzort" },
+            { "id": "pls_nummer", "label": "Protokoll- / PLS-Nummer", "type": "line_text", "bind": "incident.pls_nummer" }
+          ]
+        },
+        {
+          "fields": [
+            {
+              "id": "datum_segmented",
+              "label": "Datum",
+              "type": "segmented_date_visual",
+              "bind": "incident.datum",
+              "segments": ["T", "T", "M", "M", "J", "J"]
+            },
+            { "id": "uhrzeit_beginn", "label": "Uhrzeit-Beginn", "type": "time", "bind": "incident.uhrzeit_beginn" },
+            { "id": "dnr_san_1", "label": "DNr. - San.", "type": "line_text", "bind": "incident.dnr_san_1" },
+            { "id": "dnr_san_2", "label": "DNr. - San.", "type": "line_text", "bind": "incident.dnr_san_2" },
+            { "id": "dnr_san_3", "label": "DNr. - San.", "type": "line_text", "bind": "incident.dnr_san_3" },
+            { "id": "dnr_na", "label": "DNr. - NA", "type": "line_text", "bind": "incident.dnr_na" },
+            { "id": "funkrufname", "label": "Funkrufname / Behandlungsplatz", "type": "line_text", "bind": "incident.funkrufname" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "patient_block",
+      "rectPct": { "x": 0, "y": 6, "w": 100, "h": 10 },
+      "type": "group",
+      "rows": [
+        {
+          "fields": [
+            { "id": "familienname", "label": "Patient - Familienname", "type": "line_text", "bind": "patient.familienname" },
+            { "id": "vorname", "label": "Vorname", "type": "line_text", "bind": "patient.vorname" },
+            {
+              "id": "geschlecht",
+              "label": "Ges.",
+              "type": "radio_group_inline",
+              "bind": "patient.geschlecht",
+              "options": [
+                { "value": "d", "label": "D" },
+                { "value": "m", "label": "M" },
+                { "value": "w", "label": "W" }
+              ]
+            },
+            { "id": "vers_nr", "label": "Vers.-Nr.", "type": "line_text", "bind": "patient.vers_nr" },
+            { "id": "geb_datum", "label": "Geb.-Datum", "type": "date", "bind": "patient.geburtsdatum" }
+          ]
+        },
+        {
+          "fields": [
+            { "id": "adresse", "label": "Adresse", "type": "line_text", "bind": "patient.adresse" },
+            { "id": "staat", "label": "Staat", "type": "line_text", "bind": "patient.staat" },
+            { "id": "telefon", "label": "Telefon", "type": "tel", "bind": "patient.telefon" }
+          ]
+        },
+        {
+          "fields": [
+            { "id": "arbeitgeber", "label": "Arbeitgeber", "type": "line_text", "bind": "patient.arbeitgeber" },
+            { "id": "versicherungstraeger", "label": "Versicherungsträger", "type": "line_text", "bind": "patient.versicherungstraeger" },
+            {
+              "id": "familienstand",
+              "label": "Familienstand",
+              "type": "segmented_text_visual",
+              "bind": "patient.familienstand"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "erstdiagnose_allgemein",
+      "rectPct": { "x": 0, "y": 16, "w": 100, "h": 9 },
+      "type": "group",
+      "leftRailLabel": "ERST.-DIAGN.",
+      "subgroups": [
+        {
+          "id": "naca",
+          "label": "NACA-Score",
+          "type": "checkbox_group",
+          "bind": "assessment_primary.naca",
+          "options": [
+            { "value": "I", "label": "I geringfügige Störung" },
+            { "value": "II", "label": "II ambulante Abklärung" },
+            { "value": "III", "label": "III stationäre Behandlung" },
+            { "value": "IV", "label": "IV akute Lebensgefahr möglich" },
+            { "value": "V", "label": "V akute Lebensgefahr" },
+            { "value": "VI", "label": "VI Reanimation" },
+            { "value": "VII", "label": "VII Tod" }
+          ]
+        },
+        {
+          "id": "allgemeiner_eindruck",
+          "label": "ALLG. EINDRUCK",
+          "type": "composite",
+          "subgroups": [
+            {
+              "id": "atemweg",
+              "label": "Atemweg",
+              "type": "checkbox_group",
+              "bind": "assessment_primary.atemweg",
+              "options": [
+                { "value": "frei", "label": "frei" },
+                { "value": "gefaehrdet", "label": "gefährdet" },
+                { "value": "verlegt", "label": "verlegt" }
+              ]
+            },
+            {
+              "id": "atmung",
+              "label": "Atmung",
+              "type": "checkbox_group",
+              "bind": "assessment_primary.atmung",
+              "options": [
+                { "value": "apnoe", "label": "Apnoe" },
+                { "value": "schnappatmung", "label": "Schnappatmung" },
+                { "value": "zyanose", "label": "Zyanose" },
+                { "value": "unauffaellig", "label": "unauffällig" },
+                { "value": "dyspnoe", "label": "Dyspnoe" },
+                { "value": "atemgeraeusche", "label": "Atemgeräusche" },
+                { "value": "andere_atemstoerungen", "label": "andere Atemstörungen" }
+              ]
+            },
+            {
+              "id": "kreislauf",
+              "label": "Kreislauf",
+              "type": "checkbox_group",
+              "bind": "assessment_primary.kreislauf",
+              "options": [
+                { "value": "puls_peripher_tastbar", "label": "Puls peripher tastbar" },
+                { "value": "tachykardie", "label": "Tachykardie" },
+                { "value": "bradykardie", "label": "Bradykardie" },
+                { "value": "blass", "label": "blass" },
+                { "value": "kalt", "label": "kalt" },
+                { "value": "unauffaellig", "label": "unauffällig" },
+                { "value": "starke_blutung", "label": "Starke Blutung" },
+                { "value": "geroetet", "label": "gerötet" },
+                { "value": "schweissig", "label": "schweißig" },
+                { "value": "erwaermt", "label": "erwärmt" }
+              ]
+            },
+            {
+              "id": "bewusstsein",
+              "label": "Bewusstsein",
+              "type": "checkbox_group",
+              "bind": "assessment_primary.bewusstsein",
+              "options": [
+                { "value": "wach", "label": "Wach" },
+                { "value": "getruebt", "label": "Getrübt" },
+                { "value": "bewusstlos", "label": "Bewusstlos" },
+                { "value": "agitiert", "label": "Agitiert" }
+              ]
+            },
+            {
+              "id": "angen_notfallzeit",
+              "label": "angen. Notfallzeit",
+              "type": "compound_time_or_flags",
+              "bind": "assessment_primary.angen_notfallzeit",
+              "fields": [
+                { "id": "zeit", "type": "time_optional" },
+                { "id": "gt24h", "type": "checkbox", "label": "> als 24 Stunden" },
+                { "id": "unbekannt", "type": "checkbox", "label": "unbekannt" }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "anamnese_bodymap",
+      "rectPct": { "x": 0, "y": 25, "w": 100, "h": 27 },
+      "type": "split_group",
+      "leftRailLabel": "ANAMNESE / UNTERSUCHUNG",
+      "left": {
+        "type": "textarea_lined",
+        "bind": "assessment_secondary.anamnese_text",
+        "label": "",
+        "rowsVisual": 10
+      },
+      "right": {
+        "type": "body_map",
+        "bind": "assessment_secondary.bodymap",
+        "views": ["front", "back"],
+        "labels": ["R", "L", "R"],
+        "legend": [
+          { "value": "wunde", "label": "Wunde" },
+          { "value": "fraktur", "label": "/ Fraktur" },
+          { "value": "schmerz", "label": "Schmerz" },
+          { "value": "prellung", "label": "Prellung" },
+          { "value": "amputation", "label": "Amputation" },
+          { "value": "verbrennung", "label": "Verbrennung" },
+          { "value": "luxation", "label": "Luxation" }
+        ]
+      }
+    },
+    {
+      "id": "akutmedikation",
+      "rectPct": { "x": 0, "y": 52, "w": 100, "h": 8 },
+      "type": "repeating_group",
+      "label": "Akutmedikation durch RD",
+      "bind": "medications_administered",
+      "columns": [
+        { "key": "medikament", "label": "Medikament", "type": "line_text" },
+        { "key": "dosis", "label": "Dosis", "type": "line_text" },
+        { "key": "art", "label": "Art", "type": "line_text" },
+        { "key": "uhrzeit", "label": "Uhrzeit", "type": "time" }
+      ],
+      "layout": {
+        "paperVisualRows": 4,
+        "paperVisualColumns": 2,
+        "maxItems": 8
+      }
+    },
+    {
+      "id": "erst_endbefund",
+      "rectPct": { "x": 0, "y": 60, "w": 100, "h": 17 },
+      "type": "group",
+      "leftRailLabel": "ERST- / ENDBEFUND",
+      "subgroups": [
+        {
+          "id": "pupillen",
+          "label": "Pupillen",
+          "type": "matrix_checkbox",
+          "bind": "vitals.pupillen",
+          "columns": ["R", "L"],
+          "rows": [
+            "eng",
+            "mittel",
+            "weit",
+            "entrundet",
+            "prompte Lichtreflexe",
+            "verlangsamte Lichtreflexe",
+            "lichtstarr"
+          ]
+        },
+        {
+          "id": "schmerz",
+          "label": "Schmerz",
+          "type": "scale_line",
+          "bind": "vitals.schmerz",
+          "min": 0,
+          "max": 10,
+          "naCheckboxLabel": "nicht beurteilbar",
+          "naBind": "vitals.schmerz_nicht_beurteilbar"
+        },
+        {
+          "id": "gcs",
+          "label": "Glasgow Coma Scale",
+          "type": "composite",
+          "fields": [
+            {
+              "id": "augen_oeffnen",
+              "label": "Augen öffnen",
+              "type": "radio_group",
+              "bind": "vitals.gcs_augenoeffnen",
+              "options": [
+                { "value": 4, "label": "4 spontan" },
+                { "value": 3, "label": "3 auf Aufforderung" },
+                { "value": 2, "label": "2 auf Schmerzreiz" },
+                { "value": 1, "label": "1 nicht" }
+              ]
+            },
+            {
+              "id": "verbale_reaktion",
+              "label": "verbale Reaktion",
+              "type": "radio_group",
+              "bind": "vitals.gcs_verbale_reaktion",
+              "options": [
+                { "value": 5, "label": "5 orientiert" },
+                { "value": 4, "label": "4 desorientiert" },
+                { "value": 3, "label": "3 inadäquate Äußerung" },
+                { "value": 2, "label": "2 unverständliche Laute" },
+                { "value": 1, "label": "1 keine" }
+              ]
+            },
+            {
+              "id": "motorische_reaktion",
+              "label": "motorische Reaktion",
+              "type": "radio_group",
+              "bind": "vitals.gcs_motorische_reaktion",
+              "options": [
+                { "value": 6, "label": "6 auf Aufforderung" },
+                { "value": 5, "label": "5 gezielt auf Schmerzreiz" },
+                { "value": 4, "label": "4 ungezielt auf Schmerzreiz" },
+                { "value": 3, "label": "3 abnorme Beugeabwehr" },
+                { "value": 2, "label": "2 Streckneigung" },
+                { "value": 1, "label": "1 keine" }
+              ]
+            },
+            {
+              "id": "gcs_summe",
+              "label": "GCS-Summe",
+              "type": "computed_number",
+              "bind": "vitals.gcs_summe",
+              "formula": "vitals.gcs_augenoeffnen + vitals.gcs_verbale_reaktion + vitals.gcs_motorische_reaktion"
+            }
+          ]
+        },
+        {
+          "id": "messwerte",
+          "label": "Messwerte",
+          "type": "composite",
+          "bind": "vitals",
+          "fields": [
+            { "id": "messwerte_keine", "label": "keine", "type": "checkbox", "bind": "vitals.keine" },
+            { "id": "rr", "label": "RR", "type": "compound_rr", "bind": "vitals.rr" },
+            { "id": "puls", "label": "Puls", "type": "line_text", "bind": "vitals.puls" },
+            {
+              "id": "puls_rhythmus",
+              "label": "",
+              "type": "checkbox_pair",
+              "bind": "vitals.puls_rhythmus",
+              "options": [
+                { "value": "rhy", "label": "rhy." },
+                { "value": "arrhy", "label": "arrhy." }
+              ]
+            },
+            { "id": "af", "label": "AF", "type": "line_text", "bind": "vitals.af" },
+            { "id": "temp", "label": "Temp.", "type": "line_text", "bind": "vitals.temp" },
+            { "id": "bz", "label": "BZ", "type": "line_text", "bind": "vitals.bz" },
+            { "id": "etco2", "label": "etCO2", "type": "line_text", "bind": "vitals.etco2" },
+            { "id": "spo2", "label": "SpO2", "type": "line_text", "bind": "vitals.spo2" },
+            { "id": "o2_l_min", "label": "O2 l/min", "type": "line_text", "bind": "vitals.o2_l_min" },
+            { "id": "o2_beatmung_l_min", "label": "O2 l/min", "type": "line_text", "bind": "vitals.o2_beatmung_l_min" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "massnahmen_ample",
+      "rectPct": { "x": 0, "y": 77, "w": 100, "h": 17 },
+      "type": "split_group",
+      "leftRailLabel": "MASSNAHMEN",
+      "rightRailLabel": "AMPLE-SCHEMA",
+      "left": {
+        "type": "composite",
+        "bind": "measures",
+        "sections": [
+          {
+            "id": "herz_kreislauf",
+            "label": "Herz / Kreislauf",
+            "fields": [
+              {
+                "id": "hk_massnahmen",
+                "type": "checkbox_group",
+                "bind": "measures.herz_kreislauf.massnahmen",
+                "options": [
+                  { "value": "peripherven_zugang_io", "label": "peripherven. Zugang / IO Zugang" },
+                  { "value": "herzdruckmassage", "label": "Herzdruckmassage" },
+                  { "value": "defibrillation_kardiov", "label": "Defibrillation/Kardiov." },
+                  { "value": "schrittmacher_extern", "label": "Schrittmacher extern" }
+                ]
+              },
+              { "id": "hk_dnr", "label": "DNr:", "type": "line_text", "bind": "measures.herz_kreislauf.dnr" },
+              { "id": "hk_anz", "label": "Anz.:", "type": "line_text", "bind": "measures.herz_kreislauf.anzahl" },
+              { "id": "hk_letzte_joule", "label": "letzte Joule:", "type": "line_text", "bind": "measures.herz_kreislauf.letzte_joule" },
+              { "id": "hk_freq", "label": "Freq.:", "type": "line_text", "bind": "measures.herz_kreislauf.freq" },
+              { "id": "hk_mv", "label": "mV:", "type": "line_text", "bind": "measures.herz_kreislauf.mv" }
+            ]
+          },
+          {
+            "id": "atmung_massnahmen",
+            "label": "Atmung",
+            "fields": [
+              {
+                "id": "atmung_massnahmen",
+                "type": "checkbox_group",
+                "bind": "measures.atmung.massnahmen",
+                "options": [
+                  { "value": "absaugen", "label": "Absaugen" },
+                  { "value": "oral", "label": "oral" },
+                  { "value": "nasal", "label": "nasal" },
+                  { "value": "endotracheal", "label": "endotracheal" },
+                  { "value": "intubation", "label": "Intubation" },
+                  { "value": "wendltubus", "label": "Wendltubus" },
+                  { "value": "guedeltubus", "label": "Guedeltubus" },
+                  { "value": "larynxtubus", "label": "Larynxtubus" },
+                  { "value": "endotracheal_oral", "label": "endotracheal (oral)" },
+                  { "value": "endotracheal_nasal", "label": "endotracheal (nasal)" },
+                  { "value": "beatmung", "label": "Beatmung" },
+                  { "value": "assistiert", "label": "assistiert" },
+                  { "value": "kontrolliert", "label": "kontrolliert" },
+                  { "value": "manuell", "label": "manuell" },
+                  { "value": "maschinell", "label": "maschinell" }
+                ]
+              },
+              { "id": "atm_dnr", "label": "DNr:", "type": "line_text", "bind": "measures.atmung.dnr" },
+              { "id": "atm_af", "label": "AF", "type": "line_text", "bind": "measures.atmung.af" },
+              { "id": "atm_amv", "label": "AMV", "type": "line_text", "bind": "measures.atmung.amv" },
+              { "id": "atm_peep", "label": "PEEP", "type": "line_text", "bind": "measures.atmung.peep" }
+            ]
+          },
+          {
+            "id": "weitere_massnahmen",
+            "label": "Weitere Maßnahmen",
+            "fields": [
+              {
+                "id": "weitere_massnahmen",
+                "type": "checkbox_group",
+                "bind": "measures.weitere_massnahmen.massnahmen",
+                "options": [
+                  { "value": "verband", "label": "Verband" },
+                  { "value": "blutstillung", "label": "Blutstillung" },
+                  { "value": "abbinden", "label": "Abbinden" },
+                  { "value": "lagerung", "label": "Lagerung" },
+                  { "value": "12_abl_ekg", "label": "12-Abl.-EKG" },
+                  { "value": "monitoring", "label": "Monitoring" },
+                  { "value": "hf", "label": "HF" },
+                  { "value": "rr", "label": "RR" },
+                  { "value": "spo2", "label": "SpO2" },
+                  { "value": "4_abl_ekg", "label": "4-Abl.-EKG" },
+                  { "value": "etco2", "label": "etCO2" },
+                  { "value": "schienung", "label": "Schienung" },
+                  { "value": "hws", "label": "HWS" },
+                  { "value": "spineboard", "label": "Spineboard" },
+                  { "value": "vakuummatratze", "label": "Vakuummatratze" },
+                  { "value": "extremitaet", "label": "Extremität" }
+                ]
+              },
+              { "id": "abbinden_zeit", "label": "", "type": "time_optional", "bind": "measures.weitere_massnahmen.abbinden_zeit" },
+              { "id": "lagerung_text", "label": "", "type": "line_text", "bind": "measures.weitere_massnahmen.lagerung_art" }
+            ]
+          }
+        ]
+      },
+      "right": {
+        "type": "composite_lined_notes",
+        "bind": "history",
+        "sections": [
+          { "id": "allergien", "label": "Allergien", "type": "textarea_lined", "bind": "history.allergien" },
+          { "id": "medikamente", "label": "Medikamente", "type": "textarea_lined", "bind": "history.medikamente" },
+          { "id": "patientengeschichte", "label": "Patientengeschichte / Vorerkrankungen", "type": "textarea_lined", "bind": "history.patientengeschichte_vorerkrankungen" },
+          { "id": "letzte_orale_aufnahme", "label": "Letzte orale Aufnahme", "type": "textarea_lined", "bind": "history.letzte_orale_aufnahme" },
+          { "id": "ereignisse_zuvor", "label": "Ereignisse zuvor", "type": "textarea_lined", "bind": "history.ereignisse_zuvor" },
+          { "id": "risikofaktoren", "label": "Risikofaktoren", "type": "textarea_lined", "bind": "history.risikofaktoren" }
+        ]
+      }
+    },
+    {
+      "id": "footer_disposition",
+      "rectPct": { "x": 0, "y": 94, "w": 100, "h": 6 },
+      "type": "group",
+      "fields": [
+        {
+          "id": "abschlussart",
+          "label": "Übergabe/Belassung/Revers",
+          "type": "checkbox_group_inline",
+          "bind": "disposition.abschlussart",
+          "options": [
+            { "value": "uebergabe", "label": "Übergabe:" },
+            { "value": "revers", "label": "Revers (Rücks.)" },
+            { "value": "belassung", "label": "Belassung" },
+            { "value": "entf_selbstst_o_revers", "label": "Entf. selbstst. o. Revers" }
+          ]
+        },
+        {
+          "id": "klinischer_zustand",
+          "label": "Klinischer Zustand",
+          "type": "checkbox_group_inline",
+          "bind": "disposition.klinischer_zustand",
+          "options": [
+            { "value": "verbessert", "label": "verbessert" },
+            { "value": "gleich", "label": "gleich" },
+            { "value": "verschlechtert", "label": "verschlechtert" }
+          ]
+        },
+        { "id": "uhrzeit_ende", "label": "Uhrzeit-Ende", "type": "time", "bind": "disposition.uhrzeit_ende" },
+        { "id": "org", "label": "Org.:", "type": "line_text", "bind": "disposition.org" },
+        { "id": "typ", "label": "Typ:", "type": "line_text", "bind": "disposition.typ" },
+        { "id": "kennung", "label": "Kennung:", "type": "line_text", "bind": "disposition.kennung" },
+        {
+          "id": "angehoerige_in_kenntnis",
+          "label": "Angehörige in Kenntnis",
+          "type": "checkbox_group_inline",
+          "bind": "disposition.angehoerige_in_kenntnis",
+          "options": [
+            { "value": "durch_rd", "label": "durch RD" },
+            { "value": "durch_polizei", "label": "durch Polizei" },
+            { "value": "durch_pat_andere", "label": "durch Pat/andere" }
+          ]
+        },
+        { "id": "kontaktdaten", "label": "Kontaktdaten", "type": "line_text_long", "bind": "disposition.kontaktdaten" },
+        { "id": "unterschrift", "label": "Unterschrift - Entlass. San/NA", "type": "signature", "bind": "signatures.entlass_san_na" }
+      ]
+    }
+  ],
+  "stateSchema": {
+    "incident": {
+      "ambulanzort": "",
+      "datum": null,
+      "uhrzeit_beginn": null,
+      "dnr_san_1": "",
+      "dnr_san_2": "",
+      "dnr_san_3": "",
+      "dnr_na": "",
+      "pls_nummer": "",
+      "funkrufname": ""
+    },
+    "patient": {
+      "familienname": "",
+      "vorname": "",
+      "geschlecht": null,
+      "vers_nr": "",
+      "geburtsdatum": null,
+      "adresse": "",
+      "staat": "",
+      "telefon": "",
+      "arbeitgeber": "",
+      "versicherungstraeger": "",
+      "familienstand": ""
+    },
+    "assessment_primary": {
+      "naca": [],
+      "atemweg": [],
+      "atmung": [],
+      "kreislauf": [],
+      "bewusstsein": [],
+      "angen_notfallzeit": {
+        "zeit": null,
+        "gt24h": false,
+        "unbekannt": false
+      }
+    },
+    "assessment_secondary": {
+      "anamnese_text": "",
+      "bodymap": []
+    },
+    "medications_administered": [],
+    "vitals": {
+      "pupillen": { "R": [], "L": [] },
+      "schmerz": null,
+      "schmerz_nicht_beurteilbar": false,
+      "gcs_augenoeffnen": null,
+      "gcs_verbale_reaktion": null,
+      "gcs_motorische_reaktion": null,
+      "gcs_summe": null,
+      "keine": false,
+      "rr": "",
+      "puls": "",
+      "puls_rhythmus": [],
+      "af": "",
+      "temp": "",
+      "bz": "",
+      "etco2": "",
+      "spo2": "",
+      "o2_l_min": "",
+      "o2_beatmung_l_min": ""
+    },
+    "measures": {
+      "herz_kreislauf": {
+        "massnahmen": [],
+        "dnr": "",
+        "anzahl": "",
+        "letzte_joule": "",
+        "freq": "",
+        "mv": ""
+      },
+      "atmung": {
+        "massnahmen": [],
+        "dnr": "",
+        "af": "",
+        "amv": "",
+        "peep": ""
+      },
+      "weitere_massnahmen": {
+        "massnahmen": [],
+        "abbinden_zeit": null,
+        "lagerung_art": ""
+      }
+    },
+    "history": {
+      "allergien": "",
+      "medikamente": "",
+      "patientengeschichte_vorerkrankungen": "",
+      "letzte_orale_aufnahme": "",
+      "ereignisse_zuvor": "",
+      "risikofaktoren": ""
+    },
+    "disposition": {
+      "abschlussart": [],
+      "klinischer_zustand": [],
+      "uhrzeit_ende": null,
+      "org": "",
+      "typ": "",
+      "kennung": "",
+      "angehoerige_in_kenntnis": [],
+      "kontaktdaten": ""
+    },
+    "signatures": {
+      "entlass_san_na": null
+    }
+  }
+}

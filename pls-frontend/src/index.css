@@ -1,0 +1,599 @@
+/* ===================== PLS Design System ===================== */
+:root {
+  --bg-page: #12121e;
+  --bg-card: #1a1a2e;
+  --bg-input: #252540;
+  --bg-input-focus: #2c2c50;
+  --border: #2e2e50;
+  --border-focus: #3d7de0;
+  --text: #ffffff;
+  --text-muted: rgba(255, 255, 255, 0.55);
+  --accent: #3d7de0;
+  --accent-hover: #5590e8;
+  --danger: #e53e3e;
+  --danger-hover: #c53030;
+  --success: #48bb78;
+  --navbar-bg: #1a1a2a;
+  --navbar-border: #2a2a40;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background-color: var(--bg-page);
+  color: var(--text);
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  margin: 0;
+  font-weight: 600;
+  color: var(--text);
+}
+
+p { margin: 0; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { color: var(--accent-hover); }
+
+/* ── Navbar ── */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 24px;
+  background-color: var(--navbar-bg);
+  border-bottom: 1px solid var(--navbar-border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  flex-shrink: 0;
+}
+.logo img {
+  max-height: 50px;
+  display: block;
+}
+.links {
+  display: flex;
+  gap: 4px;
+}
+.links a, .links a.admin-text {
+  color: var(--text);
+  text-decoration: none;
+  font-weight: 500;
+  font-size: 0.95rem;
+  padding: 6px 14px;
+  border-radius: 6px;
+  transition: background-color 0.2s;
+}
+.links a:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+
+/* ── Page layout ── */
+.page {
+  flex: 1;
+  padding: 32px 24px;
+}
+.page-container {
+  max-width: 600px;
+  margin: 0 auto;
+}
+.page-title {
+  font-size: 1.6rem;
+  font-weight: 700;
+  text-align: center;
+  margin-bottom: 8px;
+}
+.page-subtitle {
+  color: var(--text-muted);
+  text-align: center;
+  margin-bottom: 24px;
+  font-size: 0.9rem;
+}
+
+/* ── Cards ── */
+.card {
+  background: var(--bg-card);
+  border-radius: 10px;
+  padding: 28px;
+  border: 1px solid var(--border);
+  margin-bottom: 16px;
+}
+
+/* ── Form elements ── */
+.form-group {
+  margin-bottom: 16px;
+  text-align: left;
+}
+.form-group label {
+  display: block;
+  font-weight: 500;
+  font-size: 0.88rem;
+  margin-bottom: 6px;
+  color: var(--text-muted);
+}
+input[type="text"],
+input[type="password"],
+input[type="number"],
+input[type="email"],
+select,
+textarea {
+  width: 100%;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 10px 12px;
+  font-size: 0.95rem;
+  font-family: inherit;
+  transition: border-color 0.2s, background-color 0.2s;
+  outline: none;
+}
+input[type="number"] {
+  width: auto;
+  min-width: 80px;
+}
+input:focus, select:focus, textarea:focus {
+  border-color: var(--border-focus);
+  background: var(--bg-input-focus);
+}
+input::placeholder, textarea::placeholder {
+  color: rgba(255, 255, 255, 0.25);
+}
+select option {
+  background: var(--bg-card);
+}
+textarea {
+  resize: vertical;
+  min-height: 90px;
+}
+
+/* ── Buttons ── */
+button {
+  border: none;
+  border-radius: 6px;
+  padding: 10px 20px;
+  font-size: 0.95rem;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background-color 0.2s, opacity 0.2s;
+  margin: 0;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #ffffff;
+  width: 100%;
+  padding: 12px;
+  font-size: 1rem;
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.btn-secondary {
+  background: var(--bg-card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 8px 18px;
+}
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.btn-danger {
+  background: var(--danger);
+  color: #ffffff;
+}
+.btn-danger:hover:not(:disabled) {
+  background: var(--danger-hover);
+}
+
+.btn-action {
+  background: var(--bg-card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+}
+.btn-action:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.btn-row {
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+/* ── Admin settings sections ── */
+.settings-section {
+  background: var(--bg-card);
+  border-radius: 10px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  margin-bottom: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.settings-section-title {
+  width: 100%;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+.wide-button {
+  flex: 1 1 calc(50% - 10px);
+  min-width: 140px;
+  background: var(--bg-input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 16px;
+  font-size: 0.88rem;
+  text-align: center;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+.wide-button:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* ── Status messages ── */
+.msg-success {
+  color: var(--success);
+  font-weight: 500;
+  margin: 8px 0;
+  font-size: 0.9rem;
+}
+.msg-error {
+  color: var(--danger);
+  font-weight: 500;
+  margin: 8px 0;
+  font-size: 0.9rem;
+}
+.camera-error {
+  background: var(--danger);
+  color: white;
+  padding: 12px 16px;
+  border-radius: 6px;
+  font-weight: 600;
+  margin-top: 12px;
+  text-align: center;
+}
+
+/* ── Auth page (centered card) ── */
+.auth-page {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.auth-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 32px;
+  width: 100%;
+  max-width: 420px;
+}
+.auth-card h2 {
+  margin-bottom: 6px;
+  text-align: center;
+}
+.auth-card > p {
+  text-align: center;
+  color: var(--text-muted);
+  margin-bottom: 24px;
+  font-size: 0.9rem;
+}
+
+/* ── QR authenticator ── */
+.qr-page {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 40px 24px;
+  text-align: center;
+}
+.qr-page h1 {
+  font-size: 2rem;
+  margin-bottom: 8px;
+}
+.qr-hints {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px 28px;
+  max-width: 500px;
+  text-align: left;
+  margin: 20px 0;
+}
+.qr-hints h2 {
+  font-size: 1rem;
+  text-align: center;
+  margin-bottom: 10px;
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.qr-hints ul {
+  padding-left: 20px;
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  line-height: 1.8;
+}
+.qr-hints strong {
+  color: var(--text);
+}
+.qr-scanner-wrap {
+  width: 100%;
+  max-width: 500px;
+  background: #000;
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 8px 0;
+}
+
+/* ── Triage touch workflow ── */
+.triage-page {
+  min-height: 100vh;
+  width: 100%;
+  padding: 32px clamp(16px, 5vw, 64px);
+  display: flex;
+  flex-direction: column;
+  gap: clamp(24px, 5vh, 56px);
+  text-align: center;
+}
+
+.triage-header {
+  font-size: clamp(1.35rem, 3vw, 2rem);
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.triage-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-evenly;
+  gap: clamp(40px, 8vh, 96px);
+}
+
+.triage-main--result {
+  align-items: center;
+}
+
+.triage-actions {
+  display: flex;
+  gap: clamp(32px, 8vw, 120px);
+  justify-content: space-between;
+  align-items: stretch;
+}
+
+.triage-actions--two > .triage-button {
+  flex: 1 1 0;
+}
+
+.triage-button,
+.triage-body-button,
+.bodyparts-button {
+  min-height: 6rem;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-card);
+  color: var(--text);
+  font-size: clamp(1.25rem, 2.8vw, 2rem);
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.triage-button {
+  padding: 24px 28px;
+}
+
+.triage-button:hover,
+.triage-body-button:hover,
+.bodyparts-button:hover {
+  background: var(--bg-input-focus);
+  border-color: var(--accent);
+}
+
+.triage-button--wide {
+  width: min(100%, 900px);
+  align-self: center;
+}
+
+.triage-button--danger {
+  border-color: var(--danger);
+}
+
+.triage-result {
+  width: min(100%, 760px);
+  border: 3px solid currentColor;
+  border-radius: 10px;
+  padding: 28px;
+  font-size: clamp(1.4rem, 3vw, 2.2rem);
+  font-weight: 800;
+}
+
+.triage-result--green {
+  color: var(--success);
+}
+
+.triage-result--black {
+  color: #ffffff;
+  border-color: #ffffff;
+}
+
+.triage-result--red {
+  color: var(--danger);
+}
+
+.triage-result--yellow {
+  color: #f6e05e;
+}
+
+.triage-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: clamp(32px, 8vw, 120px);
+}
+
+.triage-location {
+  text-align: left;
+  font-size: 1rem;
+}
+
+.triage-location h4 {
+  margin-bottom: 8px;
+}
+
+.triage-body-button {
+  min-width: min(100%, 18rem);
+  min-height: 7rem;
+  padding: 20px 28px;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.triage-body-button svg {
+  font-size: 2.5rem;
+}
+
+.bodyparts-container {
+  min-height: 100vh;
+  width: 100%;
+  padding: 24px clamp(16px, 4vw, 48px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  text-align: center;
+}
+
+.bodyparts-container h1 {
+  font-size: clamp(1.5rem, 3vw, 2.25rem);
+}
+
+.body-svg {
+  flex: 1;
+  min-height: 0;
+  max-height: calc(100vh - 220px);
+}
+
+.bodyparts-actions {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  gap: clamp(24px, 6vw, 80px);
+}
+
+.bodyparts-button {
+  flex: 1 1 0;
+  padding: 20px 28px;
+}
+
+@media (max-width: 760px) {
+  .triage-actions,
+  .triage-footer,
+  .bodyparts-actions {
+    flex-direction: column;
+  }
+
+  .triage-location {
+    width: 100%;
+    text-align: center;
+  }
+
+  .triage-body-button {
+    width: 100%;
+  }
+}
+
+/* ── Offline sync (WP 6.5) ── */
+.sync-status {
+  position: relative;
+}
+.sync-panel {
+  position: absolute;
+  right: 0;
+  z-index: 20;
+  width: min(32rem, 90vw);
+  padding: 12px 16px;
+  background: var(--bg-card);
+  color: inherit;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+}
+.sync-panel ul {
+  padding-left: 1rem;
+}
+.sync-panel button {
+  margin: 4px 4px 0 0;
+}
+.sync-note {
+  font-size: 0.85rem;
+  margin: 4px 0;
+}
+.update-banner {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  padding: 10px 16px;
+  background: var(--bg-card);
+  border: 1px solid currentColor;
+  border-radius: 6px;
+}
+.sync-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 2px 8px;
+  font-size: 0.85rem;
+}
+
+/* WP 7.4: visible keyboard focus on body-map regions. */
+.body-region:focus-visible {
+  outline: 3px solid #0a58ca;
+  outline-offset: 1px;
+}
