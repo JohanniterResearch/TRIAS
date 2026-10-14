@@ -17,7 +17,7 @@ namespace Ambulanzsystem.Api.Data.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "8.0.11")
+                .HasAnnotation("ProductVersion", "8.0.31")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -114,6 +114,10 @@ namespace Ambulanzsystem.Api.Data.Migrations
                     b.Property<int>("PatientId")
                         .HasColumnType("integer")
                         .HasColumnName("patient_id");
+
+                    b.Property<DateTime?>("SentAtLogoutAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("sent_at_logout_at");
 
                     b.Property<string>("Status")
                         .IsRequired()

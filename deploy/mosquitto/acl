@@ -1,0 +1,5 @@
+# Topic ACL. Format: user <name> / topic <read|write|readwrite|deny> <pattern>
+# The backend only publishes into the pls/ namespace. Consumers get their own user and a
+# read-only rule when one exists (none today, parity plan D6); everything else is denied.
+user ambulanzsystem-backend
+topic write pls/#

@@ -74,7 +74,14 @@ public class OperationScenesController(AppDbContext db, AuditService audit) : Co
             return Forbid();
         }
 
-        if (request.OrganisationId is int orgId && !await db.Organisations.AnyAsync(o => o.Id == orgId))
+        // Organisations are Admin-managed (the organisation directory is AdminOnly). Other callers
+        // keep the stored assignment: the field is ignored rather than refused, because clients
+        // that do not know about organisations send the upsert without it.
+        var organisationId = User.TokenType() == TokenTypes.Admin
+            ? request.OrganisationId
+            : isCreate ? null : scene.OrganisationId;
+
+        if (organisationId is int orgId && !await db.Organisations.AnyAsync(o => o.Id == orgId))
         {
             return BadRequest(new ErrorResponse("organisationId does not exist."));
         }
@@ -89,7 +96,7 @@ public class OperationScenesController(AppDbContext db, AuditService audit) : Co
         }
         Track("name", scene.Name, request.Name);
         Track("description", scene.Description, request.Description);
-        Track("organisationId", scene.OrganisationId, request.OrganisationId);
+        Track("organisationId", scene.OrganisationId, organisationId);
         Track("parentSceneId", scene.ParentSceneId, request.ParentSceneId);
         Track("accessWindowStart", scene.AccessWindowStart, request.AccessWindowStart);
         Track("accessWindowEnd", scene.AccessWindowEnd, request.AccessWindowEnd);
@@ -97,7 +104,7 @@ public class OperationScenesController(AppDbContext db, AuditService audit) : Co
 
         scene.Name = request.Name;
         scene.Description = request.Description;
-        scene.OrganisationId = request.OrganisationId;
+        scene.OrganisationId = organisationId;
         scene.ParentSceneId = request.ParentSceneId;
         scene.AccessWindowStart = request.AccessWindowStart;
         scene.AccessWindowEnd = request.AccessWindowEnd;

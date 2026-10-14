@@ -15,6 +15,8 @@
     <PackageVersion Include="xunit.runner.visualstudio" Version="2.8.2" />
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="8.0.31" />
     <PackageVersion Include="Microsoft.AspNetCore.SignalR.Client" Version="8.0.31" />
+    <!-- PLS MQTT compatibility feed (parity plan WP 7.1); same version as the PLS backend. Approval pending. -->
+    <PackageVersion Include="MQTTnet" Version="4.3.7.1207" />
     <PackageVersion Include="coverlet.collector" Version="6.0.2" />
   </ItemGroup>
 </Project>

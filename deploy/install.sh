@@ -44,8 +44,52 @@ if docker compose ps --status running --services 2>/dev/null | grep -qx db; then
   bash scripts/backup.sh
 fi
 
+# Optional PLS client site (PLS parity plan WP 7.2): PLS_SITE_ADDRESS in .env, e.g. a second
+# DNS name for this machine. The bundle carries the build in pls/.
+mkdir -p sites pls
+if [ -n "${PLS_SITE_ADDRESS:-}" ]; then
+  [ -f pls/index.html ] || { echo "PLS_SITE_ADDRESS is set, but this bundle has no PLS build (pls/index.html)." >&2; exit 1; }
+  cp pls.caddy sites/pls.caddy
+else
+  rm -f sites/pls.caddy
+fi
+
+# Optional MQTT feed for former PLS consumers (WP 7.1): MQTT_ENABLED=true in .env starts the broker.
+profiles=()
+# The backend reads the same value; anything but true/false (any case) would make it fail to start.
+MQTT_ENABLED=$(printf '%s' "${MQTT_ENABLED:-false}" | tr '[:upper:]' '[:lower:]')
+case "$MQTT_ENABLED" in
+  true|false) ;;
+  *) echo "MQTT_ENABLED must be true or false." >&2; exit 1 ;;
+esac
+if [ "$MQTT_ENABLED" = true ]; then
+  if [ -z "${MQTT_PASSWORD:-}" ]; then
+    # A new optional key is appended once; existing keys are never rewritten. A last line
+    # without a newline would otherwise swallow the new key.
+    [ -z "$(tail -c1 .env)" ] || echo >> .env
+    echo "MQTT_PASSWORD=$(openssl rand -hex 24)" >> .env
+    set -a; . ./.env; set +a
+  fi
+  # The password goes through a 0600 file, not the command line (visible in ps), and is hashed
+  # in place with umask 077, so neither form is ever world-readable. A failed hash leaves no
+  # plain-text file behind.
+  rm -f mosquitto/passwd
+  (umask 077; printf 'ambulanzsystem-backend:%s\n' "$MQTT_PASSWORD" > mosquitto/passwd)
+  docker run --rm -v "$PWD/mosquitto:/work" eclipse-mosquitto:2 \
+    sh -c 'umask 077 && mosquitto_passwd -U /work/passwd' || { rm -f mosquitto/passwd; exit 1; }
+  # Read-only mount: the broker (uid 1883) cannot fix ownership itself.
+  chown 1883:1883 mosquitto/passwd && chmod 600 mosquitto/passwd
+  profiles=(--profile mqtt)
+else
+  # Turned off: a broker from an earlier install stops too (--remove-orphans keeps services of
+  # an inactive profile). Its retained patient state stays in the mosquitto_data volume; see
+  # README, "MQTT feed".
+  docker compose --profile mqtt rm -sf mosquitto >/dev/null 2>&1 || true
+  rm -f mosquitto/passwd
+fi
+
 echo "==> Starting"
-docker compose up -d --remove-orphans
+docker compose "${profiles[@]}" up -d --remove-orphans
 
 echo "==> Installing nightly backup timer"
 sed "s#@ROOT@#$PWD#g" systemd/ambulanz-backup.service > /etc/systemd/system/ambulanz-backup.service
@@ -77,7 +121,8 @@ fi
 
 cat <<EOF
 
-Ambulanzsystem is running:  https://$SITE_ADDRESS
+Ambulanzsystem is running:  https://$SITE_ADDRESS${PLS_SITE_ADDRESS:+
+PLS client:                 https://$PLS_SITE_ADDRESS}
 Initial admin login:        admin / $BOOTSTRAP_ADMIN_PASSWORD
 (only valid on a fresh database; you are asked to change it on first login)
 EOF

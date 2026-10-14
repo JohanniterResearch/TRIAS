@@ -38,7 +38,8 @@ public class AmbulanzprotokollController(AppDbContext db, AuditService audit, Sc
             // An unsaved/default-shaped protocol has no server edit timestamp. UnixEpoch keeps a
             // real offline draft newer than this synthetic response after provisional-ID rekey.
             record?.UpdatedAt ?? DateTime.UnixEpoch,
-            record?.FinalizedAt));
+            record?.FinalizedAt,
+            SentAtLogoutAt: record?.SentAtLogoutAt));
     }
 
     [HttpPut]
@@ -105,6 +106,9 @@ public class AmbulanzprotokollController(AppDbContext db, AuditService audit, Sc
 
         var oldStatus = record.Status;
         record.Status = request.Status;
+        var oldSentAtLogout = record.SentAtLogoutAt is not null;
+        // Only a draft can be "unreviewed since logout"; a finalization or correction is a review.
+        record.SentAtLogoutAt = request.SentAtLogout == true && request.Status == "draft" && !wasFinalized ? now : null;
         if (request.Status == "finalized")
         {
             record.FinalizedAt = now;
@@ -125,6 +129,10 @@ public class AmbulanzprotokollController(AppDbContext db, AuditService audit, Sc
         if (oldStatus != record.Status)
         {
             diffs["status"] = (oldStatus, record.Status);
+        }
+        if (oldSentAtLogout != (record.SentAtLogoutAt is not null))
+        {
+            diffs["sentAtLogout"] = (oldSentAtLogout, record.SentAtLogoutAt is not null);
         }
         audit.LogFieldsWrite(User, "ambulanzprotokoll", record.Id, patientId, diffs, wasFinalized ? request.CorrectionReason : null);
 
@@ -150,7 +158,7 @@ public class AmbulanzprotokollController(AppDbContext db, AuditService audit, Sc
         await notifier.PatientUpdatedAsync(patient, false, record.Status);
 
         var formStateOut = JsonDocument.Parse(FormStateMerge.WithDefaults(record.FormStateJson)).RootElement;
-        return Ok(new ProtokollRecordResponse(patientId, record.Status, formStateOut, record.UpdatedAt, record.FinalizedAt, warnings));
+        return Ok(new ProtokollRecordResponse(patientId, record.Status, formStateOut, record.UpdatedAt, record.FinalizedAt, warnings, record.SentAtLogoutAt));
     }
 
     // JSON export (FR-DOC-09): persists an immutable archive snapshot (FR-DOC-14) and
@@ -192,7 +200,7 @@ public class AmbulanzprotokollController(AppDbContext db, AuditService audit, Sc
             eventSceneId, now, watermark, AmbulanzprotokollSchemaValidator.CanonicalSchemaReference);
 
         var protokoll = new ProtokollRecordResponse(
-            patientId, status, JsonDocument.Parse(formStateJson).RootElement, record?.UpdatedAt ?? patient.CreatedAt, record?.FinalizedAt);
+            patientId, status, JsonDocument.Parse(formStateJson).RootElement, record?.UpdatedAt ?? patient.CreatedAt, record?.FinalizedAt, SentAtLogoutAt: record?.SentAtLogoutAt);
 
         return Ok(new ProtokollExportResponse(metadata, protokoll));
     }

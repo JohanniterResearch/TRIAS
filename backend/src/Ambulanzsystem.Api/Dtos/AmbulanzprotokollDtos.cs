@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace Ambulanzsystem.Api.Dtos;
 
-public record UpsertProtokollRequest(string Status, JsonElement FormState, DateTime? ClientUpdatedAt, string? CorrectionReason = null);
+public record UpsertProtokollRequest(string Status, JsonElement FormState, DateTime? ClientUpdatedAt, string? CorrectionReason = null, bool? SentAtLogout = null);
 
 public record ProtokollRecordResponse(
     int PatientId,
@@ -10,7 +10,8 @@ public record ProtokollRecordResponse(
     JsonElement FormState,
     DateTime UpdatedAt,
     DateTime? FinalizedAt,
-    List<string>? Warnings = null);
+    List<string>? Warnings = null,
+    DateTime? SentAtLogoutAt = null);
 
 public record ProtokollExportMetadata(
     int PatientId,

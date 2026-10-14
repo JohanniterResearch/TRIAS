@@ -1,0 +1,4 @@
+# Written by install.sh on the host; never commit (the password file holds a hash).
+/sites/
+/pls/
+/mosquitto/passwd

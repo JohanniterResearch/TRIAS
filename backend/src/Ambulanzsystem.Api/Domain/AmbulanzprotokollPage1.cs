@@ -18,4 +18,8 @@ public class AmbulanzprotokollPage1 : AuditableEntity
 
     public string Status { get; set; } = "draft"; // draft|finalized
     public DateTime? FinalizedAt { get; set; }
+
+    // Set when the last save was an unsent draft the device submitted while its user logged out
+    // (decision D11): nobody reviewed it after that. Any later save without the flag clears it.
+    public DateTime? SentAtLogoutAt { get; set; }
 }

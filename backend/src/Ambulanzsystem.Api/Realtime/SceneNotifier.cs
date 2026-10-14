@@ -2,13 +2,14 @@ using System.Text.Json;
 using Ambulanzsystem.Api.Data;
 using Ambulanzsystem.Api.Domain;
 using Ambulanzsystem.Api.Dtos;
+using Ambulanzsystem.Api.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace Ambulanzsystem.Api.Realtime;
 
 // Thin facade so controllers don't need to know about group naming, schemaVersion, or the queue —
 // just "this patient/team changed in this scene."
-public class SceneNotifier(RealtimePublisher publisher, RealtimePatientMapper patientMapper, AppDbContext db)
+public class SceneNotifier(RealtimePublisher publisher, RealtimePatientMapper patientMapper, AppDbContext db, MqttPublishService mqtt)
 {
     private const string SchemaVersion = "1";
 
@@ -25,6 +26,8 @@ public class SceneNotifier(RealtimePublisher publisher, RealtimePatientMapper pa
         var sceneId = patient.OperationSceneId;
         publisher.Publish(SceneHub.GroupName(sceneId), "PatientUpdated", new PatientUpdatedMessage(
             SchemaVersion, DateTime.UtcNow, sceneId, created, patientMapper.Map(PatientResponse.From(patient)), bodyParts, protokollStatus));
+        // Same post-commit point for the MQTT feed; queued, never awaited on the broker.
+        mqtt.PatientChanged(patient.Id);
     }
 
     public void TeamUpdated(int sceneId, TeamResponse team) =>

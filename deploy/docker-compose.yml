@@ -44,6 +44,12 @@ services:
       # Logins per minute per client IP. Raise it (in .env) when many devices share one venue NAT.
       RateLimiting__LoginPermitLimit: ${LOGIN_RATE_LIMIT:-10}
       RateLimiting__RefreshPermitLimit: ${REFRESH_RATE_LIMIT:-10}
+      # Optional MQTT feed for former PLS consumers (WP 7.1); start the broker with the mqtt profile.
+      Mqtt__Enabled: ${MQTT_ENABLED:-false}
+      Mqtt__BrokerHost: mosquitto
+      Mqtt__Username: ambulanzsystem-backend
+      Mqtt__Password: ${MQTT_PASSWORD:-}
+      Mqtt__RedactLocation: ${MQTT_REDACT_LOCATION:-false}
     volumes:
       # AdminManagementController protects patient/QR references with these keys; keep them across upgrades.
       # The app runs as the non-root "app" user. The earlier root-owned "dpkeys" volume is no longer
@@ -60,18 +66,37 @@ services:
     environment:
       SITE_ADDRESS: ${SITE_ADDRESS}
       TLS_ISSUER: ${TLS_ISSUER:-internal}
+      # Second site for the PLS client, active when install.sh placed sites/pls.caddy (WP 7.2).
+      PLS_SITE_ADDRESS: ${PLS_SITE_ADDRESS:-}
     ports:
       - "80:80"
       - "443:443"
       - "443:443/udp"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./sites:/etc/caddy/sites:ro
+      # The PLS client build (make-bundle.sh); served only by the PLS site.
+      - ./pls:/srv/pls:ro
       # Persists certificates and the local root CA; losing it makes every device distrust the site.
       - caddy_data:/data
       - caddy_config:/config
+
+  # Optional broker for the MQTT feed: `docker compose --profile mqtt up -d` (install.sh does this
+  # when MQTT_ENABLED=true). No published port: consumers are added deliberately (none today, D6).
+  mosquitto:
+    image: eclipse-mosquitto:2
+    profiles: [mqtt]
+    restart: unless-stopped
+    logging: *logging
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./mosquitto/acl:/mosquitto/config/acl:ro
+      - ./mosquitto/passwd:/mosquitto/config/passwd:ro
+      - mosquitto_data:/mosquitto/data
 
 volumes:
   pgdata:
   dataprotection:
   caddy_data:
   caddy_config:
+  mosquitto_data:

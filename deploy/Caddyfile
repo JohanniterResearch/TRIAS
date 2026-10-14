@@ -19,3 +19,7 @@
 	header @spa ?Content-Type "text/html; charset=utf-8"
 	reverse_proxy backend:8080
 }
+
+# Optional further sites, e.g. the PLS client (pls.caddy, copied here by install.sh when
+# PLS_SITE_ADDRESS is set). No file: nothing imported.
+import /etc/caddy/sites/*.caddy

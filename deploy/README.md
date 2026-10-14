@@ -105,6 +105,40 @@ Run these commands from the `ambulanzsystem` folder:
   NAT or LTE router, set `LOGIN_RATE_LIMIT=<n>` (and `REFRESH_RATE_LIMIT`) in `.env` to the agreed
   pilot peak (gate G4) and run `sudo docker compose up -d`.
 
+### PLS client site (optional)
+
+The PLS client can run on the same machine and backend under a second name:
+
+1. Build the bundle from a ref that contains `pls-frontend/` (the local `pls-integration` branch;
+   `bash deploy/make-bundle.sh pls-integration`). The bundle then carries the build in `pls/`.
+2. Add `PLS_SITE_ADDRESS=<second DNS name or address>` to `.env` and run `sudo bash install.sh`.
+   It enables `sites/pls.caddy`: the PLS files, and `/api`, `/hubs`, `/health` proxied to the same
+   backend, so both clients share one database. Remove the line and re-run to disable it.
+
+With `TLS_ISSUER=internal` both sites use the same local root certificate. The PLS site is served
+in direct TLS mode only; behind a reverse proxy (`Caddyfile.proxy`) it is not set up.
+
+### MQTT feed (optional)
+
+For former PLS consumers the backend can publish patient state over MQTT
+(`contract/schemas/mqtt-messages.md`). Set `MQTT_ENABLED=true` in `.env` and run
+`sudo bash install.sh`: it generates `MQTT_PASSWORD` once, writes the broker password file and
+starts the `mosquitto` service (compose profile `mqtt`). The broker has no published port.
+Names are never published; locations are withheld whenever `Features__RedactPersonalData` is on
+(the production default) or with `MQTT_REDACT_LOCATION=true`. `/health` reports `mqtt: degraded`
+while the broker is unreachable; the app keeps working.
+
+Before a consumer outside this machine reads the feed, add a TLS listener (port 8883 with a
+certificate) and a consumer user with an ACL read rule, and publish only that port: the plain
+listener 1883 carries passwords and patient data unencrypted and must never be published.
+
+The broker keeps each patient's last state (retained messages) in the `mosquitto_data` volume;
+a patient removed from the database is cleared from the broker with the next change of that
+patient id. Setting `MQTT_ENABLED=false` and re-running `install.sh` stops the broker; delete
+its stored state with `docker volume rm ambulanzsystem_mosquitto_data` (compose project
+`ambulanzsystem`). Include the volume in the retention and erasure procedures while the feed
+runs.
+
 `.env` holds all secrets. Keep it and back it up. Never delete or regenerate it for an
 existing database: the app refuses to start if `BACKUP_EXPECTED_DEPLOYMENT_ID` changes, and
 Postgres keeps its original password.
@@ -168,6 +202,10 @@ To go back to the previous version:
 From the repository, run `bash deploy/make-bundle.sh [git-ref] [output-dir]`. The defaults are
 `origin/main` and `../Ambulanzsystem_Deploy`. The script builds the image from the committed
 sources of that ref (never the working tree) and writes `Ambulanzsystem_Deploy.tar.gz`.
+
+For a ref with `pls-frontend/`, the script also runs `npm ci` and `npm run build` there (Node 20
+or newer on the dev machine) and puts the build into the bundle. The PLS code is local-only: the
+bundle is built locally and never published.
 
 Before shipping, `bash deploy/scripts/smoke.sh ambulanzsystem-backend:<sha>` starts that image in
 an isolated stack, checks health, headers, login and a protocol export, and removes the stack again.

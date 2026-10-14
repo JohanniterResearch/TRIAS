@@ -15,10 +15,17 @@ docker build -f "$work/backend/Dockerfile" -t ambulanzsystem-backend:bundle -t "
 
 payload=$work/payload/ambulanzsystem
 mkdir -p "$payload"
-cp -r "$work"/deploy/{docker-compose.yml,docker-compose.proxy.yml,Caddyfile,Caddyfile.proxy,install.sh,README.md,scripts,systemd} "$payload/"
+cp -r "$work"/deploy/{docker-compose.yml,docker-compose.proxy.yml,Caddyfile,Caddyfile.proxy,pls.caddy,mosquitto,install.sh,README.md,scripts,systemd} "$payload/"
+# PLS client (PLS parity plan WP 7.2), when the ref contains it (the local pls-integration branch;
+# never pushed, D7). npm ci installs exactly the lock file's versions.
+if [ -d "$work/pls-frontend" ]; then
+  (cd "$work/pls-frontend" && npm ci --no-audit --no-fund && npm run build)
+  cp -r "$work/pls-frontend/dist" "$payload/pls"
+fi
 docker pull -q postgres:16-alpine
 docker pull -q caddy:2-alpine
-docker save ambulanzsystem-backend:bundle "ambulanzsystem-backend:$sha" postgres:16-alpine caddy:2-alpine \
+docker pull -q eclipse-mosquitto:2
+docker save ambulanzsystem-backend:bundle "ambulanzsystem-backend:$sha" postgres:16-alpine caddy:2-alpine eclipse-mosquitto:2 \
   | gzip > "$payload/images.tar.gz"
 echo "$ref $sha $(date -I)" > "$payload/VERSION"
 

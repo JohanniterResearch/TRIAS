@@ -190,6 +190,32 @@ public class AdministrativeAuthorizationTests(WebApplicationFactory<Program> fac
         Assert.Equal(eventA.id, scenes!.Single(scene => scene.id == subSiteA.id).parentSceneId);
     }
 
+    private record OrganisationBearing(int id);
+    private record SceneOrganisation(int id, int? organisationId);
+
+    [Fact]
+    public async Task Leitstelle_CannotChangeTheOrganisationOfAScene()
+    {
+        var admin = await AdminClientAsync();
+        var organisationA = (await (await admin.PostAsJsonAsync("/api/organisations", new { name = $"org-a-{Guid.NewGuid():N}" })).Content.ReadFromJsonAsync<OrganisationBearing>())!;
+        var organisationB = (await (await admin.PostAsJsonAsync("/api/organisations", new { name = $"org-b-{Guid.NewGuid():N}" })).Content.ReadFromJsonAsync<OrganisationBearing>())!;
+        var scene = await CreateSceneAsync(admin);
+        (await admin.PostAsJsonAsync("/api/operation-scenes", new { id = scene.id, name = scene.name, organisationId = organisationA.id })).EnsureSuccessStatusCode();
+        var (globalLeitstelle, _) = await CreateUserClientAsync(admin, "leitstelle");
+
+        var reassigned = await globalLeitstelle.PostAsJsonAsync("/api/operation-scenes", new { id = scene.id, name = "renamed", organisationId = organisationB.id });
+        var omitted = await globalLeitstelle.PostAsJsonAsync("/api/operation-scenes", new { id = scene.id, name = "renamed-again" });
+        var created = await globalLeitstelle.PostAsJsonAsync("/api/operation-scenes", new { name = $"leit-{Guid.NewGuid():N}", organisationId = organisationB.id });
+
+        Assert.Equal(HttpStatusCode.OK, reassigned.StatusCode);
+        Assert.Equal(organisationA.id, (await reassigned.Content.ReadFromJsonAsync<SceneOrganisation>())!.organisationId);
+        Assert.Equal(organisationA.id, (await omitted.Content.ReadFromJsonAsync<SceneOrganisation>())!.organisationId);
+        Assert.Null((await created.Content.ReadFromJsonAsync<SceneOrganisation>())!.organisationId);
+
+        var byAdmin = await admin.PostAsJsonAsync("/api/operation-scenes", new { id = scene.id, name = scene.name, organisationId = organisationB.id });
+        Assert.Equal(organisationB.id, (await byAdmin.Content.ReadFromJsonAsync<SceneOrganisation>())!.organisationId);
+    }
+
     [Fact]
     public async Task UserRevocation_EnforcesTargetMatrix_SelfRoute_AndFinalAdminProtection()
     {

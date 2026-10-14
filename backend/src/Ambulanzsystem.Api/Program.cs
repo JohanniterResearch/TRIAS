@@ -59,6 +59,10 @@ builder.Services.AddSingleton<SceneSubscriptions>();
 builder.Services.AddSingleton<RealtimePatientMapper>();
 builder.Services.AddScoped<SceneNotifier>();
 builder.Services.AddHostedService<RealtimeDispatcher>();
+// PLS MQTT compatibility feed (parity plan WP 7.1); off unless Mqtt:Enabled.
+builder.Services.Configure<MqttSettings>(builder.Configuration.GetSection("Mqtt"));
+builder.Services.AddSingleton<MqttPublishService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<MqttPublishService>());
 
 var jwtSecret = builder.Configuration["Jwt:Secret"]!;
 builder.Services

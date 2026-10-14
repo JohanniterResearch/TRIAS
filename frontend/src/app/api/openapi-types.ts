@@ -893,7 +893,7 @@ export interface paths {
         };
         /**
          * Health endpoint (NFR-OPS-01). Unauthenticated. A realtime publish queue backlog is degraded.
-         * @description Reports unauthenticated database and realtime readiness. Database or realtime dispatcher unavailable is unhealthy (HTTP 503).
+         * @description Reports unauthenticated database, realtime and MQTT feed readiness. Database or realtime dispatcher unavailable is unhealthy (HTTP 503). The optional MQTT feed (schemas/mqtt-messages.md) never makes the API unhealthy; an unreachable broker is degraded.
          */
         get: operations["getHealth"];
         put?: never;
@@ -1007,6 +1007,11 @@ export interface components {
             /** Format: date-time */
             finalizedAt?: string | null;
             warnings?: string[];
+            /**
+             * Format: date-time
+             * @description Set when the last save was an unsent draft submitted while its user logged out (D11), so nobody reviewed it afterwards; cleared by any later save without sentAtLogout.
+             */
+            sentAtLogoutAt?: string | null;
         };
         AdminPatientDetails: {
             patient: components["schemas"]["AdminPatient"];
@@ -1166,6 +1171,11 @@ export interface components {
             updatedAt: string;
             /** Format: date-time */
             finalizedAt?: string | null;
+            /**
+             * Format: date-time
+             * @description Set when the last save was an unsent draft submitted while its user logged out (D11), so nobody reviewed it afterwards; cleared by any later save without sentAtLogout.
+             */
+            sentAtLogoutAt?: string | null;
         };
         /** @description Canonical page-1 state; every branch references the Draft 2020-12 source schema. */
         ProtokollFormState: {
@@ -2218,6 +2228,7 @@ export interface operations {
                     id?: number;
                     name: string;
                     description?: string;
+                    /** @description Admin only. Other callers keep the stored organisation (none on create); the value is ignored. */
                     organisationId?: number;
                     /** @description Parent = the event (D6). Null = this scene IS the event. */
                     parentSceneId?: number;
@@ -2761,6 +2772,8 @@ export interface operations {
                     clientUpdatedAt?: string;
                     /** @description Required when correcting an already-finalized protocol. */
                     correctionReason?: string;
+                    /** @description true when the device submits this unsent draft while its user logs out (D11). The server records sentAtLogoutAt and audits the flag; a save without it clears the flag. */
+                    sentAtLogout?: boolean;
                 };
             };
         };
@@ -2958,6 +2971,8 @@ export interface operations {
                         database?: "healthy";
                         /** @enum {string} */
                         realtime?: "healthy" | "degraded";
+                        /** @enum {string} */
+                        mqtt?: "disabled" | "healthy" | "degraded";
                     };
                 };
             };
@@ -2974,6 +2989,8 @@ export interface operations {
                         database: "healthy" | "unhealthy";
                         /** @enum {string} */
                         realtime: "healthy" | "degraded" | "unhealthy";
+                        /** @enum {string} */
+                        mqtt?: "disabled" | "healthy" | "degraded";
                     };
                 };
             };

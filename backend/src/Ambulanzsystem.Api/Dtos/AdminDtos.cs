@@ -8,7 +8,7 @@ public record UpdateAdminUserRequest(string Username, Role Role, AccountType Acc
 public record ResetPasswordRequest(string TemporaryPassword);
 public record AdminPatientPage(int Total, List<AdminPatientResponse> Items);
 public record AdminPatientAuditEntry(DateTime Timestamp, string ActorRole, string Action, string EntityType, string[]? ChangedFields, string? Reason);
-public record AdminProtocolResponse(string Status, JsonElement FormState, DateTime UpdatedAt, DateTime? FinalizedAt, List<string>? Warnings = null);
+public record AdminProtocolResponse(string Status, JsonElement FormState, DateTime UpdatedAt, DateTime? FinalizedAt, List<string>? Warnings = null, DateTime? SentAtLogoutAt = null);
 public record AdminPatientDetails(
     AdminPatientResponse Patient, Dictionary<string, int> BodyParts, AdminProtocolResponse Protocol,
     bool QrCodeBound, List<AdminPatientAuditEntry> AuditEntries);

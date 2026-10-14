@@ -168,7 +168,7 @@ public class AdminManagementController(AppDbContext db, RefreshTokenService refr
         var formJson = FormStateMerge.WithDefaults(patient.AmbulanzprotokollPage1?.FormStateJson ?? "{}");
         var auditRows = await db.AuditLogs.AsNoTracking().Where(a => a.PatientId == id).OrderByDescending(a => a.Timestamp).Take(10).ToListAsync();
         var entries = auditRows.Select(a => new AdminPatientAuditEntry(a.Timestamp, a.ActorRole, a.Action, a.EntityType, a.ChangedFieldsJson is null ? null : JsonSerializer.Deserialize<string[]>(a.ChangedFieldsJson), a.Reason)).ToList();
-        return new(AdminPatientResponse.From(patient, patient.AmbulanzprotokollPage1?.Status, Protect(patientReferences, id)), bodyJson is null ? [] : JsonSerializer.Deserialize<Dictionary<string, int>>(bodyJson)!, new(patient.AmbulanzprotokollPage1?.Status ?? "draft", JsonDocument.Parse(formJson).RootElement.Clone(), patient.AmbulanzprotokollPage1?.UpdatedAt ?? DateTime.UnixEpoch, patient.AmbulanzprotokollPage1?.FinalizedAt), patient.QrCodePatient is not null, entries);
+        return new(AdminPatientResponse.From(patient, patient.AmbulanzprotokollPage1?.Status, Protect(patientReferences, id)), bodyJson is null ? [] : JsonSerializer.Deserialize<Dictionary<string, int>>(bodyJson)!, new(patient.AmbulanzprotokollPage1?.Status ?? "draft", JsonDocument.Parse(formJson).RootElement.Clone(), patient.AmbulanzprotokollPage1?.UpdatedAt ?? DateTime.UnixEpoch, patient.AmbulanzprotokollPage1?.FinalizedAt, SentAtLogoutAt: patient.AmbulanzprotokollPage1?.SentAtLogoutAt), patient.QrCodePatient is not null, entries);
     }
 
     [HttpGet("patient-qr-codes/available")]
