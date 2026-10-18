@@ -140,6 +140,40 @@ describe('OfflineQueueService', () => {
 
     expect(added).toHaveLength(2);
     expect(added[0].id).not.toBe(added[1].id);
+    expect(added[0].writeId).not.toBe(added[1].writeId);
+  });
+
+  it('replays a persisted triage order with its original writeId and payload after a failure', async () => {
+    const writeId = crypto.randomUUID();
+    const body = { transport: true, clientUpdatedAt: '2026-01-01T10:00:00Z' };
+    let persisted: any;
+    vi.spyOn(service as any, 'add').mockImplementation(async (item: any) => {
+      persisted = structuredClone(item);
+      expect(item.body).not.toBe(body);
+    });
+    await service.queueTriage(7, body, writeId);
+    body.transport = false;
+    const original = { transport: true, clientUpdatedAt: '2026-01-01T10:00:00Z' };
+    vi.spyOn(service as any, 'items').mockImplementation(async () => [structuredClone(persisted)]);
+    vi.spyOn(service as any, 'realPatientId').mockResolvedValue(7);
+    vi.spyOn(service as any, 'replaceIfCurrent').mockImplementation(
+      async (_old: any, next: any) => {
+        persisted = structuredClone(next);
+        return true;
+      },
+    );
+    const remove = vi.spyOn(service as any, 'deleteIfCurrent').mockResolvedValue(true);
+    api.updateTriage
+      .mockReturnValueOnce(throwError(() => new TypeError('response lost')))
+      .mockReturnValueOnce(of({ id: 7 }));
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+    await service.flush();
+    expect(remove).not.toHaveBeenCalled();
+    expect(persisted).toMatchObject({ writeId, body: original, state: 'retrying' });
+    await service.retry(persisted.id);
+    expect(api.updateTriage).toHaveBeenNthCalledWith(1, 7, original, writeId);
+    expect(api.updateTriage).toHaveBeenNthCalledWith(2, 7, original, writeId);
+    expect(remove).toHaveBeenCalledOnce();
   });
 
   it.each([7, 99])(
@@ -211,7 +245,7 @@ describe('OfflineQueueService', () => {
     await service.flush();
 
     expect(api.updateTriage).toHaveBeenCalledOnce();
-    expect(api.updateTriage).toHaveBeenCalledWith(2, expect.anything());
+    expect(api.updateTriage).toHaveBeenCalledWith(2, expect.anything(), undefined);
     expect(remove).toHaveBeenCalledWith(expect.objectContaining({ id: 'ready' }));
     expect((service as any).replaceIfCurrent).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'dependent' }),

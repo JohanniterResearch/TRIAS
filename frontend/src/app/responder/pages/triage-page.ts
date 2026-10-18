@@ -236,10 +236,11 @@ export class TriagePage implements AfterViewInit, OnDestroy {
       return;
     }
 
-    const queuedBody = { ...body, clientUpdatedAt: new Date().toISOString() };
+    const queuedBody = { ...structuredClone(body), clientUpdatedAt: new Date().toISOString() };
+    const writeId = crypto.randomUUID();
     ++this.flagsRevision;
     this.error.set('');
-    this.api.updateTriage(patient.id, queuedBody).subscribe({
+    this.api.updateTriage(patient.id, queuedBody, writeId).subscribe({
       next: (updated) => {
         this.state.setPatient(updated);
         this.message.set('Gespeichert.');
@@ -251,7 +252,7 @@ export class TriagePage implements AfterViewInit, OnDestroy {
           return;
         }
         this.offlineQueue
-          .queueTriage(patient.id, queuedBody)
+          .queueTriage(patient.id, queuedBody, writeId)
           .then(() => this.message.set('Lokal gespeichert, Sync ausstehend.'))
           .catch(() => {
             this.message.set('');

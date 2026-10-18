@@ -18,6 +18,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<AmbulanzprotokollExport> AmbulanzprotokollExports => Set<AmbulanzprotokollExport>();
     public DbSet<AmbulanzprotokollRevision> AmbulanzprotokollRevisions => Set<AmbulanzprotokollRevision>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    public DbSet<TriageProcessedWrite> TriageProcessedWrites => Set<TriageProcessedWrite>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -71,6 +72,13 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasIndex(x => x.ClientGeneratedId).IsUnique().HasFilter("client_generated_id IS NOT NULL");
             e.HasOne(x => x.OperationScene).WithMany(x => x.Patients).HasForeignKey(x => x.OperationSceneId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserIdUser).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        b.Entity<TriageProcessedWrite>(e =>
+        {
+            e.HasKey(x => new { x.PatientId, x.WriteId });
+            e.Property(x => x.Checksum).HasMaxLength(64).IsRequired();
+            e.HasOne<Patient>().WithMany().HasForeignKey(x => x.PatientId).OnDelete(DeleteBehavior.Cascade);
         });
 
         b.Entity<Body>(e =>

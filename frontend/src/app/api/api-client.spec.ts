@@ -41,6 +41,19 @@ describe('ApiClient response handling', () => {
     expect(apiErrorMessage(new Error('Network failed'), 'Fallback')).toBe('Fallback');
   });
 
+  it('sends the triage writeId as Idempotency-Key without changing the order', async () => {
+    const writeId = crypto.randomUUID();
+    const body = { transport: true, clientUpdatedAt: '2026-01-01T10:00:00Z' };
+    (api as any).client.POST = vi.fn(() =>
+      Promise.resolve({ data: { id: 7 }, response: new Response('{}') }),
+    );
+    await firstValueFrom(api.updateTriage(7, body, writeId));
+    expect((api as any).client.POST).toHaveBeenCalledWith('/api/persons/{id}/update-triage-color', {
+      params: { path: { id: 7 }, header: { 'Idempotency-Key': writeId } },
+      body,
+    });
+  });
+
   it.each([401, 403, 404, 500])(
     'throws ApiRequestError for an empty %i response',
     async (status) => {

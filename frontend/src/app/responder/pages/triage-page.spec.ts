@@ -72,10 +72,11 @@ describe('triage flag edits', () => {
     const instance = await page();
     instance.flagsForm.controls.transport.setValue(true);
     instance.saveFlags('transport');
-    expect(api.updateTriage).toHaveBeenCalledWith(7, {
-      transport: true,
-      clientUpdatedAt: expect.any(String),
-    });
+    expect(api.updateTriage).toHaveBeenCalledWith(
+      7,
+      { transport: true, clientUpdatedAt: expect.any(String) },
+      expect.any(String),
+    );
   });
 
   it('overlays only pending writes in order on current patient data', async () => {
@@ -130,10 +131,11 @@ describe('triage flag edits', () => {
     api.updateTriage.mockReturnValue(throwError(() => new TypeError('offline')));
     instance.flagsForm.controls.transport.setValue(true);
     instance.saveFlags('transport');
-    expect(queue.queueTriage).toHaveBeenCalledWith(7, {
-      transport: true,
-      clientUpdatedAt: expect.any(String),
-    });
+    expect(queue.queueTriage).toHaveBeenCalledWith(
+      7,
+      { transport: true, clientUpdatedAt: expect.any(String) },
+      expect.any(String),
+    );
     queue.pendingTriage.mockResolvedValue([{ transport: true }]);
     patient.set({ ...patient(), atmung: false, blutung: null });
     TestBed.tick();
@@ -143,5 +145,22 @@ describe('triage flag edits', () => {
       blutung: null,
       transport: true,
     });
+  });
+
+  it('keeps the first attempt ID and order on failure and gives an edited order a new ID', async () => {
+    const instance = await page();
+    api.updateTriage.mockReturnValue(throwError(() => new TypeError('response lost')));
+    const body = { transport: true };
+    instance.save(body);
+    const first = api.updateTriage.mock.calls[0];
+    expect(first[2]).toMatch(/^[0-9a-f-]{36}$/);
+    expect(queue.queueTriage.mock.calls[0]).toEqual(first);
+    body.transport = false;
+    expect(first[1].transport).toBe(true);
+    instance.save(body);
+    const second = api.updateTriage.mock.calls[1];
+    expect(second[2]).not.toBe(first[2]);
+    expect(second[1].transport).toBe(false);
+    expect(queue.queueTriage.mock.calls[1]).toEqual(second);
   });
 });
