@@ -687,7 +687,7 @@ export interface paths {
         put?: never;
         /**
          * Record-only START triage write (D1). triageColor validated against rot|gelb|gruen|schwarz (shared normalize helper maps 'grün'->'gruen', trims, lowercases; everything else incl. 'blau' -> 400). Field-level LWW merge using clientUpdatedAt when supplied (NFR-SAFE-08/09). Audit-logged with before/after. Publishes realtime update. Policy TriageWrite.
-         * @description Updates supplied START triage fields and emits the resulting audit and realtime records.
+         * @description Updates supplied START triage fields and emits the resulting audit and realtime records. With Idempotency-Key, a repeated order for the same patient returns the current patient without another write, audit or notification. Reusing the key with a different order (including clientUpdatedAt) returns 409. Without the header, existing behavior is retained.
          */
         post: operations["updatePatientTriage"];
         delete?: never;
@@ -2524,7 +2524,10 @@ export interface operations {
     updatePatientTriage: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Stable writeId of this triage order; a new order requires a new non-empty UUID. */
+                "Idempotency-Key"?: string;
+            };
             path: {
                 id: components["parameters"]["idPath"];
             };
@@ -2561,6 +2564,15 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+            /** @description Idempotency-Key was already used for a different triage order. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     updatePatientRespiration: {

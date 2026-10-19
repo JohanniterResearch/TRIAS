@@ -17,7 +17,7 @@ namespace Ambulanzsystem.Api.Data.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "8.0.11")
+                .HasAnnotation("ProductVersion", "8.0.31")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -723,6 +723,34 @@ namespace Ambulanzsystem.Api.Data.Migrations
                     b.ToTable("teams", (string)null);
                 });
 
+            modelBuilder.Entity("Ambulanzsystem.Api.Domain.TriageProcessedWrite", b =>
+                {
+                    b.Property<int>("PatientId")
+                        .HasColumnType("integer")
+                        .HasColumnName("patient_id");
+
+                    b.Property<Guid>("WriteId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("write_id");
+
+                    b.Property<string>("Checksum")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("checksum");
+
+                    b.Property<DateTime>("ProcessedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("processed_at")
+                        .HasDefaultValueSql("now()");
+
+                    b.HasKey("PatientId", "WriteId")
+                        .HasName("pk_triage_processed_writes");
+
+                    b.ToTable("triage_processed_writes", (string)null);
+                });
+
             modelBuilder.Entity("Ambulanzsystem.Api.Domain.User", b =>
                 {
                     b.Property<int>("Id")
@@ -979,6 +1007,16 @@ namespace Ambulanzsystem.Api.Data.Migrations
                     b.Navigation("AssignedPatient");
 
                     b.Navigation("OperationScene");
+                });
+
+            modelBuilder.Entity("Ambulanzsystem.Api.Domain.TriageProcessedWrite", b =>
+                {
+                    b.HasOne("Ambulanzsystem.Api.Domain.Patient", null)
+                        .WithMany()
+                        .HasForeignKey("PatientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_triage_processed_writes_patients_patient_id");
                 });
 
             modelBuilder.Entity("Ambulanzsystem.Api.Domain.User", b =>

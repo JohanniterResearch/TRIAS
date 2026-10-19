@@ -317,10 +317,14 @@ export class ApiClient {
     );
   }
 
-  updateTriage(patientId: number, body: JsonBody<'/api/persons/{id}/update-triage-color', 'post'>) {
+  updateTriage(
+    patientId: number,
+    body: JsonBody<'/api/persons/{id}/update-triage-color', 'post'>,
+    writeId?: string,
+  ) {
     return this.unwrap(
       this.client.POST('/api/persons/{id}/update-triage-color', {
-        params: { path: { id: patientId } },
+        params: { path: { id: patientId }, header: { 'Idempotency-Key': writeId } },
         body,
       }),
     );

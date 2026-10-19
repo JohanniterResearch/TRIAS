@@ -145,16 +145,16 @@ export class OfflineQueueService {
       .map((item) => item.body);
   }
 
-  async queueTriage(patientId: number, body: TriageUpdateRequest): Promise<void> {
-    await this.add(
-      withMetadata({
-        id: `triage:${patientId}:${crypto.randomUUID()}`,
-        type: 'triage',
-        patientId,
-        body,
-        createdAt: new Date().toISOString(),
-      }),
-    );
+  async queueTriage(patientId: number, body: TriageUpdateRequest, writeId?: string): Promise<void> {
+    const item: Extract<QueueItem, { type: 'triage' }> = withMetadata({
+      id: `triage:${patientId}:${crypto.randomUUID()}`,
+      type: 'triage',
+      patientId,
+      body: structuredClone(body),
+      createdAt: new Date().toISOString(),
+    });
+    if (writeId) item.writeId = writeId;
+    await this.add(item);
   }
 
   // One key per patient (location) or per region (body part): a newer intent replaces the older
@@ -394,7 +394,9 @@ export class OfflineQueueService {
     const patientId = await this.realPatientId(item.patientId);
     if (patientId < 0) return false;
     if (item.type === 'triage') {
-      const patient = await firstValueFrom(this.api.updateTriage(patientId, item.body));
+      const patient = await firstValueFrom(
+        this.api.updateTriage(patientId, item.body, item.writeId),
+      );
       this.responderState.replacePatient(patientId, patient);
       return true;
     }
