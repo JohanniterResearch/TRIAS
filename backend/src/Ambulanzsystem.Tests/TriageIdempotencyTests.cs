@@ -26,6 +26,30 @@ public class TriageIdempotencyTests
     private record IdResponse(int Id);
 
     [Fact]
+    public async Task ProcessedAt_IsSetByDatabaseOnInsert()
+    {
+        using var factory = new TriageFactory();
+        var (_, patientId) = await SetupAsync(factory);
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await using var tx = await db.Database.BeginTransactionAsync();
+        var databaseTransactionTime = await db.Database.SqlQuery<DateTime>(
+            $"SELECT now() AS \"Value\"").SingleAsync();
+        var write = new TriageProcessedWrite
+        {
+            PatientId = patientId, WriteId = Guid.NewGuid(), Checksum = new string('A', 64),
+        };
+        db.TriageProcessedWrites.Add(write);
+        await db.SaveChangesAsync();
+
+        var stored = await db.TriageProcessedWrites.AsNoTracking()
+            .SingleAsync(w => w.PatientId == patientId && w.WriteId == write.WriteId);
+        Assert.NotEqual(default(DateTime), stored.ProcessedAt);
+        Assert.Equal(databaseTransactionTime, stored.ProcessedAt);
+        await tx.CommitAsync();
+    }
+
+    [Fact]
     public async Task Checksum_WithAdditionalOptionalNullFields_MatchesEarlierDtoShape()
     {
         using var factory = new TriageFactory();
@@ -79,6 +103,13 @@ public class TriageIdempotencyTests
         var key = Guid.NewGuid().ToString();
         var order = new { triageColor = "rot", clientUpdatedAt = Timestamp };
         (await SendAsync(client, patientId, key, order)).EnsureSuccessStatusCode();
+        DateTime firstProcessedAt;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            firstProcessedAt = (await db.TriageProcessedWrites.FindAsync(patientId, Guid.Parse(key)))!.ProcessedAt;
+        }
+        Assert.NotEqual(default(DateTime), firstProcessedAt);
         // A distinct change may have the same content and must still be processed.
         (await SendAsync(client, patientId, Guid.NewGuid().ToString(), order)).EnsureSuccessStatusCode();
         (await SendAsync(client, patientId, Guid.NewGuid().ToString(),
@@ -87,6 +118,12 @@ public class TriageIdempotencyTests
         replay.EnsureSuccessStatusCode();
         Assert.Equal("gelb", (await replay.Content.ReadFromJsonAsync<PatientResponse>())!.Triagefarbe);
         await AssertEffectsAsync(factory, patientId, 3, 3);
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            Assert.Equal(firstProcessedAt,
+                (await db.TriageProcessedWrites.FindAsync(patientId, Guid.Parse(key)))!.ProcessedAt);
+        }
     }
 
     [Fact]

@@ -739,6 +739,12 @@ namespace Ambulanzsystem.Api.Data.Migrations
                         .HasColumnType("character varying(64)")
                         .HasColumnName("checksum");
 
+                    b.Property<DateTime>("ProcessedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("processed_at")
+                        .HasDefaultValueSql("now()");
+
                     b.HasKey("PatientId", "WriteId")
                         .HasName("pk_triage_processed_writes");
 
