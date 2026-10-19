@@ -1,6 +1,7 @@
 using System.Data;
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Ambulanzsystem.Api.Auth;
 using Ambulanzsystem.Api.Data;
 using Ambulanzsystem.Api.Domain;
@@ -214,7 +215,11 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
         if (writeId is Guid keyId)
         {
             // Hash the bound order, including its original timestamp, before normalization/merge.
-            var checksum = Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(update)));
+            var checksumOptions = new JsonSerializerOptions
+            {
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+            };
+            var checksum = Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(update, checksumOptions)));
             var processed = await db.TriageProcessedWrites.FindAsync(id, keyId);
             if (processed is not null)
             {

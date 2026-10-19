@@ -1,5 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
+using System.Text.Json;
 using Ambulanzsystem.Api.Controllers;
 using Ambulanzsystem.Api.Data;
 using Ambulanzsystem.Api.Domain;
@@ -22,6 +24,52 @@ public class TriageIdempotencyTests
 {
     private static readonly DateTime Timestamp = DateTime.UtcNow.AddMinutes(-10);
     private record IdResponse(int Id);
+
+    [Fact]
+    public async Task Checksum_WithAdditionalOptionalNullFields_MatchesEarlierDtoShape()
+    {
+        using var factory = new TriageFactory();
+        var (client, patientId) = await SetupAsync(factory);
+        var key = Guid.NewGuid();
+        // Simulate an earlier DTO without the optional boolean fields of TriageUpdateRequest.
+        var earlierDto = new { TriageColor = "rot", ClientUpdatedAt = Timestamp };
+        var expectedChecksum = Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(earlierDto)));
+
+        (await SendAsync(client, patientId, key.ToString(),
+            new { triageColor = "rot", clientUpdatedAt = Timestamp })).EnsureSuccessStatusCode();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            Assert.Equal(expectedChecksum, (await db.TriageProcessedWrites.FindAsync(patientId, key))!.Checksum);
+        }
+
+        (await SendAsync(client, patientId, key.ToString(),
+            new { triageColor = "rot", clientUpdatedAt = Timestamp, respiration = (bool?)null })).EnsureSuccessStatusCode();
+        await AssertEffectsAsync(factory, patientId, 1, 1);
+    }
+
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData(false, null)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    public async Task SameKeyWithChangedBoolean_ReturnsConflictWithoutEffects(bool? original, bool? changed)
+    {
+        using var factory = new TriageFactory();
+        var (client, patientId) = await SetupAsync(factory);
+        var key = Guid.NewGuid().ToString();
+        (await SendAsync(client, patientId, key,
+            new { triageColor = "rot", respiration = original, clientUpdatedAt = Timestamp })).EnsureSuccessStatusCode();
+
+        var conflict = await SendAsync(client, patientId, key,
+            new { triageColor = "rot", respiration = changed, clientUpdatedAt = Timestamp });
+
+        Assert.Equal(HttpStatusCode.Conflict, conflict.StatusCode);
+        await AssertEffectsAsync(factory, patientId, 1, 1);
+        using var scope = factory.Services.CreateScope();
+        Assert.Equal(original, (await scope.ServiceProvider.GetRequiredService<AppDbContext>()
+            .Patients.FindAsync(patientId))!.Atmung);
+    }
 
     [Fact]
     public async Task Replay_DoesNotWriteAuditOrPublish_AndReturnsCurrentPatient()
