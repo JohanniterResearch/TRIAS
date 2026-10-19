@@ -1,6 +1,6 @@
 import { inject, Injectable } from '@angular/core';
 import createClient from 'openapi-fetch';
-import { from, map, Observable, tap, throwError } from 'rxjs';
+import { catchError, from, map, Observable, tap, throwError } from 'rxjs';
 
 import { AuthStore } from '../auth/auth.store';
 import { SyncStatusService } from '../sync/sync-status.service';
@@ -447,6 +447,11 @@ export class ApiClient {
         return data as T;
       }),
       tap(() => this.syncStatus.markServerContact()),
+      catchError((error: unknown) => {
+        // A rejected fetch has no HTTP response or a 5xx gateway/server error: Wi-Fi may be connected while the API is down.
+        if (isRetryableFailure(error)) this.syncStatus.markServerUnreachable();
+        return throwError(() => error);
+      }),
     );
   }
 }

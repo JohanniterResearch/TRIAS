@@ -6,7 +6,7 @@ import { SyncStatusService } from '../sync/sync-status.service';
 import { apiErrorMessage, ApiClient, ApiRequestError } from './api-client';
 
 describe('ApiClient response handling', () => {
-  const sync = { markServerContact: vi.fn() };
+  const sync = { markServerContact: vi.fn(), markServerUnreachable: vi.fn() };
   const auth = {
     bearerToken: vi.fn(() => null),
     activeSession: vi.fn<() => any>(() => null),
@@ -17,6 +17,7 @@ describe('ApiClient response handling', () => {
 
   beforeEach(() => {
     sync.markServerContact.mockReset();
+    sync.markServerUnreachable.mockReset();
     auth.activeSession.mockReset().mockReturnValue(null);
     auth.refreshTokens.mockReset();
     auth.sessionIdentity.mockReturnValue({});
@@ -54,6 +55,11 @@ describe('ApiClient response handling', () => {
 
       await expect(result).rejects.toMatchObject({ status } satisfies Partial<ApiRequestError>);
       expect(sync.markServerContact).not.toHaveBeenCalled();
+      if (status >= 500) {
+        expect(sync.markServerUnreachable).toHaveBeenCalledOnce();
+      } else {
+        expect(sync.markServerUnreachable).not.toHaveBeenCalled();
+      }
     },
   );
 

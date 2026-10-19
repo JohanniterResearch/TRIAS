@@ -24,15 +24,15 @@ import { DevAccess } from '../components/dev-access';
         <p class="status-message" role="status" aria-live="polite">Anmeldung läuft.</p>
       }
 
+      <app-qr-scanner (scanned)="submitQr($event)" />
+
       <form [formGroup]="qrForm" (ngSubmit)="submitQr()" class="auth-form">
         <label>
           QR Code
-          <input formControlName="qrCode" autocomplete="one-time-code" autofocus />
+          <input formControlName="qrCode" autocomplete="one-time-code" />
         </label>
         <button type="submit" [disabled]="busy || qrForm.invalid">Einloggen</button>
       </form>
-
-      <app-qr-scanner (scanned)="submitQr($event)" />
 
       <h2>Responder Login</h2>
       <form [formGroup]="userForm" (ngSubmit)="submitUser()" class="auth-form">

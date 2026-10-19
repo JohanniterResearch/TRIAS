@@ -144,4 +144,18 @@ describe('triage flag edits', () => {
       transport: true,
     });
   });
+
+  it('queues triage color change when server returns a 500 error', async () => {
+    const instance = await page();
+    api.updateTriage.mockReturnValue(
+      throwError(() => ({ status: 500, error: { message: 'Internal Server Error' } })),
+    );
+    instance.save({ triageColor: 'red' });
+    await Promise.resolve();
+    expect(queue.queueTriage).toHaveBeenCalledWith(7, {
+      triageColor: 'red',
+      clientUpdatedAt: expect.any(String),
+    });
+    expect(instance.message()).toBe('Lokal gespeichert, Sync ausstehend.');
+  });
 });

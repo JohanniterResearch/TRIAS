@@ -6,6 +6,7 @@ const lastQueueFlushKey = 'ambulanzsystem.lastQueueFlush.v1';
 @Injectable({ providedIn: 'root' })
 export class SyncStatusService {
   readonly online = signal(navigator.onLine);
+  readonly serverReachable = signal(true);
   readonly lastServerContact = signal<string | null>(localStorage.getItem(lastServerContactKey));
   readonly lastSuccessfulQueueFlush = signal<string | null>(
     localStorage.getItem(lastQueueFlushKey),
@@ -19,13 +20,21 @@ export class SyncStatusService {
 
   constructor() {
     window.addEventListener('online', () => this.online.set(true));
-    window.addEventListener('offline', () => this.online.set(false));
+    window.addEventListener('offline', () => {
+      this.online.set(false);
+      this.serverReachable.set(false);
+    });
   }
 
   markServerContact(at = new Date()): void {
+    this.serverReachable.set(true);
     const iso = at.toISOString();
     localStorage.setItem(lastServerContactKey, iso);
     this.lastServerContact.set(iso);
+  }
+
+  markServerUnreachable(): void {
+    this.serverReachable.set(false);
   }
 
   markQueueFlushed(at = new Date()): void {

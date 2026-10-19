@@ -239,24 +239,31 @@ export class TriagePage implements AfterViewInit, OnDestroy {
     const queuedBody = { ...body, clientUpdatedAt: new Date().toISOString() };
     ++this.flagsRevision;
     this.error.set('');
+    const queue = () =>
+      this.offlineQueue
+        .queueTriage(patient.id, queuedBody)
+        .then(() => this.message.set('Lokal gespeichert, Sync ausstehend.'))
+        .catch(() => {
+          this.message.set('');
+          this.error.set('Lokale Sync-Warteschlange konnte nicht gespeichert werden.');
+        });
+
+    if (patient.id < 0) {
+      void queue();
+      return;
+    }
+
     this.api.updateTriage(patient.id, queuedBody).subscribe({
       next: (updated) => {
         this.state.setPatient(updated);
         this.message.set('Gespeichert.');
       },
       error: (error: unknown) => {
-        const message = apiErrorMessage(error, '');
-        if (message) {
-          this.error.set(message);
+        if (isRetryableFailure(error)) {
+          void queue();
           return;
         }
-        this.offlineQueue
-          .queueTriage(patient.id, queuedBody)
-          .then(() => this.message.set('Lokal gespeichert, Sync ausstehend.'))
-          .catch(() => {
-            this.message.set('');
-            this.error.set('Lokale Sync-Warteschlange konnte nicht gespeichert werden.');
-          });
+        this.error.set(apiErrorMessage(error, 'Triage konnte nicht gespeichert werden.'));
       },
     });
   }
