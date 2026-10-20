@@ -1,4 +1,3 @@
-import { DatePipe } from '@angular/common';
 import { Component, computed, inject, signal, type WritableSignal } from '@angular/core';
 import { AbstractControl, FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -13,6 +12,7 @@ import { PreviewModal } from '../components/preview-modal';
 import { QrCodeImage } from '../components/qr-code-image';
 import { QrPreviewModal, type QrPreviewItem } from '../components/qr-preview-modal';
 import { TRIAGE_COLORS } from '../../shared/triage';
+import { formatDateTime, formatTime } from '../../shared/date-time-format';
 
 type OperationScene = components['schemas']['OperationScene'];
 type LoginQrCode = components['schemas']['LoginQrCode'];
@@ -22,15 +22,7 @@ type AdminPatientDetails = components['schemas']['AdminPatientDetails'];
 
 @Component({
   selector: 'app-admin-dashboard',
-  imports: [
-    DatePipe,
-    MyAccess,
-    PreviewModal,
-    QrCodeImage,
-    QrPreviewModal,
-    ReactiveFormsModule,
-    RouterLink,
-  ],
+  imports: [MyAccess, PreviewModal, QrCodeImage, QrPreviewModal, ReactiveFormsModule, RouterLink],
   template: `
     <section class="admin-page">
       <app-my-access />
@@ -259,7 +251,7 @@ type AdminPatientDetails = components['schemas']['AdminPatientDetails'];
                   <strong>{{ user.username }}</strong>
                   <span>{{ user.role }} · {{ user.accountType }}</span>
                   @if (user.revokedAt) {
-                    <span>Widerrufen: {{ user.revokedAt | date: 'short' }}</span>
+                    <span>Widerrufen: {{ formatDateTime(user.revokedAt) }}</span>
                   } @else {
                     <button type="button" (click)="revokeUser(user.id)">Zugang widerrufen</button>
                   }
@@ -612,7 +604,7 @@ type AdminPatientDetails = components['schemas']['AdminPatientDetails'];
                     @for (entry of details.auditEntries; track entry.timestamp + entry.action) {
                       <article>
                         <strong>{{ entry.action }}</strong
-                        ><span>{{ entry.timestamp | date: 'short' }} · {{ entry.actorRole }}</span>
+                        ><span>{{ formatDateTime(entry.timestamp) }} · {{ entry.actorRole }}</span>
                         @if (entry.reason) {
                           <span>{{ entry.reason }}</span>
                         }
@@ -642,6 +634,8 @@ type AdminPatientDetails = components['schemas']['AdminPatientDetails'];
   `,
 })
 export class AdminDashboard {
+  protected readonly formatDateTime = formatDateTime;
+
   protected readonly busy = signal(false);
   protected readonly error = signal('');
   protected readonly message = signal('');
@@ -1148,7 +1142,7 @@ export class AdminDashboard {
                 value: protocol.status === 'finalized' ? 'Finalisiert' : 'Entwurf',
               },
               ...(protocol.finalizedAt
-                ? [{ label: 'Finalisiert am', value: protocol.finalizedAt }]
+                ? [{ label: 'Finalisiert am', value: formatDateTime(protocol.finalizedAt) }]
                 : []),
             ]
           : (keys as string[]).flatMap((key) => this.protocolEntries(form[key], key)),
@@ -1222,9 +1216,23 @@ export class AdminDashboard {
     return [
       {
         label: this.bodyPartLabel(prefix.replaceAll('.', ' · ')),
-        value: value === true ? 'Ja' : String(value),
+        value: this.formatProtocolValue(prefix, value),
       },
     ];
+  }
+
+  private formatProtocolValue(prefix: string, value: unknown): string {
+    const path = prefix.replaceAll(' · ', '.');
+    if (path === 'incident.datum' || path === 'patient.geburtsdatum')
+      return formatDateTime(String(value));
+    if (
+      path === 'incident.uhrzeit_beginn' ||
+      path === 'disposition.uhrzeit_ende' ||
+      path === 'assessment_primary.angen_notfallzeit.zeit' ||
+      /^medications_administered\.\d+\.uhrzeit$/.test(path)
+    )
+      return formatTime(String(value));
+    return value === true ? 'Ja' : String(value);
   }
 
   protected saveManagedPatient(): void {

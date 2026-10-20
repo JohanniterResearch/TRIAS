@@ -1,4 +1,4 @@
-import { DatePipe, DecimalPipe } from '@angular/common';
+import { DecimalPipe } from '@angular/common';
 import {
   AfterViewInit,
   Component,
@@ -19,6 +19,7 @@ import { EMPTY, Subscription, catchError, interval, switchMap } from 'rxjs';
 import { apiErrorMessage, ApiClient } from '../../api/api-client';
 import type { components } from '../../api/openapi-types';
 import { DEFAULT_MAP_CENTER, osmMap } from '../../shared/osm-map';
+import { formatDateTime, formatTime } from '../../shared/date-time-format';
 import { TRIAGE_COLORS, type TriageColor } from '../../shared/triage';
 import { AuthStore } from '../../auth/auth.store';
 import { MyAccess } from '../../auth/components/my-access';
@@ -32,7 +33,7 @@ const pollingErrorMessage = 'Live-Verbindung und Aktualisierung sind unterbroche
 
 @Component({
   selector: 'app-situation-room-page',
-  imports: [DatePipe, DecimalPipe, MyAccess, ReactiveFormsModule, RouterLink],
+  imports: [DecimalPipe, MyAccess, ReactiveFormsModule, RouterLink],
   template: `
     <section class="situation-page">
       <app-my-access />
@@ -131,8 +132,8 @@ const pollingErrorMessage = 'Live-Verbindung und Aktualisierung sind unterbroche
                     {{ patient.longitudePatient | number: '1.4-4' }} /
                     {{ patient.latitudePatient | number: '1.4-4' }}
                   </td>
-                  <td>{{ patient.createdAt | date: 'short' }}</td>
-                  <td>{{ patient.updatedAt | date: 'short' }}</td>
+                  <td>{{ formatDateTime(patient.createdAt) }}</td>
+                  <td>{{ formatDateTime(patient.updatedAt) }}</td>
                 </tr>
               }
             </tbody>
@@ -150,7 +151,8 @@ const pollingErrorMessage = 'Live-Verbindung und Aktualisierung sind unterbroche
                 <ul>
                   @for (entry of history(); track entry.timestamp + entry.field) {
                     <li>
-                      {{ entry.timestamp }} · {{ entry.field }}: {{ entry.before || '-' }} →
+                      {{ formatDateTime(entry.timestamp) }} · {{ entry.field }}:
+                      {{ entry.before || '-' }} →
                       {{ entry.after || '-' }}
                     </li>
                   }
@@ -222,6 +224,8 @@ const pollingErrorMessage = 'Live-Verbindung und Aktualisierung sind unterbroche
   `,
 })
 export class SituationRoomPage implements AfterViewInit, OnDestroy {
+  protected readonly formatDateTime = formatDateTime;
+
   protected readonly patients = signal<Patient[]>([]);
   protected readonly teams = signal<Team[]>([]);
   protected readonly history = signal<components['schemas']['TriageHistoryEntry'][]>([]);
@@ -536,7 +540,7 @@ export class SituationRoomPage implements AfterViewInit, OnDestroy {
         if (generation !== this.sceneGeneration || this.sceneId() !== sceneId) return;
         if (this.error() === pollingErrorMessage) this.error.set('');
         this.patients.set(patients);
-        this.realtimeState.set(`polling · ${new Date().toLocaleTimeString()}`);
+        this.realtimeState.set(`polling · ${formatTime(new Date())}`);
         this.renderMarkers();
       });
   }

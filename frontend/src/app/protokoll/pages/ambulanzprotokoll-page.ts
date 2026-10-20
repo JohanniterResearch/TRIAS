@@ -16,6 +16,7 @@ import { apiErrorMessage, ApiClient } from '../../api/api-client';
 import { AuthStore } from '../../auth/auth.store';
 import { MyAccess } from '../../auth/components/my-access';
 import { ResponderStateStore } from '../../responder/services/responder-state';
+import { formatTime } from '../../shared/date-time-format';
 import { OfflineQueueService } from '../../sync/offline-queue.service';
 import { ProtokollDraftStore } from '../services/protokoll-draft-store';
 
@@ -704,6 +705,8 @@ const zones = [
   `,
 })
 export class AmbulanzprotokollPage implements OnDestroy {
+  private readonly formatTime = formatTime;
+
   protected readonly fields = fields;
   protected readonly measureFields = measureFields;
   protected readonly optionGroups = optionGroups;
@@ -775,7 +778,7 @@ export class AmbulanzprotokollPage implements OnDestroy {
         this.status.set(record.status);
         this.finalizedAt.set(record.finalizedAt ?? null);
         this.warnings.set(record.warnings);
-        this.saveState.set(`server ${new Date(record.updatedAt).toLocaleTimeString()}`);
+        this.saveState.set(`server ${this.formatTime(record.updatedAt)}`);
       });
     this.route.paramMap.pipe(takeUntilDestroyed()).subscribe((params) => {
       const patientId = Number(params.get('patientId') ?? this.responderState.patient()?.id ?? 0);
@@ -1076,7 +1079,7 @@ export class AmbulanzprotokollPage implements OnDestroy {
       this.warnings.set(local.warnings ?? []);
       this.status.set(local.status);
       this.finalizedAt.set(local.finalizedAt ?? null);
-      this.saveState.set(`lokal ${new Date(local.updatedAt).toLocaleTimeString()}`);
+      this.saveState.set(`lokal ${this.formatTime(local.updatedAt)}`);
       this.restoreSignature();
     }
 
@@ -1095,7 +1098,7 @@ export class AmbulanzprotokollPage implements OnDestroy {
           this.form.set(mergeState(defaultState(), record.formState as Partial<FormState>));
           this.status.set(record.status);
           this.finalizedAt.set(record.finalizedAt ?? null);
-          this.saveState.set(`server ${new Date(record.updatedAt).toLocaleTimeString()}`);
+          this.saveState.set(`server ${this.formatTime(record.updatedAt)}`);
           this.restoreSignature();
         }
       },
