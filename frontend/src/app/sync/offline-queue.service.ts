@@ -160,16 +160,17 @@ export class OfflineQueueService {
 
   // One key per patient (location) or per region (body part): a newer intent replaces the older
   // unsent one, since both are absolute values rather than increments.
-  async queueLocation(patientId: number, body: LocationRequest): Promise<void> {
-    await this.add(
-      withMetadata({
-        id: `location:${patientId}`,
-        type: 'location',
-        patientId,
-        body: { ...body, clientUpdatedAt: body.clientUpdatedAt ?? new Date().toISOString() },
-        createdAt: new Date().toISOString(),
-      }),
-    );
+  async queueLocation(patientId: number, body: LocationRequest, writeId?: string): Promise<void> {
+    const item: Extract<QueueItem, { type: 'location' }> = withMetadata({
+      id: `location:${patientId}`,
+      type: 'location',
+      patientId,
+      body: { ...body, clientUpdatedAt: body.clientUpdatedAt ?? new Date().toISOString() },
+      createdAt: new Date().toISOString(),
+    });
+    // Keep the key of an online attempt that may already have reached the server.
+    if (writeId) item.writeId = writeId;
+    await this.add(item);
   }
 
   async queueBodyPart(patientId: number, body: BodyPartRequest, writeId?: string): Promise<void> {
@@ -414,7 +415,9 @@ export class OfflineQueueService {
       return true;
     }
     if (item.type === 'location') {
-      const patient = await firstValueFrom(this.api.updatePatientLocation(patientId, item.body));
+      const patient = await firstValueFrom(
+        this.api.updatePatientLocation(patientId, item.body, item.writeId),
+      );
       this.responderState.replacePatient(patientId, patient);
       return true;
     }

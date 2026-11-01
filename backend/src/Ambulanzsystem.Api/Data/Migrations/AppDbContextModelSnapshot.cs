@@ -319,6 +319,34 @@ namespace Ambulanzsystem.Api.Data.Migrations
                     b.ToTable("body_part_processed_writes", (string)null);
                 });
 
+            modelBuilder.Entity("Ambulanzsystem.Api.Domain.LocationProcessedWrite", b =>
+                {
+                    b.Property<int>("PatientId")
+                        .HasColumnType("integer")
+                        .HasColumnName("patient_id");
+
+                    b.Property<Guid>("WriteId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("write_id");
+
+                    b.Property<string>("Checksum")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("checksum");
+
+                    b.Property<DateTime>("ProcessedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("processed_at")
+                        .HasDefaultValueSql("now()");
+
+                    b.HasKey("PatientId", "WriteId")
+                        .HasName("pk_location_processed_writes");
+
+                    b.ToTable("location_processed_writes", (string)null);
+                });
+
             modelBuilder.Entity("Ambulanzsystem.Api.Domain.OperationScene", b =>
                 {
                     b.Property<int>("Id")
@@ -963,6 +991,16 @@ namespace Ambulanzsystem.Api.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_body_part_processed_writes_patients_patient_id");
+                });
+
+            modelBuilder.Entity("Ambulanzsystem.Api.Domain.LocationProcessedWrite", b =>
+                {
+                    b.HasOne("Ambulanzsystem.Api.Domain.Patient", null)
+                        .WithMany()
+                        .HasForeignKey("PatientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_location_processed_writes_patients_patient_id");
                 });
 
             modelBuilder.Entity("Ambulanzsystem.Api.Domain.OperationScene", b =>

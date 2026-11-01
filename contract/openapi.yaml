@@ -912,9 +912,22 @@ paths:
     post:
       tags: [persons]
       operationId: updatePatientLocation
-      description: Updates the patient's validated GPS or manually corrected location and publishes the new state.
+      description: >-
+        Updates the patient's validated GPS or manually corrected location and publishes the new state.
+        With Idempotency-Key, a repeated order for the same patient returns the current patient
+        without another write, audit or notification. Reusing the key with a different order
+        (including clientUpdatedAt) returns 409. Without the header, existing behavior is retained.
       summary: Update patient position (auto-captured device GPS or manual correction, FR-LOC-05/06). Publishes realtime update. Policy TriageWrite.
-      parameters: [{ $ref: "#/components/parameters/idPath" }]
+      parameters:
+        - { $ref: "#/components/parameters/idPath" }
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: Stable writeId of this location order; a new order requires a new non-empty UUID.
+          schema:
+            type: string
+            format: uuid
+            pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
       requestBody:
         required: true
         content:
@@ -939,6 +952,11 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Idempotency-Key was already used for a different location order.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/persons/{id}/reassign-qr-code:
     post:

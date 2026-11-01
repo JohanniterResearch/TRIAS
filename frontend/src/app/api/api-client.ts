@@ -330,10 +330,14 @@ export class ApiClient {
     );
   }
 
-  updatePatientLocation(patientId: number, body: JsonBody<'/api/persons/{id}/location', 'post'>) {
+  updatePatientLocation(
+    patientId: number,
+    body: JsonBody<'/api/persons/{id}/location', 'post'>,
+    writeId?: string,
+  ) {
     return this.unwrap(
       this.client.POST('/api/persons/{id}/location', {
-        params: { path: { id: patientId } },
+        params: { path: { id: patientId }, header: { 'Idempotency-Key': writeId } },
         body,
       }),
     );

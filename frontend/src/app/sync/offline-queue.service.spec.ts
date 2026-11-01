@@ -513,7 +513,12 @@ describe('OfflineQueueService', () => {
   it('replays queued location and body-part writes against the real patient ID', async () => {
     vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
     vi.spyOn(service as any, 'items').mockResolvedValue([
-      { ...triage('location', -3), type: 'location', body: { lat: 48.2, lng: 16.3 } },
+      {
+        ...triage('location', -3),
+        type: 'location',
+        writeId: 'location-write',
+        body: { lat: 48.2, lng: 16.3 },
+      },
       {
         ...triage('body', -3),
         type: 'body-part',
@@ -528,7 +533,11 @@ describe('OfflineQueueService', () => {
 
     await service.flush();
 
-    expect(api.updatePatientLocation).toHaveBeenCalledWith(9, { lat: 48.2, lng: 16.3 });
+    expect(api.updatePatientLocation).toHaveBeenCalledWith(
+      9,
+      { lat: 48.2, lng: 16.3 },
+      'location-write',
+    );
     expect(api.toggleBodyPart).toHaveBeenCalledWith(
       {
         idpatient: 9,
@@ -538,6 +547,19 @@ describe('OfflineQueueService', () => {
       'body-write',
     );
     expect(remove).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps the online writeId of a queued location order and assigns one otherwise', async () => {
+    const added: any[] = [];
+    vi.spyOn(service as any, 'add').mockImplementation((item: any) => added.push(item));
+    const body = { lat: 48.2, lng: 16.3 };
+
+    await service.queueLocation(7, body, 'online-write');
+    await service.queueLocation(7, body);
+
+    expect(added[0].writeId).toBe('online-write');
+    expect(added[1].writeId).toEqual(expect.any(String));
+    expect(added[1].writeId).not.toBe('online-write');
   });
 
   it('keeps the online writeId of a queued body-part order and assigns one otherwise', async () => {

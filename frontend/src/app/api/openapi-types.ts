@@ -727,7 +727,7 @@ export interface paths {
         put?: never;
         /**
          * Update patient position (auto-captured device GPS or manual correction, FR-LOC-05/06). Publishes realtime update. Policy TriageWrite.
-         * @description Updates the patient's validated GPS or manually corrected location and publishes the new state.
+         * @description Updates the patient's validated GPS or manually corrected location and publishes the new state. With Idempotency-Key, a repeated order for the same patient returns the current patient without another write, audit or notification. Reusing the key with a different order (including clientUpdatedAt) returns 409. Without the header, existing behavior is retained.
          */
         post: operations["updatePatientLocation"];
         delete?: never;
@@ -2614,7 +2614,10 @@ export interface operations {
     updatePatientLocation: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Stable writeId of this location order; a new order requires a new non-empty UUID. */
+                "Idempotency-Key"?: string;
+            };
             path: {
                 id: components["parameters"]["idPath"];
             };
@@ -2658,6 +2661,15 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+            /** @description Idempotency-Key was already used for a different location order. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     reassignPatientQrCode: {
