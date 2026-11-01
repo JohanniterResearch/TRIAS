@@ -834,7 +834,7 @@ export interface paths {
         get: operations["getBodyParts"];
         /**
          * Toggle one region's marker. bodyPartId validated against the canonical key list. Publishes realtime update. Policy TriageWrite.
-         * @description Sets one validated body-region marker and returns the patient's complete updated marker state.
+         * @description Sets one validated body-region marker and returns the patient's complete updated marker state. With Idempotency-Key, a repeated order for the same patient returns the current marker state without another write, audit or notification. Reusing the key with a different order returns 409. Without the header, existing behavior is retained.
          */
         put: operations["updateBodyPart"];
         post?: never;
@@ -2864,7 +2864,10 @@ export interface operations {
     updateBodyPart: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Stable writeId of this body-part order; a new order requires a new non-empty UUID. */
+                "Idempotency-Key"?: string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -2888,7 +2891,7 @@ export interface operations {
                     "application/json": components["schemas"]["BodyParts"];
                 };
             };
-            /** @description Unknown bodyPartId. */
+            /** @description Unknown bodyPartId or invalid Idempotency-Key. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -2896,7 +2899,17 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            /** @description Idempotency-Key was already used for a different body-part order. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     queryAuditLog: {

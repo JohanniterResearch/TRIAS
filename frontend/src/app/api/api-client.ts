@@ -359,9 +359,10 @@ export class ApiClient {
     );
   }
 
-  toggleBodyPart(body: JsonBody<'/api/body-parts', 'put'>) {
+  toggleBodyPart(body: JsonBody<'/api/body-parts', 'put'>, writeId?: string) {
     return this.unwrap(
       this.client.PUT('/api/body-parts', {
+        params: { header: { 'Idempotency-Key': writeId } },
         body,
       }),
     );

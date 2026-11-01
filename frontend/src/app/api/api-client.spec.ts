@@ -74,6 +74,19 @@ describe('ApiClient response handling', () => {
     );
   });
 
+  it('sends the body-part writeId as Idempotency-Key', async () => {
+    const writeId = crypto.randomUUID();
+    const body = { idpatient: 7, bodyPartId: 'kopf_vorne', isClicked: true };
+    (api as any).client.PUT = vi.fn(() =>
+      Promise.resolve({ data: { idpatient: 7 }, response: new Response('{}') }),
+    );
+    await firstValueFrom(api.toggleBodyPart(body, writeId));
+    expect((api as any).client.PUT).toHaveBeenCalledWith('/api/body-parts', {
+      params: { header: { 'Idempotency-Key': writeId } },
+      body,
+    });
+  });
+
   it.each([401, 403, 404, 500])(
     'throws ApiRequestError for an empty %i response',
     async (status) => {

@@ -20,6 +20,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<TriageProcessedWrite> TriageProcessedWrites => Set<TriageProcessedWrite>();
     public DbSet<ProtokollProcessedWrite> ProtokollProcessedWrites => Set<ProtokollProcessedWrite>();
+    public DbSet<BodyPartProcessedWrite> BodyPartProcessedWrites => Set<BodyPartProcessedWrite>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -76,6 +77,17 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         });
 
         b.Entity<TriageProcessedWrite>(e =>
+        {
+            e.HasKey(x => new { x.PatientId, x.WriteId });
+            e.Property(x => x.Checksum).HasMaxLength(64).IsRequired();
+            e.Property(x => x.ProcessedAt)
+                .HasColumnName("processed_at")
+                .HasColumnType("timestamp with time zone")
+                .HasDefaultValueSql("now()");
+            e.HasOne<Patient>().WithMany().HasForeignKey(x => x.PatientId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<BodyPartProcessedWrite>(e =>
         {
             e.HasKey(x => new { x.PatientId, x.WriteId });
             e.Property(x => x.Checksum).HasMaxLength(64).IsRequired();

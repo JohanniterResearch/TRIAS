@@ -1110,8 +1110,21 @@ paths:
     put:
       tags: [body-parts]
       operationId: updateBodyPart
-      description: Sets one validated body-region marker and returns the patient's complete updated marker state.
+      description: >-
+        Sets one validated body-region marker and returns the patient's complete updated marker state.
+        With Idempotency-Key, a repeated order for the same patient returns the current marker state
+        without another write, audit or notification. Reusing the key with a different order returns 409.
+        Without the header, existing behavior is retained.
       summary: Toggle one region's marker. bodyPartId validated against the canonical key list. Publishes realtime update. Policy TriageWrite.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: Stable writeId of this body-part order; a new order requires a new non-empty UUID.
+          schema:
+            type: string
+            format: uuid
+            pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
       requestBody:
         required: true
         content:
@@ -1130,9 +1143,15 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/BodyParts" }
-        "400": { description: Unknown bodyPartId. }
+        "400": { description: Unknown bodyPartId or invalid Idempotency-Key. }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Idempotency-Key was already used for a different body-part order.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   # ------------------------------------------------------------- audit
   /api/audit:

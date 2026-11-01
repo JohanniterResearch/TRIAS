@@ -83,6 +83,7 @@ export class BodyMapPage {
     region: string;
     isClicked: boolean;
     generation: number;
+    writeId: string;
   }>();
   private readonly latestIntent = new Map<string, { isClicked: boolean; generation: number }>();
   private confirmedBodyParts: Record<string, number> = {};
@@ -96,11 +97,14 @@ export class BodyMapPage {
           intent.patientId < 0
             ? this.queueIntent(intent)
             : this.api
-                .toggleBodyPart({
-                  idpatient: intent.patientId,
-                  bodyPartId: intent.region,
-                  isClicked: intent.isClicked,
-                })
+                .toggleBodyPart(
+                  {
+                    idpatient: intent.patientId,
+                    bodyPartId: intent.region,
+                    isClicked: intent.isClicked,
+                  },
+                  intent.writeId,
+                )
                 .pipe(
                   tap((body) => {
                     if (this.latestIntent.get(intent.region)?.generation === intent.generation) {
@@ -137,13 +141,23 @@ export class BodyMapPage {
 
   // Offline (or no server answer): keep the optimistic mark and replay it later. The toggle is an
   // absolute value per region, so a queued newer intent simply replaces an older one.
-  private queueIntent(intent: { patientId: number; region: string; isClicked: boolean }) {
+  // The online attempt's writeId is reused so a request that did reach the server is not reapplied.
+  private queueIntent(intent: {
+    patientId: number;
+    region: string;
+    isClicked: boolean;
+    writeId: string;
+  }) {
     return from(
-      this.offlineQueue.queueBodyPart(intent.patientId, {
-        idpatient: intent.patientId,
-        bodyPartId: intent.region,
-        isClicked: intent.isClicked,
-      }),
+      this.offlineQueue.queueBodyPart(
+        intent.patientId,
+        {
+          idpatient: intent.patientId,
+          bodyPartId: intent.region,
+          isClicked: intent.isClicked,
+        },
+        intent.writeId,
+      ),
     ).pipe(
       catchError(() => {
         this.error.set('Lokale Sync-Warteschlange konnte nicht gespeichert werden.');
@@ -174,7 +188,13 @@ export class BodyMapPage {
     const generation = ++this.intentGeneration;
     this.latestIntent.set(region, { isClicked, generation });
     this.updateDisplay();
-    this.intents.next({ patientId: patient.id, region, isClicked, generation });
+    this.intents.next({
+      patientId: patient.id,
+      region,
+      isClicked,
+      generation,
+      writeId: crypto.randomUUID(),
+    });
   }
 
   protected label(region: string): string {

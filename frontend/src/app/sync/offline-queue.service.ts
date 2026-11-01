@@ -172,16 +172,17 @@ export class OfflineQueueService {
     );
   }
 
-  async queueBodyPart(patientId: number, body: BodyPartRequest): Promise<void> {
-    await this.add(
-      withMetadata({
-        id: `body-part:${patientId}:${body.bodyPartId}`,
-        type: 'body-part',
-        patientId,
-        body,
-        createdAt: new Date().toISOString(),
-      }),
-    );
+  async queueBodyPart(patientId: number, body: BodyPartRequest, writeId?: string): Promise<void> {
+    const item: Extract<QueueItem, { type: 'body-part' }> = withMetadata({
+      id: `body-part:${patientId}:${body.bodyPartId}`,
+      type: 'body-part',
+      patientId,
+      body,
+      createdAt: new Date().toISOString(),
+    });
+    // Keep the key of an online attempt that may already have reached the server.
+    if (writeId) item.writeId = writeId;
+    await this.add(item);
   }
 
   queueProtocol(
@@ -418,7 +419,9 @@ export class OfflineQueueService {
       return true;
     }
     if (item.type === 'body-part') {
-      await firstValueFrom(this.api.toggleBodyPart({ ...item.body, idpatient: patientId }));
+      await firstValueFrom(
+        this.api.toggleBodyPart({ ...item.body, idpatient: patientId }, item.writeId),
+      );
       return true;
     }
     const record = await firstValueFrom(

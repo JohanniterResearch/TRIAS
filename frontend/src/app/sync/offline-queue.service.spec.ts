@@ -517,6 +517,7 @@ describe('OfflineQueueService', () => {
       {
         ...triage('body', -3),
         type: 'body-part',
+        writeId: 'body-write',
         body: { idpatient: -3, bodyPartId: 'kopf_vorne', isClicked: true },
       },
     ]);
@@ -528,12 +529,28 @@ describe('OfflineQueueService', () => {
     await service.flush();
 
     expect(api.updatePatientLocation).toHaveBeenCalledWith(9, { lat: 48.2, lng: 16.3 });
-    expect(api.toggleBodyPart).toHaveBeenCalledWith({
-      idpatient: 9,
-      bodyPartId: 'kopf_vorne',
-      isClicked: true,
-    });
+    expect(api.toggleBodyPart).toHaveBeenCalledWith(
+      {
+        idpatient: 9,
+        bodyPartId: 'kopf_vorne',
+        isClicked: true,
+      },
+      'body-write',
+    );
     expect(remove).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps the online writeId of a queued body-part order and assigns one otherwise', async () => {
+    const added: any[] = [];
+    vi.spyOn(service as any, 'add').mockImplementation((item: any) => added.push(item));
+    const body = { idpatient: 7, bodyPartId: 'kopf_vorne', isClicked: true };
+
+    await service.queueBodyPart(7, body, 'online-write');
+    await service.queueBodyPart(7, body);
+
+    expect(added[0].writeId).toBe('online-write');
+    expect(added[1].writeId).toEqual(expect.any(String));
+    expect(added[1].writeId).not.toBe('online-write');
   });
 
   it('marks queue flush time only after a persisted queue deletion', async () => {

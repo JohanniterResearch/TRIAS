@@ -291,6 +291,34 @@ namespace Ambulanzsystem.Api.Data.Migrations
                     b.ToTable("bodies", (string)null);
                 });
 
+            modelBuilder.Entity("Ambulanzsystem.Api.Domain.BodyPartProcessedWrite", b =>
+                {
+                    b.Property<int>("PatientId")
+                        .HasColumnType("integer")
+                        .HasColumnName("patient_id");
+
+                    b.Property<Guid>("WriteId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("write_id");
+
+                    b.Property<string>("Checksum")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("checksum");
+
+                    b.Property<DateTime>("ProcessedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("processed_at")
+                        .HasDefaultValueSql("now()");
+
+                    b.HasKey("PatientId", "WriteId")
+                        .HasName("pk_body_part_processed_writes");
+
+                    b.ToTable("body_part_processed_writes", (string)null);
+                });
+
             modelBuilder.Entity("Ambulanzsystem.Api.Domain.OperationScene", b =>
                 {
                     b.Property<int>("Id")
@@ -925,6 +953,16 @@ namespace Ambulanzsystem.Api.Data.Migrations
                         .HasConstraintName("fk_bodies_patients_patient_id");
 
                     b.Navigation("Patient");
+                });
+
+            modelBuilder.Entity("Ambulanzsystem.Api.Domain.BodyPartProcessedWrite", b =>
+                {
+                    b.HasOne("Ambulanzsystem.Api.Domain.Patient", null)
+                        .WithMany()
+                        .HasForeignKey("PatientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_body_part_processed_writes_patients_patient_id");
                 });
 
             modelBuilder.Entity("Ambulanzsystem.Api.Domain.OperationScene", b =>
