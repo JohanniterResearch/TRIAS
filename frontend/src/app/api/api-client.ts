@@ -378,10 +378,11 @@ export class ApiClient {
   saveProtokollPage1(
     patientId: number,
     body: JsonBody<'/api/persons/{patientId}/ambulanzprotokoll-page1', 'put'>,
+    writeId?: string,
   ) {
     return this.unwrap(
       this.client.PUT('/api/persons/{patientId}/ambulanzprotokoll-page1', {
-        params: { path: { patientId } },
+        params: { path: { patientId }, header: { 'Idempotency-Key': writeId } },
         body,
       }),
     );

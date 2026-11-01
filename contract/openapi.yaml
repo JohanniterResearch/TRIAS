@@ -1003,7 +1003,13 @@ paths:
     put:
       tags: [ambulanzprotokoll]
       operationId: saveAmbulanzprotokollPage1
-      description: Merges and saves page-one protocol data and returns the persisted record with any server validation warnings.
+      description: >-
+        Merges and saves page-one protocol data and returns the persisted record with any server validation warnings.
+        With Idempotency-Key, a repeated order for the same patient returns the current protocol and
+        its current warnings without another merge, write, audit, revision or notification.
+        Reusing the key with a different order (including status, formState, clientUpdatedAt or
+        correctionReason) returns 409. JSON object property order is irrelevant; array order and
+        explicit formState null values are preserved. Without the header, existing behavior is retained.
       summary: >
         Upsert the page-1 record. Draft accepts any partial data; missing branches
         are merged with the default state; concurrent saves merge field-level LWW
@@ -1012,7 +1018,13 @@ paths:
         never a hard block for empty fields. Post-finalize saves stay allowed
         (Leitstelle/Admin any form; responder their own records); all audit-logged.
         Policy TriageWrite.
-      parameters: [{ $ref: "#/components/parameters/patientIdPath" }]
+      parameters:
+        - { $ref: "#/components/parameters/patientIdPath" }
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: Non-empty UUID identifying one protocol save; retain the original key and body on retry.
+          schema: { type: string, format: uuid }
       requestBody:
         required: true
         content:
@@ -1043,7 +1055,13 @@ paths:
                         items: { type: string }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { description: Patient does not exist. }
+        "409":
+          description: Idempotency-Key was already used for a different protocol order.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/persons/{patientId}/ambulanzprotokoll-page1/export:
     get:

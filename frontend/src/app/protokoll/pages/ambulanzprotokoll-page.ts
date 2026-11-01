@@ -759,6 +759,7 @@ export class AmbulanzprotokollPage implements OnDestroy {
   private readonly currentPatientId = signal(0);
   private editVersion = 0;
   private currentWriteId: string | undefined;
+  private currentLegacyIdentity: string | undefined;
   private loadGeneration = 0;
   private loadSub: Subscription | null = null;
   private signaturePoint: { x: number; y: number } | null = null;
@@ -766,12 +767,16 @@ export class AmbulanzprotokollPage implements OnDestroy {
   constructor() {
     this.offlineQueue.protocolSaved
       .pipe(takeUntilDestroyed())
-      .subscribe(({ patientId, sourcePatientId, writeId, record }) => {
+      .subscribe(({ patientId, sourcePatientId, writeId, legacyIdentity, record }) => {
         if (
           (patientId !== this.patientId() && sourcePatientId !== this.patientId()) ||
-          writeId !== this.currentWriteId
+          (writeId !== this.currentWriteId &&
+            (this.currentLegacyIdentity === undefined ||
+              legacyIdentity !== this.currentLegacyIdentity))
         )
           return;
+        this.currentWriteId = writeId;
+        this.currentLegacyIdentity = undefined;
         this.status.set(record.status);
         this.finalizedAt.set(record.finalizedAt ?? null);
         this.warnings.set(record.warnings);
@@ -781,6 +786,7 @@ export class AmbulanzprotokollPage implements OnDestroy {
       const patientId = Number(params.get('patientId') ?? this.responderState.patient()?.id ?? 0);
       if (!patientId || patientId === this.currentPatientId()) return;
       this.currentWriteId = undefined;
+      this.currentLegacyIdentity = undefined;
       this.editVersion++;
       this.loadSub?.unsubscribe();
       this.currentPatientId.set(patientId);
@@ -998,6 +1004,7 @@ export class AmbulanzprotokollPage implements OnDestroy {
     const generation = this.loadGeneration;
     const version = ++this.editVersion;
     this.currentWriteId = undefined;
+    this.currentLegacyIdentity = undefined;
     const correctionReason = this.correctionReason();
     const body = {
       status: this.status(),
@@ -1070,6 +1077,7 @@ export class AmbulanzprotokollPage implements OnDestroy {
     // An older upload can be acknowledged after a newer edit; server time cannot order intent.
     const local = pending ?? cached;
     this.currentWriteId = pending?.writeId;
+    this.currentLegacyIdentity = pending?.writeId ? undefined : pending?.legacyIdentity;
     if (generation !== this.loadGeneration || patientId !== this.patientId()) return;
     if (local) {
       this.form.set(mergeState(defaultState(), local.formState as Partial<FormState>));

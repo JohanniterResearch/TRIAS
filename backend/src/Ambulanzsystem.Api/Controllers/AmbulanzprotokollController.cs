@@ -45,10 +45,44 @@ public class AmbulanzprotokollController(AppDbContext db, AuditService audit, Sc
     [RequestSizeLimit(2 * 1024 * 1024)]
     public async Task<IActionResult> Upsert(int patientId, UpsertProtokollRequest request)
     {
+        Guid? writeId = null;
+        if (Request.Headers.TryGetValue("Idempotency-Key", out var key))
+        {
+            if (key.Count != 1 || key[0]?.Length != 36 ||
+                !Guid.TryParseExact(key[0], "D", out var parsed) || parsed == Guid.Empty)
+                return BadRequest(new ErrorResponse("Idempotency-Key must be a non-empty UUID in hyphenated format."));
+            writeId = parsed;
+        }
+
         await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
         var patient = await RowLocks.PatientAsync(db, patientId);
         if (patient is null) return NotFound();
         if (!await SceneAccess.CanAccessAsync(User, db, patient.OperationSceneId)) return Forbid();
+
+        var record = await db.AmbulanzprotokollPage1s.FirstOrDefaultAsync(r => r.PatientId == patientId);
+        if (writeId is Guid keyId)
+        {
+            // Missing required JSON cannot be serialized as a bound order.
+            if (request.FormState.ValueKind == JsonValueKind.Undefined)
+                return BadRequest(new ErrorResponse("formState must be a JSON object."));
+            var checksum = ProtokollWriteChecksum.Compute(request);
+            var processed = await db.ProtokollProcessedWrites.FindAsync(patientId, keyId);
+            if (processed is not null)
+            {
+                if (processed.Checksum != checksum)
+                    return Conflict(new ErrorResponse("Idempotency-Key was already used for a different protocol order."));
+                // Access was checked above. A replay is not a new correction, even after finalize.
+                var currentJson = FormStateMerge.WithDefaults(record?.FormStateJson ?? "{}");
+                return Ok(new ProtokollRecordResponse(patientId, record?.Status ?? "draft",
+                    JsonDocument.Parse(currentJson).RootElement, record?.UpdatedAt ?? DateTime.UnixEpoch,
+                    record?.FinalizedAt, record?.Status == "finalized" ? BuildFinalizeWarnings(currentJson) : []));
+            }
+            // Same transaction as the protocol, audit and revision; patient lock serializes replays.
+            db.ProtokollProcessedWrites.Add(new ProtokollProcessedWrite
+            {
+                PatientId = patientId, WriteId = keyId, Checksum = checksum,
+            });
+        }
 
         if (request.Status is not ("draft" or "finalized"))
         {
@@ -60,7 +94,6 @@ public class AmbulanzprotokollController(AppDbContext db, AuditService audit, Sc
             return BadRequest(new ErrorResponse(partialError!));
         }
 
-        var record = await db.AmbulanzprotokollPage1s.FirstOrDefaultAsync(r => r.PatientId == patientId);
         var wasFinalized = record?.Status == "finalized";
 
         if (wasFinalized && !CanCorrectFinalized(patient))

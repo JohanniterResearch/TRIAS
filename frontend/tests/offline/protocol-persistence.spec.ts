@@ -58,6 +58,180 @@ async function queued(page: Page): Promise<any[]> {
   );
 }
 
+for (const newer of [false, true]) {
+  test(`loaded legacy protocol receives its acknowledgement without reload (newer=${newer})`, async ({
+    page,
+    context,
+  }) => {
+    await openProtocol(page);
+    await context.setOffline(true);
+    await page.getByLabel('Vorname', { exact: true }).fill('Loaded legacy snapshot');
+    await page
+      .getByRole('button', { name: newer ? 'Speichern' : 'Finalisieren', exact: true })
+      .click();
+    await expect
+      .poll(async () => (await queued(page))[0]?.body.status)
+      .toBe(newer ? 'draft' : 'finalized');
+    await page.getByRole('link', { name: 'Alle Seiten' }).click();
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve, reject) => {
+          const opening = indexedDB.open('ambulanzsystem-offline', 1);
+          opening.onerror = () => reject(opening.error);
+          opening.onsuccess = () => {
+            const db = opening.result;
+            const tx = db.transaction('queue', 'readwrite');
+            const store = tx.objectStore('queue');
+            const read = store.get('protocol:7');
+            read.onsuccess = () => {
+              const item = read.result;
+              delete item.writeId;
+              store.put(item);
+            };
+            tx.oncomplete = () => {
+              db.close();
+              resolve();
+            };
+            tx.onabort = () => {
+              db.close();
+              reject(tx.error);
+            };
+          };
+        }),
+    );
+    const legacy = (await queued(page))[0];
+    expect(legacy.writeId).toBeUndefined();
+    await page.goBack();
+    await expect(page.getByLabel('Vorname', { exact: true })).toHaveValue('Loaded legacy snapshot');
+    const uploads: Array<{ key: string | undefined; body: any }> = [];
+    let acknowledgeOld!: () => Promise<void>;
+    let acknowledgeNew!: () => Promise<void>;
+    const serverFinalizedAt = '2026-11-01T12:34:56Z';
+    await page.route('**/api/persons/7/ambulanzprotokoll-page1', async (route) => {
+      if (route.request().method() !== 'PUT') return route.fallback();
+      const key = route.request().headers()['idempotency-key'];
+      const body = route.request().postDataJSON();
+      expect((await queued(page))[0].writeId).toBe(key);
+      uploads.push({ key, body });
+      const response = {
+        ...body,
+        patientId: 7,
+        updatedAt: serverFinalizedAt,
+        finalizedAt: body.status === 'finalized' ? serverFinalizedAt : null,
+        warnings: [uploads.length === 1 ? 'Legacy server warning' : 'New server warning'],
+      };
+      if (uploads.length === 1) {
+        acknowledgeOld = () => route.fulfill({ json: response });
+        return;
+      }
+      acknowledgeNew = () => route.fulfill({ json: response });
+    });
+    await context.setOffline(false);
+    await expect.poll(() => uploads.length).toBe(1);
+    expect(uploads[0].body).toEqual(legacy.body);
+    expect(uploads[0].key).toMatch(/^[0-9a-f-]{36}$/);
+    if (newer) {
+      await context.setOffline(true);
+      await page.getByLabel('Vorname', { exact: true }).fill('Newer local edit');
+      await page.getByRole('button', { name: 'Finalisieren', exact: true }).click();
+      await expect.poll(async () => (await queued(page))[0]?.body.status).toBe('finalized');
+      const replacement = (await queued(page))[0];
+      expect(replacement.writeId).not.toBe(uploads[0].key);
+      await acknowledgeOld();
+      await context.setOffline(false);
+      // The next upload can only start once the old response has finished queue processing.
+      await expect.poll(() => uploads.length).toBe(2);
+      await expect(page.getByLabel('Vorname', { exact: true })).toHaveValue('Newer local edit');
+      await expect(page.getByText('Finalisiert', { exact: true })).toBeVisible();
+      expect((await queued(page))[0]).toEqual(replacement);
+      await expect(page.getByText('Legacy server warning', { exact: true })).toHaveCount(0);
+      await expect(page.getByText(/^server /)).toHaveCount(0);
+      await acknowledgeNew();
+      await expect(page.getByText('New server warning', { exact: true })).toBeVisible();
+      expect(uploads[1].body).toEqual(replacement.body);
+    } else {
+      await acknowledgeOld();
+      await expect(page.getByText('Legacy server warning', { exact: true })).toBeVisible();
+      await expect(page.getByText(/^server /)).toBeVisible();
+    }
+    await expect.poll(() => queued(page)).toHaveLength(0);
+  });
+}
+
+for (const legacy of [false, true]) {
+  test(`lost finalize response retains key and body across reload (legacy=${legacy})`, async ({
+    page,
+    context,
+  }) => {
+    await openProtocol(page);
+    const uploaded: Array<{ key: string | undefined; body: any }> = [];
+    await page.route('**/api/persons/7/ambulanzprotokoll-page1', async (route) => {
+      if (route.request().method() !== 'PUT') return route.fallback();
+      const key = route.request().headers()['idempotency-key'];
+      const body = route.request().postDataJSON();
+      // Even a legacy key must already be committed to IndexedDB when HTTP begins.
+      expect((await queued(page))[0].writeId).toBe(key);
+      uploaded.push({ key, body });
+      if (uploaded.length === 1) return route.abort('connectionfailed');
+      return route.fulfill({
+        json: {
+          ...body,
+          patientId: 7,
+          warnings: [],
+          updatedAt: body.clientUpdatedAt,
+          finalizedAt: body.clientUpdatedAt,
+        },
+      });
+    });
+    await context.setOffline(true);
+    await page.getByLabel('Vorname', { exact: true }).fill('Durable finalization');
+    await page.getByRole('button', { name: 'Finalisieren', exact: true }).click();
+    await expect.poll(async () => (await queued(page))[0]?.body.status).toBe('finalized');
+    if (legacy) {
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve, reject) => {
+            const opening = indexedDB.open('ambulanzsystem-offline', 1);
+            opening.onerror = () => reject(opening.error);
+            opening.onsuccess = () => {
+              const db = opening.result;
+              const tx = db.transaction('queue', 'readwrite');
+              const store = tx.objectStore('queue');
+              const read = store.get('protocol:7');
+              read.onsuccess = () => {
+                const item = read.result;
+                delete item.writeId;
+                store.put(item);
+              };
+              tx.oncomplete = () => {
+                db.close();
+                resolve();
+              };
+              tx.onabort = () => {
+                db.close();
+                reject(tx.error);
+              };
+            };
+          }),
+      );
+    }
+    const original = (await queued(page))[0];
+    await context.setOffline(false);
+    await expect.poll(() => uploaded.length).toBe(1);
+    await expect.poll(async () => (await queued(page))[0]?.state).toBe('retrying');
+    const pending = (await queued(page))[0];
+    expect(pending.writeId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(pending.body).toEqual(original.body);
+    if (!legacy) expect(pending.writeId).toBe(original.writeId);
+    await expect.poll(() => Date.now()).toBeGreaterThan(Date.parse(pending.nextAttemptAt));
+    await page.reload();
+    await expect.poll(() => uploaded.length).toBe(2);
+    expect(uploaded[0]).toEqual({ key: pending.writeId, body: original.body });
+    expect(uploaded[1]).toEqual(uploaded[0]);
+    await expect.poll(() => queued(page)).toHaveLength(0);
+  });
+}
+
 test('edit then navigate before 800 ms survives offline reload and reconnect', async ({
   page,
   context,

@@ -54,6 +54,26 @@ describe('ApiClient response handling', () => {
     });
   });
 
+  it('sends the protocol writeId as Idempotency-Key without changing the snapshot', async () => {
+    const writeId = crypto.randomUUID();
+    const body = {
+      status: 'finalized' as const,
+      formState: {},
+      clientUpdatedAt: '2026-01-01T10:00:00Z',
+    };
+    (api as any).client.PUT = vi.fn(() =>
+      Promise.resolve({ data: { patientId: 7 }, response: new Response('{}') }),
+    );
+    await firstValueFrom(api.saveProtokollPage1(7, body, writeId));
+    expect((api as any).client.PUT).toHaveBeenCalledWith(
+      '/api/persons/{patientId}/ambulanzprotokoll-page1',
+      {
+        params: { path: { patientId: 7 }, header: { 'Idempotency-Key': writeId } },
+        body,
+      },
+    );
+  });
+
   it.each([401, 403, 404, 500])(
     'throws ApiRequestError for an empty %i response',
     async (status) => {

@@ -790,7 +790,7 @@ export interface paths {
         get: operations["getAmbulanzprotokollPage1"];
         /**
          * Upsert the page-1 record. Draft accepts any partial data; missing branches are merged with the default state; concurrent saves merge field-level LWW (older non-empty values survive empty newer fields, NFR-SAFE-09). status=finalized stamps finalizedAt and returns soft-validation warnings — never a hard block for empty fields. Post-finalize saves stay allowed (Leitstelle/Admin any form; responder their own records); all audit-logged. Policy TriageWrite.
-         * @description Merges and saves page-one protocol data and returns the persisted record with any server validation warnings.
+         * @description Merges and saves page-one protocol data and returns the persisted record with any server validation warnings. With Idempotency-Key, a repeated order for the same patient returns the current protocol and its current warnings without another merge, write, audit, revision or notification. Reusing the key with a different order (including status, formState, clientUpdatedAt or correctionReason) returns 409. JSON object property order is irrelevant; array order and explicit formState null values are preserved. Without the header, existing behavior is retained.
          */
         put: operations["saveAmbulanzprotokollPage1"];
         post?: never;
@@ -2754,7 +2754,10 @@ export interface operations {
     saveAmbulanzprotokollPage1: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Non-empty UUID identifying one protocol save; retain the original key and body on retry. */
+                "Idempotency-Key"?: string;
+            };
             path: {
                 patientId: components["parameters"]["patientIdPath"];
             };
@@ -2790,12 +2793,22 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             /** @description Patient does not exist. */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Idempotency-Key was already used for a different protocol order. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };
