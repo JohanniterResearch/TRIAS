@@ -362,17 +362,47 @@ const measureFields: FieldConfig[] = [
   },
 ];
 
-const zones = [
-  ['brand_header', 0, 0, 23, 6, 'JOHANNITER · AMBULANZPROTOKOLL'],
-  ['incident_header', 23, 0, 77, 6, 'Einsatzdaten'],
-  ['patient_block', 0, 6, 100, 10, 'Patient'],
-  ['erstdiagnose_allgemein', 0, 16, 100, 9, 'ERST.-DIAGN. / ALLG. EINDRUCK'],
-  ['anamnese_bodymap', 0, 25, 100, 27, 'ANAMNESE / UNTERSUCHUNG'],
-  ['akutmedikation', 0, 52, 100, 8, 'Akutmedikation Durch RD'],
-  ['erst_endbefund', 0, 60, 100, 17, 'ERST- / ENDBEFUND'],
-  ['massnahmen_ample', 0, 77, 100, 17, 'MASSNAHMEN / AMPLE-SCHEMA'],
-  ['footer_disposition', 0, 94, 100, 6, 'Disposition / Unterschrift'],
-] as const;
+interface ProtocolZone {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  label: string;
+}
+
+const zones: ProtocolZone[] = [
+  { id: 'brand_header', x: 0, y: 0, width: 23, height: 6, label: 'JOHANNITER · AMBULANZPROTOKOLL' },
+  { id: 'incident_header', x: 23, y: 0, width: 77, height: 6, label: 'Einsatzdaten' },
+  { id: 'patient_block', x: 0, y: 6, width: 100, height: 10, label: 'Patient' },
+  {
+    id: 'erstdiagnose_allgemein',
+    x: 0,
+    y: 16,
+    width: 100,
+    height: 9,
+    label: 'ERST.-DIAGN. / ALLG. EINDRUCK',
+  },
+  { id: 'anamnese_bodymap', x: 0, y: 25, width: 100, height: 27, label: 'ANAMNESE / UNTERSUCHUNG' },
+  { id: 'akutmedikation', x: 0, y: 52, width: 100, height: 8, label: 'Akutmedikation Durch RD' },
+  { id: 'erst_endbefund', x: 0, y: 60, width: 100, height: 17, label: 'ERST- / ENDBEFUND' },
+  {
+    id: 'massnahmen_ample',
+    x: 0,
+    y: 77,
+    width: 100,
+    height: 17,
+    label: 'MASSNAHMEN / AMPLE-SCHEMA',
+  },
+  {
+    id: 'footer_disposition',
+    x: 0,
+    y: 94,
+    width: 100,
+    height: 6,
+    label: 'Disposition / Unterschrift',
+  },
+];
 
 @Component({
   selector: 'app-ambulanzprotokoll-page',
@@ -401,6 +431,64 @@ const zones = [
         <button type="button" (click)="back()">Zurück</button>
       </div>
 
+      <section
+        class="protocol-section-picker"
+        [class.is-selected]="selectedZone() !== null"
+        aria-labelledby="protocol-section-heading"
+      >
+        @if (selectedZone(); as zone) {
+          <div class="protocol-selected-section">
+            <strong>{{ zone.label }}</strong>
+            <nav class="protocol-zone-navigation" aria-label="Protokollbereiche navigieren">
+              <button
+                type="button"
+                [disabled]="!previousZone()"
+                (click)="navigateZone(-1)"
+                [attr.aria-label]="
+                  previousZone() ? 'Vorheriger Bereich: ' + previousZone()?.label : null
+                "
+              >
+                @if (previousZone(); as previous) {
+                  ← {{ previous.label }}
+                } @else {
+                  Vorheriger Bereich
+                }
+              </button>
+              <button type="button" class="protocol-overview-button" (click)="closeZone()">
+                Gesamtansicht
+              </button>
+              <button
+                type="button"
+                [disabled]="!nextZone()"
+                (click)="navigateZone(1)"
+                [attr.aria-label]="nextZone() ? 'Nächster Bereich: ' + nextZone()?.label : null"
+              >
+                @if (nextZone(); as next) {
+                  {{ next.label }} →
+                } @else {
+                  Nächster Bereich
+                }
+              </button>
+            </nav>
+          </div>
+        } @else {
+          <h2 id="protocol-section-heading">Protokollbereiche</h2>
+          <p>Klicken Sie auf einen Bereich, um ihn vergrößert anzuzeigen und zu bearbeiten.</p>
+        }
+        @if (!selectedZone()) {
+          <div class="protocol-section-buttons">
+            @for (zone of editableZones; track zone.id) {
+              <button type="button" (click)="toggleZone(zone)">
+                {{ zone.label }}
+              </button>
+            }
+          </div>
+        }
+        @if (selectedZone() && locked()) {
+          <span>Dieses Protokoll ist schreibgeschützt.</span>
+        }
+      </section>
+
       @if (warnings().length) {
         <ul class="form-error" role="alert" aria-live="assertive">
           @for (warning of warnings(); track warning) {
@@ -410,18 +498,21 @@ const zones = [
       }
 
       <fieldset class="protocol-lock" [disabled]="locked()">
-        <div class="protocol-scale">
-          <div class="protocol-page">
-            @for (zone of zones; track zone[0]) {
-              <section
-                class="protocol-zone"
-                [style.left.%]="zone[1]"
-                [style.top.%]="zone[2]"
-                [style.width.%]="zone[3]"
-                [style.height.%]="zone[4]"
-              >
-                <span>{{ zone[5] }}</span>
-              </section>
+        <div class="protocol-scale" [class.is-zoomed]="selectedZone() !== null">
+          <div class="protocol-page" [class.is-zoomed]="selectedZone() !== null">
+            @for (zone of zones; track zone.id) {
+              @if (!selectedZone() || selectedZone()?.id === zone.id) {
+                <section
+                  class="protocol-zone"
+                  [class.is-selected]="selectedZone()?.id === zone.id"
+                  [style.left.%]="zone.x"
+                  [style.top.%]="zone.y"
+                  [style.width.%]="zone.width"
+                  [style.height.%]="zone.height"
+                >
+                  <span>{{ zone.label }}</span>
+                </section>
+              }
             }
 
             <ng-template #protocolField let-field>
@@ -449,254 +540,272 @@ const zones = [
             </ng-template>
 
             @for (field of fields; track field.path) {
-              <ng-container *ngTemplateOutlet="protocolField; context: { $implicit: field }" />
+              @if (fieldVisible(field.x, field.y)) {
+                <ng-container *ngTemplateOutlet="protocolField; context: { $implicit: field }" />
+              }
             }
 
             @for (group of optionGroups; track group.path) {
-              <fieldset
-                class="protocol-checks protocol-option-group"
-                [class.primary-options]="group.path.startsWith('assessment_primary')"
-                [class.footer-options]="group.path.startsWith('disposition')"
-                [style.left.%]="group.x"
-                [style.top.%]="group.y"
-                [style.width.%]="group.w"
-              >
-                <legend>{{ group.label }}</legend>
-                @for (item of group.options; track item) {
-                  <label>
-                    <input
-                      [type]="group.single ? 'radio' : 'checkbox'"
-                      [name]="group.path"
-                      [checked]="has(group.path, item) || value(group.path) === item"
-                      (change)="toggleOption(group, item, $any($event.target).checked)"
-                    />
-                    {{ displayOption(item) }}
-                  </label>
-                }
-              </fieldset>
+              @if (fieldVisible(group.x, group.y)) {
+                <fieldset
+                  class="protocol-checks protocol-option-group"
+                  [class.primary-options]="group.path.startsWith('assessment_primary')"
+                  [class.footer-options]="group.path.startsWith('disposition')"
+                  [style.left.%]="group.x"
+                  [style.top.%]="group.y"
+                  [style.width.%]="group.w"
+                >
+                  <legend>{{ group.label }}</legend>
+                  @for (item of group.options; track item) {
+                    <label>
+                      <input
+                        [type]="group.single ? 'radio' : 'checkbox'"
+                        [name]="group.path"
+                        [checked]="has(group.path, item) || value(group.path) === item"
+                        (change)="toggleOption(group, item, $any($event.target).checked)"
+                      />
+                      {{ displayOption(item) }}
+                    </label>
+                  }
+                </fieldset>
+              }
             }
 
             @for (field of measureFields; track field.path) {
-              <ng-container *ngTemplateOutlet="protocolField; context: { $implicit: field }" />
+              @if (fieldVisible(field.x, field.y)) {
+                <ng-container *ngTemplateOutlet="protocolField; context: { $implicit: field }" />
+              }
             }
 
-            <div class="protocol-emergency-time">
-              <strong>Angen. Notfallzeit</strong>
-              <input
-                type="time"
-                [value]="value('assessment_primary.angen_notfallzeit.zeit')"
-                (input)="
-                  setValue('assessment_primary.angen_notfallzeit.zeit', $any($event.target).value)
-                "
-              />
-              <label
-                ><input
-                  type="checkbox"
-                  [checked]="value('assessment_primary.angen_notfallzeit.gt24h')"
-                  (change)="
-                    setValue(
-                      'assessment_primary.angen_notfallzeit.gt24h',
-                      $any($event.target).checked
-                    )
-                  "
-                />
-                &gt;24h</label
-              >
-              <label
-                ><input
-                  type="checkbox"
-                  [checked]="value('assessment_primary.angen_notfallzeit.unbekannt')"
-                  (change)="
-                    setValue(
-                      'assessment_primary.angen_notfallzeit.unbekannt',
-                      $any($event.target).checked
-                    )
-                  "
-                />
-                unbekannt</label
-              >
-            </div>
-
-            <div class="protocol-checks vitals">
-              <strong>GCS / Messwerte</strong>
-              <label
-                >Augen
-                <select
-                  [value]="value('vitals.gcs_augenoeffnen')"
-                  (change)="setNumber('vitals.gcs_augenoeffnen', $any($event.target).value)"
-                >
-                  <option value="">-</option>
-                  <option value="4">4 spontan</option>
-                  <option value="3">3 auf Ansprache</option>
-                  <option value="2">2 auf Schmerz</option>
-                  <option value="1">1 keine</option>
-                </select>
-              </label>
-              <label
-                >Verbal
-                <select
-                  [value]="value('vitals.gcs_verbale_reaktion')"
-                  (change)="setNumber('vitals.gcs_verbale_reaktion', $any($event.target).value)"
-                >
-                  <option value="">-</option>
-                  <option value="5">5 orientiert</option>
-                  <option value="4">4 verwirrt</option>
-                  <option value="3">3 Worte</option>
-                  <option value="2">2 Laute</option>
-                  <option value="1">1 keine</option>
-                </select>
-              </label>
-              <label
-                >Motorik
-                <select
-                  [value]="value('vitals.gcs_motorische_reaktion')"
-                  (change)="setNumber('vitals.gcs_motorische_reaktion', $any($event.target).value)"
-                >
-                  <option value="">-</option>
-                  <option value="6">6 befolgt</option>
-                  <option value="5">5 lokalisiert</option>
-                  <option value="4">4 Abwehr</option>
-                  <option value="3">3 Beugung</option>
-                  <option value="2">2 Streckung</option>
-                  <option value="1">1 keine</option>
-                </select>
-              </label>
-              <span>GCS-Summe: {{ value('vitals.gcs_summe') || '-' }}</span>
-              <label
-                >Schmerz
+            @if (fieldVisible(84, 21.5)) {
+              <div class="protocol-emergency-time">
+                <strong>Angen. Notfallzeit</strong>
                 <input
-                  type="number"
-                  min="0"
-                  max="10"
-                  [value]="value('vitals.schmerz')"
-                  (input)="setNumber('vitals.schmerz', $any($event.target).value)"
-              /></label>
-              <label
-                ><input
-                  type="checkbox"
-                  [checked]="value('vitals.schmerz_nicht_beurteilbar')"
-                  (change)="
-                    setValue('vitals.schmerz_nicht_beurteilbar', $any($event.target).checked)
+                  type="time"
+                  [value]="value('assessment_primary.angen_notfallzeit.zeit')"
+                  (input)="
+                    setValue('assessment_primary.angen_notfallzeit.zeit', $any($event.target).value)
                   "
                 />
-                nicht beurteilbar</label
-              >
-              <label
-                ><input
-                  type="checkbox"
-                  [checked]="value('vitals.keine')"
-                  (change)="setValue('vitals.keine', $any($event.target).checked)"
-                />
-                keine Messwerte</label
-              >
-              @for (vital of vitalFields; track vital.path) {
                 <label
-                  >{{ vital.label }}
-                  <input
-                    [value]="value(vital.path)"
-                    (input)="setValue(vital.path, $any($event.target).value)"
-                /></label>
-              }
-            </div>
-
-            <div class="medication-grid">
-              <strong>Akutmedikation</strong>
-              @for (row of medicationRows; track row) {
-                <div class="medication-entry">
-                  <span>{{ row + 1 }}</span>
-                  <input
-                    aria-label="Medikament"
-                    placeholder="Medikament"
-                    [value]="med(row, 'medikament')"
-                    (input)="setMed(row, 'medikament', $any($event.target).value)"
+                  ><input
+                    type="checkbox"
+                    [checked]="value('assessment_primary.angen_notfallzeit.gt24h')"
+                    (change)="
+                      setValue(
+                        'assessment_primary.angen_notfallzeit.gt24h',
+                        $any($event.target).checked
+                      )
+                    "
                   />
-                  <input
-                    aria-label="Dosis"
-                    placeholder="Dosis"
-                    [value]="med(row, 'dosis')"
-                    (input)="setMed(row, 'dosis', $any($event.target).value)"
-                  />
-                  <input
-                    aria-label="Art"
-                    placeholder="Art"
-                    [value]="med(row, 'art')"
-                    (input)="setMed(row, 'art', $any($event.target).value)"
-                  />
-                  <input
-                    aria-label="Uhrzeit"
-                    type="time"
-                    [value]="med(row, 'uhrzeit')"
-                    (input)="setMed(row, 'uhrzeit', $any($event.target).value)"
-                  />
-                </div>
-              }
-            </div>
-
-            <div class="protocol-bodymap" (click)="addMarker($event)">
-              <div class="protocol-bodymap-toolbar" (click)="$event.stopPropagation()">
-                <button
-                  type="button"
-                  [class.active]="bodyView() === 'front'"
-                  (click)="bodyView.set('front')"
+                  &gt;24h</label
                 >
-                  Vorne
-                </button>
-                <button
-                  type="button"
-                  [class.active]="bodyView() === 'back'"
-                  (click)="bodyView.set('back')"
+                <label
+                  ><input
+                    type="checkbox"
+                    [checked]="value('assessment_primary.angen_notfallzeit.unbekannt')"
+                    (change)="
+                      setValue(
+                        'assessment_primary.angen_notfallzeit.unbekannt',
+                        $any($event.target).checked
+                      )
+                    "
+                  />
+                  unbekannt</label
                 >
-                  Hinten
-                </button>
-                <select
-                  aria-label="Markertyp"
-                  [value]="markerType()"
-                  (change)="markerType.set($any($event.target).value)"
-                >
-                  @for (type of markerTypes; track type) {
-                    <option [value]="type">{{ displayOption(type) }}</option>
-                  }
-                </select>
               </div>
-              <svg
-                class="protocol-silhouette"
-                viewBox="0 0 240 560"
-                role="img"
-                [attr.aria-label]="bodyView() === 'front' ? 'Körper vorne' : 'Körper hinten'"
-              >
-                <circle cx="120" cy="48" r="30" />
-                <path
-                  d="M91 82 Q120 70 149 82 L164 225 Q150 260 148 300 L158 510 L132 510 L120 312 L108 510 L82 510 L92 300 Q90 260 76 225 Z"
-                />
-                <path d="M82 95 L42 250 L62 256 L100 142 M158 95 L198 250 L178 256 L140 142" />
-              </svg>
-              @for (marker of visibleMarkers(); track $index) {
-                <button
-                  type="button"
-                  class="body-marker"
-                  [style.left.%]="marker.x"
-                  [style.top.%]="marker.y"
-                  [attr.aria-label]="displayOption(marker.marker) + ' entfernen'"
-                  (click)="removeMarker(marker); $event.stopPropagation()"
-                >
-                  {{ marker.marker[0].toUpperCase() }}
-                </button>
-              }
-            </div>
+            }
 
-            <div class="signature-box">
-              <span>Unterschrift - Entlass. San/NA</span>
-              <canvas
-                #signatureCanvas
-                width="300"
-                height="90"
-                (pointerdown)="startSignature($event)"
-                (pointermove)="drawSignature($event)"
-                (pointerup)="endSignature()"
-                (pointerleave)="endSignature()"
-              ></canvas>
-              <button type="button" (click)="clearSignature()">Löschen</button>
-            </div>
+            @if (fieldVisible(32, 61.5)) {
+              <div class="protocol-checks vitals">
+                <strong>GCS / Messwerte</strong>
+                <label
+                  >Augen
+                  <select
+                    [value]="value('vitals.gcs_augenoeffnen')"
+                    (change)="setNumber('vitals.gcs_augenoeffnen', $any($event.target).value)"
+                  >
+                    <option value="">-</option>
+                    <option value="4">4 spontan</option>
+                    <option value="3">3 auf Ansprache</option>
+                    <option value="2">2 auf Schmerz</option>
+                    <option value="1">1 keine</option>
+                  </select>
+                </label>
+                <label
+                  >Verbal
+                  <select
+                    [value]="value('vitals.gcs_verbale_reaktion')"
+                    (change)="setNumber('vitals.gcs_verbale_reaktion', $any($event.target).value)"
+                  >
+                    <option value="">-</option>
+                    <option value="5">5 orientiert</option>
+                    <option value="4">4 verwirrt</option>
+                    <option value="3">3 Worte</option>
+                    <option value="2">2 Laute</option>
+                    <option value="1">1 keine</option>
+                  </select>
+                </label>
+                <label
+                  >Motorik
+                  <select
+                    [value]="value('vitals.gcs_motorische_reaktion')"
+                    (change)="
+                      setNumber('vitals.gcs_motorische_reaktion', $any($event.target).value)
+                    "
+                  >
+                    <option value="">-</option>
+                    <option value="6">6 befolgt</option>
+                    <option value="5">5 lokalisiert</option>
+                    <option value="4">4 Abwehr</option>
+                    <option value="3">3 Beugung</option>
+                    <option value="2">2 Streckung</option>
+                    <option value="1">1 keine</option>
+                  </select>
+                </label>
+                <span>GCS-Summe: {{ value('vitals.gcs_summe') || '-' }}</span>
+                <label
+                  >Schmerz
+                  <input
+                    type="number"
+                    min="0"
+                    max="10"
+                    [value]="value('vitals.schmerz')"
+                    (input)="setNumber('vitals.schmerz', $any($event.target).value)"
+                /></label>
+                <label
+                  ><input
+                    type="checkbox"
+                    [checked]="value('vitals.schmerz_nicht_beurteilbar')"
+                    (change)="
+                      setValue('vitals.schmerz_nicht_beurteilbar', $any($event.target).checked)
+                    "
+                  />
+                  nicht beurteilbar</label
+                >
+                <label
+                  ><input
+                    type="checkbox"
+                    [checked]="value('vitals.keine')"
+                    (change)="setValue('vitals.keine', $any($event.target).checked)"
+                  />
+                  keine Messwerte</label
+                >
+                @for (vital of vitalFields; track vital.path) {
+                  <label
+                    >{{ vital.label }}
+                    <input
+                      [value]="value(vital.path)"
+                      (input)="setValue(vital.path, $any($event.target).value)"
+                  /></label>
+                }
+              </div>
+            }
+
+            @if (fieldVisible(3, 53.3)) {
+              <div class="medication-grid">
+                <strong>Akutmedikation</strong>
+                @for (row of medicationRows; track row) {
+                  <div class="medication-entry">
+                    <span>{{ row + 1 }}</span>
+                    <input
+                      aria-label="Medikament"
+                      placeholder="Medikament"
+                      [value]="med(row, 'medikament')"
+                      (input)="setMed(row, 'medikament', $any($event.target).value)"
+                    />
+                    <input
+                      aria-label="Dosis"
+                      placeholder="Dosis"
+                      [value]="med(row, 'dosis')"
+                      (input)="setMed(row, 'dosis', $any($event.target).value)"
+                    />
+                    <input
+                      aria-label="Art"
+                      placeholder="Art"
+                      [value]="med(row, 'art')"
+                      (input)="setMed(row, 'art', $any($event.target).value)"
+                    />
+                    <input
+                      aria-label="Uhrzeit"
+                      type="time"
+                      [value]="med(row, 'uhrzeit')"
+                      (input)="setMed(row, 'uhrzeit', $any($event.target).value)"
+                    />
+                  </div>
+                }
+              </div>
+            }
+
+            @if (fieldVisible(58, 29)) {
+              <div class="protocol-bodymap" (click)="addMarker($event)">
+                <div class="protocol-bodymap-toolbar" (click)="$event.stopPropagation()">
+                  <button
+                    type="button"
+                    [class.active]="bodyView() === 'front'"
+                    (click)="bodyView.set('front')"
+                  >
+                    Vorne
+                  </button>
+                  <button
+                    type="button"
+                    [class.active]="bodyView() === 'back'"
+                    (click)="bodyView.set('back')"
+                  >
+                    Hinten
+                  </button>
+                  <select
+                    aria-label="Markertyp"
+                    [value]="markerType()"
+                    (change)="markerType.set($any($event.target).value)"
+                  >
+                    @for (type of markerTypes; track type) {
+                      <option [value]="type">{{ displayOption(type) }}</option>
+                    }
+                  </select>
+                </div>
+                <svg
+                  class="protocol-silhouette"
+                  viewBox="0 0 240 560"
+                  role="img"
+                  [attr.aria-label]="bodyView() === 'front' ? 'Körper vorne' : 'Körper hinten'"
+                >
+                  <circle cx="120" cy="48" r="30" />
+                  <path
+                    d="M91 82 Q120 70 149 82 L164 225 Q150 260 148 300 L158 510 L132 510 L120 312 L108 510 L82 510 L92 300 Q90 260 76 225 Z"
+                  />
+                  <path d="M82 95 L42 250 L62 256 L100 142 M158 95 L198 250 L178 256 L140 142" />
+                </svg>
+                @for (marker of visibleMarkers(); track $index) {
+                  <button
+                    type="button"
+                    class="body-marker"
+                    [style.left.%]="marker.x"
+                    [style.top.%]="marker.y"
+                    [attr.aria-label]="displayOption(marker.marker) + ' entfernen'"
+                    (click)="removeMarker(marker); $event.stopPropagation()"
+                  >
+                    {{ marker.marker[0].toUpperCase() }}
+                  </button>
+                }
+              </div>
+            }
+
+            @if (fieldVisible(83, 94.5)) {
+              <div class="signature-box">
+                <span>Unterschrift - Entlass. San/NA</span>
+                <canvas
+                  #signatureCanvas
+                  width="300"
+                  height="90"
+                  (pointerdown)="startSignature($event)"
+                  (pointermove)="drawSignature($event)"
+                  (pointerup)="endSignature()"
+                  (pointerleave)="endSignature()"
+                ></canvas>
+                <button type="button" (click)="clearSignature()">Löschen</button>
+              </div>
+            }
           </div>
         </div>
       </fieldset>
@@ -708,6 +817,7 @@ export class AmbulanzprotokollPage implements OnDestroy {
   protected readonly measureFields = measureFields;
   protected readonly optionGroups = optionGroups;
   protected readonly zones = zones;
+  protected readonly editableZones = zones.filter((zone) => zone.id !== 'brand_header');
   protected readonly medicationRows = Array.from({ length: 8 }, (_, index) => index);
   protected readonly vitalFields = [
     { path: 'vitals.rr', label: 'RR' },
@@ -748,6 +858,7 @@ export class AmbulanzprotokollPage implements OnDestroy {
   });
   protected readonly saveState = signal('lokal bereit');
   protected readonly warnings = signal<string[]>([]);
+  protected readonly selectedZone = signal<ProtocolZone | null>(null);
 
   private readonly api = inject(ApiClient);
   private readonly drafts = inject(ProtokollDraftStore);
@@ -762,6 +873,44 @@ export class AmbulanzprotokollPage implements OnDestroy {
   private loadGeneration = 0;
   private loadSub: Subscription | null = null;
   private signaturePoint: { x: number; y: number } | null = null;
+
+  protected toggleZone(zone: ProtocolZone): void {
+    if (this.selectedZone()?.id === zone.id) {
+      this.closeZone();
+      return;
+    }
+    this.selectZone(zone);
+  }
+
+  protected previousZone(): ProtocolZone | null {
+    const index = this.editableZones.findIndex((zone) => zone.id === this.selectedZone()?.id);
+    return index > 0 ? this.editableZones[index - 1] : null;
+  }
+
+  protected nextZone(): ProtocolZone | null {
+    const index = this.editableZones.findIndex((zone) => zone.id === this.selectedZone()?.id);
+    return index >= 0 ? (this.editableZones[index + 1] ?? null) : null;
+  }
+
+  protected navigateZone(direction: -1 | 1): void {
+    const adjacent = direction === -1 ? this.previousZone() : this.nextZone();
+    if (adjacent) this.selectZone(adjacent);
+  }
+
+  private selectZone(zone: ProtocolZone): void {
+    this.selectedZone.set(zone);
+  }
+
+  protected closeZone(): void {
+    this.selectedZone.set(null);
+  }
+
+  protected fieldVisible(x: number, y: number): boolean {
+    const zone = this.selectedZone();
+    return (
+      !zone || (x >= zone.x && x < zone.x + zone.width && y >= zone.y && y < zone.y + zone.height)
+    );
+  }
 
   constructor() {
     this.offlineQueue.protocolSaved
@@ -854,6 +1003,10 @@ export class AmbulanzprotokollPage implements OnDestroy {
       d: 'divers',
       m: 'männlich',
       w: 'weiblich',
+      'peripherven. Zugang / IO Zugang': 'Peripher-venöser Zugang / intraossärer Zugang (IO)',
+      'Defibrillation/Kardiov.': 'Defibrillation / Kardioversion',
+      Wendltubus: 'Wendl-Tubus',
+      Guedeltubus: 'Guedel-Tubus',
       gefaehrdet: 'gefährdet',
       unauffaellig: 'unauffällig',
       Atemgeraeusche: 'Atemgeräusche',
@@ -862,13 +1015,10 @@ export class AmbulanzprotokollPage implements OnDestroy {
       schweissig: 'schweißig',
       erwaermt: 'erwärmt',
       Extremitaet: 'Extremität',
-      Uebergabe: 'Übergabe',
-      Ruecks: 'Rücks.',
+      'Uebergabe:': 'Übergabe:',
+      'Revers (Ruecks.)': 'Revers (Rücks.)',
     };
-    return Object.entries(labels).reduce(
-      (label, [source, replacement]) => label.replace(source, replacement),
-      value,
-    );
+    return labels[value] ?? value;
   }
 
   protected med(index: number, key: 'medikament' | 'dosis' | 'art' | 'uhrzeit'): string {
@@ -1052,7 +1202,17 @@ export class AmbulanzprotokollPage implements OnDestroy {
   }
 
   protected print(): void {
-    window.print();
+    const selectedZone = this.selectedZone();
+    if (selectedZone) this.closeZone();
+
+    window.addEventListener(
+      'afterprint',
+      () => {
+        if (selectedZone) this.selectZone(selectedZone);
+      },
+      { once: true },
+    );
+    requestAnimationFrame(() => window.print());
   }
 
   private async load(patientId: number, generation: number): Promise<void> {
