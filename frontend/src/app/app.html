@@ -1,7 +1,24 @@
 <header class="topbar">
-  <a class="brand" routerLink="/">Ambulanzsystem</a>
-  <a routerLink="/menu">Alle Seiten</a>
-  <app-sync-indicator />
+  <div class="topbar-left">
+    <a class="back-link" routerLink="/menu">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="m15 18-6-6 6-6M9 12h12"></path>
+      </svg>
+      <span>Zurück zur Startseite</span>
+    </a>
+    <div class="home-identity">
+      <span class="identity-mark" aria-hidden="true">A</span>
+      <div class="identity-copy">
+        <p class="team-name">{{ state.scene()?.name || 'Kein Team gewählt' }}</p>
+        <p class="role-name">{{ roleLabel() }}</p>
+      </div>
+    </div>
+  </div>
+  <h1 class="brand">Ambulanzsystem</h1>
+  <div class="header-actions">
+    <app-sync-indicator />
+    <app-theme-toggle />
+  </div>
 </header>
 
 <main class="app-shell">

@@ -48,6 +48,20 @@ describe('AmbulanzprotokollPage route reuse', () => {
     const page = TestBed.runInInjectionContext(() => new AmbulanzprotokollPage());
     await tick();
 
+    expect((page as any).displayOption('manuell')).toBe('manuell');
+    expect((page as any).displayOption('maschinell')).toBe('maschinell');
+    expect((page as any).displayOption('m')).toBe('männlich');
+
+    (page as any).selectedZone.set(
+      (page as any).editableZones.find((zone: any) => zone.id === 'patient_block'),
+    );
+    expect((page as any).fieldVisible(2, 8)).toBe(true);
+    expect((page as any).fieldVisible(2, 18)).toBe(false);
+    (page as any).selectedZone.set(
+      (page as any).editableZones.find((zone: any) => zone.id === 'anamnese_bodymap'),
+    );
+    expect((page as any).fieldVisible(58, 29)).toBe(true);
+
     params.next(convertToParamMap({ patientId: '2' }));
     await tick();
     records.get(2)!.next(record('B'));
