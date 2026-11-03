@@ -1,0 +1,360 @@
+:host {
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: clamp(4rem, 5vw, 4.375rem);
+  --tile-gap: 1rem;
+  --content-top-space: 1.5rem;
+  --tile-height: clamp(8rem, min(calc((100vw - 11rem) / 3), calc((100dvh - 16rem) / 4)), 14rem);
+  --font-small: 1.25rem;
+  --font-body: 1.25rem;
+  --font-label: 1.5rem;
+  --font-title: 1.75rem;
+  --icon-size: 3.5rem;
+  --icon-stroke: 0.14rem;
+  --tile-accent-width: 0.5rem;
+  --target-size: 4rem;
+  --border-width: 0.125rem;
+  --page: #f4f6f8;
+  --surface: #ffffff;
+  --text: #142638;
+  --muted: #34495e;
+  --border: #64788b;
+  --focus: #111827;
+  --tile-surface: #ffffff;
+  --tile-text: #142638;
+  --tile-outline: #064f86;
+  --tile-accent: #064f86;
+  --tile-icon-color: #064f86;
+  --title-color: #064f86;
+  --tile-pressed: #dcecf7;
+  --tile-accent-pressed: #043b63;
+  --online: #14532d;
+  --online-bg: #dcfce7;
+  --offline: #7f1d1d;
+  --offline-bg: #fee2e2;
+  display: block;
+}
+
+.home {
+  background: var(--page);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  font-family: Arial, Helvetica, sans-serif;
+  gap: var(--space-6);
+  height: calc(100dvh - 4.5rem);
+  min-height: 0;
+  overflow: hidden;
+  padding: var(--space-6) max(var(--space-10), env(safe-area-inset-right))
+    max(var(--space-8), env(safe-area-inset-bottom)) max(var(--space-10), env(safe-area-inset-left));
+  user-select: none;
+}
+
+.home.theme-dark {
+  --page: #071a2b;
+  --surface: #102a43;
+  --text: #ffffff;
+  --muted: #ffffff;
+  --border: #93c5fd;
+  --focus: #fde047;
+  --tile-surface: #102a43;
+  --tile-text: #ffffff;
+  --tile-outline: #7dd3fc;
+  --tile-accent: #7dd3fc;
+  --tile-icon-color: #93c5fd;
+  --title-color: #bfdbfe;
+  --tile-pressed: #1e3a56;
+  --tile-accent-pressed: #bae6fd;
+}
+
+.connection,
+.feature-heading,
+.patient-card,
+.patient-summary,
+.home-footer,
+.footer-links {
+  align-items: center;
+  display: flex;
+}
+
+.patient-mark {
+  align-items: center;
+  background: #064f86;
+  color: #ffffff;
+  display: flex;
+  flex: 0 0 var(--target-size);
+  font-size: var(--font-title);
+  font-weight: 800;
+  height: var(--target-size);
+  justify-content: center;
+  width: var(--target-size);
+}
+
+.patient-summary > div {
+  min-width: 0;
+}
+
+.eyebrow {
+  margin: 0;
+}
+
+.eyebrow,
+.patient-kicker,
+.patient-id {
+  color: var(--muted);
+}
+
+.eyebrow,
+.patient-kicker,
+.patient-id,
+.footer-label {
+  font-size: var(--font-small);
+  font-weight: 700;
+}
+
+.patient-mark svg {
+  fill: none;
+  height: 3rem;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  width: 3rem;
+}
+
+.home-main {
+  display: grid;
+  gap: var(--space-3);
+  padding-top: var(--content-top-space);
+}
+
+.feature-grid {
+  order: 1;
+}
+
+.login-grid {
+  order: 2;
+}
+
+.patient-card {
+  background: var(--surface);
+  border: var(--border-width) solid var(--border);
+  gap: var(--space-4);
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-4);
+}
+
+.patient-summary {
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.patient-summary > div {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.patient-summary strong {
+  font-size: var(--font-label);
+}
+
+.tile-grid {
+  display: grid;
+  gap: var(--tile-gap);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  justify-items: stretch;
+}
+
+.login-grid {
+  justify-self: center;
+  width: 66.6667%;
+}
+
+.menu-tile {
+  align-items: center;
+  background: linear-gradient(
+    90deg,
+    var(--tile-accent) 0 var(--tile-accent-width),
+    var(--tile-surface) var(--tile-accent-width)
+  );
+  border: var(--border-width) solid var(--tile-outline);
+  box-sizing: border-box;
+  color: var(--tile-text);
+  display: flex;
+  flex-direction: row;
+  font: inherit;
+  font-size: var(--font-label);
+  font-weight: 800;
+  gap: var(--space-4);
+  height: var(--tile-height);
+  justify-content: flex-start;
+  padding: var(--space-3);
+  text-align: left;
+  text-decoration: none;
+  touch-action: manipulation;
+}
+
+.tile-icon {
+  fill: none;
+  flex: 0 0 var(--icon-size);
+  height: var(--icon-size);
+  color: var(--tile-icon-color);
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: var(--icon-stroke);
+  width: var(--icon-size);
+}
+
+.tile-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.feature-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: 100%;
+}
+
+.feature-link {
+  min-width: 0;
+}
+
+.body-front {
+  grid-column: 1;
+}
+
+.body-back {
+  grid-column: 2;
+}
+
+.feature-copy {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.feature-copy strong {
+  font-size: var(--font-label);
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.feature-copy > span {
+  font-size: var(--font-body);
+  font-weight: 700;
+  display: none;
+}
+
+.feature-link:focus-visible,
+.menu-tile:focus-visible {
+  outline: var(--border-width) solid var(--focus);
+  outline-offset: var(--space-1);
+}
+
+.menu-tile:active {
+  background: linear-gradient(
+    90deg,
+    var(--tile-accent-pressed) 0 var(--tile-accent-width),
+    var(--tile-pressed) var(--tile-accent-width)
+  );
+  transform: scale(0.98);
+}
+
+.menu-tile {
+  transition:
+    background-color 100ms ease-out,
+    transform 100ms ease-out;
+}
+
+@media (max-width: 48rem) {
+  :host {
+    --space-10: clamp(4rem, 8vw, 4.375rem);
+  }
+
+  .home {
+    height: auto;
+    min-height: calc(100dvh - 9rem);
+    overflow: visible;
+  }
+
+  .patient-card {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 34rem) {
+  :host {
+    --space-10: 1.5rem;
+    --font-title: 1.5rem;
+    --font-small: 1.125rem;
+    --font-body: 1.125rem;
+    --font-label: 1.25rem;
+    --icon-size: 2.75rem;
+    --tile-height: 7rem;
+  }
+
+  .home {
+    height: auto;
+    min-height: calc(100dvh - 9rem);
+    overflow: visible;
+  }
+
+  .login-grid {
+    width: 100%;
+  }
+
+  .feature-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 48rem) and (orientation: portrait) {
+  :host {
+    --tile-gap: 1.25rem;
+    --content-top-space: 3.5rem;
+  }
+
+  :host:has(.patient-card) {
+    --tile-height: clamp(4rem, min(calc((100vw - 11rem) / 3), calc((100dvh - 20rem) / 5)), 10rem);
+    --content-top-space: 1.5rem;
+  }
+
+  .home {
+    gap: var(--space-3);
+  }
+}
+
+@media (min-width: 48rem) and (orientation: landscape) {
+  :host {
+    --space-6: 0.75rem;
+    --space-8: 1rem;
+    --tile-gap: 1.25rem;
+    --tile-height: clamp(4rem, min(calc((100vw - 11rem) / 3), calc((100dvh - 14.5rem) / 4)), 12rem);
+    --content-top-space: 3.5rem;
+    --icon-size: 3.5rem;
+    --font-label: 1.5rem;
+  }
+
+  .home {
+    gap: var(--space-3);
+  }
+
+  .menu-tile {
+    gap: var(--space-3);
+    padding: var(--space-2);
+  }
+
+  .feature-copy {
+    gap: 0;
+  }
+
+  :host:has(.patient-card) {
+    --tile-height: clamp(4rem, min(calc((100vw - 11rem) / 3), calc((100dvh - 20rem) / 5)), 8rem);
+    --content-top-space: 1.5rem;
+  }
+}
