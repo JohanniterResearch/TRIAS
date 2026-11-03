@@ -5,6 +5,7 @@ import { SyncStatusService } from './sync-status.service';
 
 @Component({
   selector: 'app-sync-indicator',
+  imports: [],
   template: `
     <div
       class="sync-indicator"
