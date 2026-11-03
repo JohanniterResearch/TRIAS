@@ -6,7 +6,7 @@ import { SyncStatusService } from './sync-status.service';
 
 @Component({
   selector: 'app-sync-indicator',
-  imports: [DatePipe],
+  imports: [],
   template: `
     <div
       class="sync-indicator"
@@ -21,27 +21,6 @@ import { SyncStatusService } from './sync-status.service';
               : 'synced'
       "
     >
-<<<<<<< HEAD
-      <span role="status" aria-live="polite">
-        <span class="sync-dot" aria-hidden="true"></span>
-        <span>{{ sync.online() ? 'Online' : 'Offline' }}</span>
-        @if (sync.validationDegraded()) {
-          <span class="form-error"
-            >Anmeldung kann nicht bestätigt werden · erneuter Versuch folgt</span
-          >
-        }
-        @if (sync.pendingCount()) {
-          <span>{{ sync.pendingCount() }} offen</span>
-        }
-        @if (isOld()) {
-          <span class="form-error">älter als 12 h</span>
-        }
-        @if (sync.lastSuccessfulQueueFlush(); as lastSync) {
-          <span class="sync-time">Queue-Sync {{ lastSync | date: 'shortTime' }}</span>
-        }
-        @if (sync.lastServerContact(); as lastContact) {
-          <span class="sync-time">Serverkontakt {{ lastContact | date: 'shortTime' }}</span>
-=======
       <div class="sync-status" role="status" aria-live="polite">
         <svg class="sync-icon" viewBox="0 0 32 32" aria-hidden="true">
           @if (sync.online()) {
@@ -82,7 +61,6 @@ import { SyncStatusService } from './sync-status.service';
           {{ formatDateTime(lastSync) }}
         } @else {
           noch keine
->>>>>>> 53bdb00 (Replace home link list with uniform tile menu:)
         }
       </span>
       @if (sync.failedCount()) {
@@ -95,14 +73,11 @@ import { SyncStatusService } from './sync-status.service';
 })
 export class SyncIndicator {
   protected readonly sync = inject(SyncStatusService);
-<<<<<<< HEAD
-=======
   protected readonly formatDateTime = formatDateTime;
 
   protected lastSync(): string | null {
     return this.sync.lastSuccessfulQueueFlush() ?? this.sync.lastServerContact();
   }
->>>>>>> 53bdb00 (Replace home link list with uniform tile menu:)
 
   protected isOld(): boolean {
     const oldest = this.sync.oldestPendingAt();
