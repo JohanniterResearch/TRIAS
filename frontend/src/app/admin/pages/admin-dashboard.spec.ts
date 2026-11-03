@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { of, throwError } from 'rxjs';
-import { vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { ApiClient, ApiRequestError } from '../../api/api-client';
 import { AdminDashboard } from './admin-dashboard';
@@ -335,8 +335,27 @@ describe('AdminDashboard detailed patient display', () => {
     });
     expect(sections.find((section) => section.title === 'Abschluss')?.entries[1]).toMatchObject({
       label: 'Finalisiert am',
-      value: /^17\.09\.2026 \d{2}:\d{2}$/,
+      value: expect.stringMatching(/^17\.09\.2026 \d{2}:\d{2}$/),
     });
+  });
+
+  it('preserves protocol dates that are not stored as ISO dates', () => {
+    TestBed.configureTestingModule({ providers: [{ provide: ApiClient, useValue: {} }] });
+    const dashboard = TestBed.runInInjectionContext(() => new AdminDashboard());
+    const sections = dashboard['protocolSections']({
+      status: 'draft',
+      updatedAt: '',
+      finalizedAt: null,
+      formState: {
+        incident: { datum: '07.09.2025' },
+        patient: { geburtsdatum: '1980' },
+      },
+    } as never);
+
+    expect(sections.find((section) => section.title === 'Patientendaten')?.entries).toEqual([
+      { label: 'incident · datum', value: '07.09.2025' },
+      { label: 'patient · geburtsdatum', value: '1980' },
+    ]);
   });
 
   it('uses a selected opaque QR reference and never a text token', () => {

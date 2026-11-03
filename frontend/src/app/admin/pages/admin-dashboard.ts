@@ -12,7 +12,7 @@ import { PreviewModal } from '../components/preview-modal';
 import { QrCodeImage } from '../components/qr-code-image';
 import { QrPreviewModal, type QrPreviewItem } from '../components/qr-preview-modal';
 import { TRIAGE_COLORS } from '../../shared/triage';
-import { formatDateTime, formatTime } from '../../shared/date-time-format';
+import { formatDate, formatDateTime } from '../../shared/date-time-format';
 
 type OperationScene = components['schemas']['OperationScene'];
 type LoginQrCode = components['schemas']['LoginQrCode'];
@@ -1221,18 +1221,15 @@ export class AdminDashboard {
     ];
   }
 
-  private formatProtocolValue(prefix: string, value: unknown): string {
-    const path = prefix.replaceAll(' · ', '.');
-    if (path === 'incident.datum' || path === 'patient.geburtsdatum')
-      return formatDateTime(String(value));
+  private formatProtocolValue(path: string, value: unknown): string {
+    if (value === true) return 'Ja';
+    const text = String(value);
     if (
-      path === 'incident.uhrzeit_beginn' ||
-      path === 'disposition.uhrzeit_ende' ||
-      path === 'assessment_primary.angen_notfallzeit.zeit' ||
-      /^medications_administered\.\d+\.uhrzeit$/.test(path)
+      (path === 'incident.datum' || path === 'patient.geburtsdatum') &&
+      /^\d{4}-\d{2}-\d{2}$/.test(text)
     )
-      return formatTime(String(value));
-    return value === true ? 'Ja' : String(value);
+      return formatDate(text) || text;
+    return text;
   }
 
   protected saveManagedPatient(): void {
