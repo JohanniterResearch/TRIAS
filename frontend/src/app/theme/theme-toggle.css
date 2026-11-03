@@ -1,0 +1,92 @@
+:host {
+  display: block;
+}
+
+:host button.theme-toggle {
+  align-items: center;
+  background: #dcecf7;
+  border: 0.125rem solid #064f86;
+  border-radius: 999px;
+  color: #142638;
+  cursor: pointer;
+  display: grid;
+  flex: 0 0 7rem;
+  grid-template-columns: repeat(2, 1fr);
+  height: 4rem;
+  justify-items: center;
+  overflow: hidden;
+  padding: 0.125rem;
+  position: relative;
+  touch-action: manipulation;
+  width: 7rem;
+}
+
+:host-context(.theme-dark) button.theme-toggle {
+  background: #102a43;
+  border-color: #93c5fd;
+  color: #ffffff;
+}
+
+.theme-option {
+  align-items: center;
+  color: #142638;
+  display: flex;
+  height: 100%;
+  justify-content: center;
+  position: relative;
+  width: 100%;
+  z-index: 1;
+}
+
+.theme-sun {
+  color: #064f86;
+}
+
+button.theme-toggle.is-dark .theme-sun {
+  color: #e2e8f0;
+}
+
+button.theme-toggle.is-dark .theme-moon {
+  color: #071a2b;
+}
+
+.theme-toggle svg {
+  fill: none;
+  height: 1.75rem;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+  width: 1.75rem;
+}
+
+.theme-thumb {
+  background: #ffffff;
+  border-radius: 50%;
+  height: 3rem;
+  left: 0.25rem;
+  position: absolute;
+  top: 0.25rem;
+  transition:
+    background-color 120ms ease-out,
+    transform 120ms ease-out;
+  width: 3rem;
+}
+
+button.theme-toggle.is-dark .theme-thumb {
+  background: #7dd3fc;
+  transform: translateX(3rem);
+}
+
+button.theme-toggle:focus-visible {
+  outline: 0.125rem solid #111827;
+  outline-offset: 0.25rem;
+}
+
+:host-context(.theme-dark) button.theme-toggle:focus-visible {
+  outline-color: #fde047;
+}
+
+button.theme-toggle:active {
+  filter: brightness(0.92);
+}
