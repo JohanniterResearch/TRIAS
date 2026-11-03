@@ -1,23 +1,180 @@
 .topbar {
   align-items: center;
-  background: #ffffff;
-  border-bottom: 1px solid #d7dde5;
-  display: flex;
+  background: var(--app-surface, #ffffff);
+  border-bottom: 1px solid var(--app-border, #d7dde5);
+  display: grid;
   gap: 1rem;
-  justify-content: space-between;
-  min-height: 4rem;
-  padding: 0 1.25rem;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  min-height: 4.5rem;
+  padding: 0.25rem 2.5rem;
+}
+
+.topbar-left,
+.header-actions,
+.home-identity,
+.back-link {
+  align-items: center;
+  display: flex;
+}
+
+.topbar-left {
+  min-width: 0;
+}
+
+.header-actions {
+  gap: 0.75rem;
+  justify-self: end;
+}
+
+.back-link {
+  color: var(--app-foreground, #102033);
+  font-size: 1.375rem;
+  font-weight: 800;
+  gap: 0.75rem;
+  min-height: 4.5rem;
+  text-decoration: none;
+}
+
+.back-link svg {
+  fill: none;
+  flex: 0 0 2.25rem;
+  height: 2.25rem;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.5;
+  width: 2.25rem;
 }
 
 .brand {
-  color: #102033;
-  font-size: 1.1rem;
+  color: var(--app-foreground, #102033);
+  font-size: 1.75rem;
+  font-weight: 900;
+  justify-self: center;
+  letter-spacing: 0.025em;
+  line-height: 1.1;
+  margin: 0;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.home-identity {
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.identity-mark {
+  align-items: center;
+  background: #064f86;
+  color: #ffffff;
+  display: flex;
+  flex: 0 0 4rem;
+  font-size: 1.75rem;
+  font-weight: 800;
+  height: 4rem;
+  justify-content: center;
+  width: 4rem;
+}
+
+.identity-copy {
+  min-width: 0;
+}
+
+.team-name,
+.role-name {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.team-name {
+  font-size: 1.5rem;
+  font-weight: 800;
+}
+
+.role-name {
+  color: var(--app-muted, #34495e);
+  font-size: 1.25rem;
   font-weight: 700;
-  text-decoration: none;
+}
+
+.topbar:has(+ .app-shell app-home) .back-link {
+  display: none;
+}
+
+.topbar:has(+ .app-shell app-home) .home-identity {
+  display: flex;
+}
+
+.topbar:not(:has(+ .app-shell app-home)) .home-identity {
+  display: none;
+}
+
+@media (max-width: 48rem) {
+  .topbar {
+    grid-template-areas:
+      'left toggle'
+      'brand brand'
+      'sync sync';
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding: 0.5rem 1.5rem;
+  }
+
+  .topbar-left {
+    grid-area: left;
+  }
+
+  .back-link {
+    font-size: 1.25rem;
+  }
+
+  .brand {
+    font-size: 1.75rem;
+    grid-area: brand;
+    white-space: normal;
+  }
+
+  .header-actions {
+    display: contents;
+  }
+
+  .topbar app-sync-indicator {
+    grid-area: sync;
+    width: 100%;
+  }
+
+  .topbar app-theme-toggle {
+    grid-area: toggle;
+  }
+
+  .identity-mark {
+    display: none;
+  }
+
+  .team-name {
+    font-size: 1.25rem;
+    max-width: 10rem;
+  }
+
+  .role-name {
+    font-size: 1.125rem;
+  }
 }
 
 .app-shell {
   margin: 0 auto;
   max-width: 72rem;
   padding: 2rem 1.25rem;
+}
+
+.app-shell:has(app-home) {
+  margin: 0;
+  max-width: none;
+  padding: 0;
+}
+
+:root.theme-dark .back-link,
+:root.theme-dark .brand {
+  color: var(--app-foreground);
 }
