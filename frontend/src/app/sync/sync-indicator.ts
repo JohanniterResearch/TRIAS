@@ -1,11 +1,10 @@
-import { DatePipe } from '@angular/common';
 import { Component, inject } from '@angular/core';
 
+import { formatTime } from '../shared/date-time-format';
 import { SyncStatusService } from './sync-status.service';
 
 @Component({
   selector: 'app-sync-indicator',
-  imports: [DatePipe],
   template: `
     <div
       class="sync-indicator"
@@ -35,10 +34,10 @@ import { SyncStatusService } from './sync-status.service';
           <span class="form-error">älter als 12 h</span>
         }
         @if (sync.lastSuccessfulQueueFlush(); as lastSync) {
-          <span class="sync-time">Queue-Sync {{ lastSync | date: 'shortTime' }}</span>
+          <span class="sync-time">Queue-Sync {{ formatTime(lastSync) }}</span>
         }
         @if (sync.lastServerContact(); as lastContact) {
-          <span class="sync-time">Serverkontakt {{ lastContact | date: 'shortTime' }}</span>
+          <span class="sync-time">Serverkontakt {{ formatTime(lastContact) }}</span>
         }
       </span>
       @if (sync.failedCount()) {
@@ -51,6 +50,7 @@ import { SyncStatusService } from './sync-status.service';
 })
 export class SyncIndicator {
   protected readonly sync = inject(SyncStatusService);
+  protected readonly formatTime = formatTime;
 
   protected isOld(): boolean {
     const oldest = this.sync.oldestPendingAt();

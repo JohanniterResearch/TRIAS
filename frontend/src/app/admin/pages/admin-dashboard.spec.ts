@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { of, throwError } from 'rxjs';
-import { vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { ApiClient, ApiRequestError } from '../../api/api-client';
 import { AdminDashboard } from './admin-dashboard';
@@ -313,11 +313,18 @@ describe('AdminDashboard detailed patient display', () => {
       status: 'finalized',
       updatedAt: '',
       finalizedAt: '2026-09-17T10:00:00Z',
-      formState: { patient: { vorname: 'Lea', telefon: '' }, vitals: { puls: '80', keine: false } },
+      formState: {
+        incident: { datum: '2026-10-18', uhrzeit_beginn: '09:05' },
+        patient: { vorname: 'Lea', telefon: '', geburtsdatum: '2000-01-02' },
+        vitals: { puls: '80', keine: false },
+      },
     } as never);
 
     expect(sections.find((section) => section.title === 'Patientendaten')?.entries).toEqual([
+      { label: 'incident · datum', value: '18.10.2026' },
+      { label: 'incident · uhrzeit beginn', value: '09:05' },
       { label: 'patient · vorname', value: 'Lea' },
+      { label: 'patient · geburtsdatum', value: '02.01.2000' },
     ]);
     expect(sections.find((section) => section.title === 'Vitalwerte')?.entries).toEqual([
       { label: 'vitals · puls', value: '80' },
@@ -326,6 +333,29 @@ describe('AdminDashboard detailed patient display', () => {
       label: 'Status',
       value: 'Finalisiert',
     });
+    expect(sections.find((section) => section.title === 'Abschluss')?.entries[1]).toMatchObject({
+      label: 'Finalisiert am',
+      value: expect.stringMatching(/^17\.09\.2026 \d{2}:\d{2}$/),
+    });
+  });
+
+  it('preserves protocol dates that are not stored as ISO dates', () => {
+    TestBed.configureTestingModule({ providers: [{ provide: ApiClient, useValue: {} }] });
+    const dashboard = TestBed.runInInjectionContext(() => new AdminDashboard());
+    const sections = dashboard['protocolSections']({
+      status: 'draft',
+      updatedAt: '',
+      finalizedAt: null,
+      formState: {
+        incident: { datum: '07.09.2025' },
+        patient: { geburtsdatum: '1980' },
+      },
+    } as never);
+
+    expect(sections.find((section) => section.title === 'Patientendaten')?.entries).toEqual([
+      { label: 'incident · datum', value: '07.09.2025' },
+      { label: 'patient · geburtsdatum', value: '1980' },
+    ]);
   });
 
   it('uses a selected opaque QR reference and never a text token', () => {
