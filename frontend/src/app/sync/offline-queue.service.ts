@@ -25,6 +25,7 @@ export interface ProtocolSaveResult {
   patientId: number;
   sourcePatientId: number;
   writeId: string;
+  legacyIdentity?: string;
   record: ProtocolResponse;
 }
 
@@ -159,28 +160,30 @@ export class OfflineQueueService {
 
   // One key per patient (location) or per region (body part): a newer intent replaces the older
   // unsent one, since both are absolute values rather than increments.
-  async queueLocation(patientId: number, body: LocationRequest): Promise<void> {
-    await this.add(
-      withMetadata({
-        id: `location:${patientId}`,
-        type: 'location',
-        patientId,
-        body: { ...body, clientUpdatedAt: body.clientUpdatedAt ?? new Date().toISOString() },
-        createdAt: new Date().toISOString(),
-      }),
-    );
+  async queueLocation(patientId: number, body: LocationRequest, writeId?: string): Promise<void> {
+    const item: Extract<QueueItem, { type: 'location' }> = withMetadata({
+      id: `location:${patientId}`,
+      type: 'location',
+      patientId,
+      body: { ...body, clientUpdatedAt: body.clientUpdatedAt ?? new Date().toISOString() },
+      createdAt: new Date().toISOString(),
+    });
+    // Keep the key of an online attempt that may already have reached the server.
+    if (writeId) item.writeId = writeId;
+    await this.add(item);
   }
 
-  async queueBodyPart(patientId: number, body: BodyPartRequest): Promise<void> {
-    await this.add(
-      withMetadata({
-        id: `body-part:${patientId}:${body.bodyPartId}`,
-        type: 'body-part',
-        patientId,
-        body,
-        createdAt: new Date().toISOString(),
-      }),
-    );
+  async queueBodyPart(patientId: number, body: BodyPartRequest, writeId?: string): Promise<void> {
+    const item: Extract<QueueItem, { type: 'body-part' }> = withMetadata({
+      id: `body-part:${patientId}:${body.bodyPartId}`,
+      type: 'body-part',
+      patientId,
+      body,
+      createdAt: new Date().toISOString(),
+    });
+    // Keep the key of an online attempt that may already have reached the server.
+    if (writeId) item.writeId = writeId;
+    await this.add(item);
   }
 
   queueProtocol(
@@ -204,14 +207,19 @@ export class OfflineQueueService {
 
   async pendingProtocol(
     patientId: number,
-  ): Promise<(ProtokollDraftRecord & { writeId?: string }) | null> {
+  ): Promise<(ProtokollDraftRecord & { writeId?: string; legacyIdentity?: string }) | null> {
     const unsaved = this.unsavedProtocols.get(patientId);
     if (unsaved) return { ...protocolDraft(unsaved), writeId: unsaved.writeId };
     const realId = await this.realPatientId(patientId);
     const items = [...(await this.items()), ...this.unsavedProtocols.values()];
     for (const item of items.reverse()) {
       if (item.type === 'protocol' && (await this.realPatientId(item.patientId)) === realId)
-        return { ...protocolDraft(item), patientId, writeId: item.writeId };
+        return {
+          ...protocolDraft(item),
+          patientId,
+          writeId: item.writeId,
+          legacyIdentity: item.writeId ? undefined : protocolLegacyIdentity(item),
+        };
     }
     return null;
   }
@@ -245,7 +253,7 @@ export class OfflineQueueService {
       for (const item of this.unsavedProtocols.values()) await this.persistProtocol(item);
       await this.persistence;
       if (!navigator.onLine) return;
-      for (const item of await this.items()) {
+      for (let item of await this.items()) {
         if (
           item.type === 'protocol' &&
           (this.unsavedProtocols.has(item.patientId) ||
@@ -261,6 +269,12 @@ export class OfflineQueueService {
           continue;
         }
         try {
+          if (item.type === 'protocol' && !item.writeId) {
+            // Legacy orders must have a durable identity before any HTTP request is started.
+            const keyed = await this.ensureProtocolWriteId(item);
+            if (!keyed) continue;
+            item = keyed;
+          }
           if (item.type === 'manual-patient') {
             const patient = await firstValueFrom(this.api.createManualPatient(item.body));
             await this.commitPatientMapping(item.id, item.provisionalId, patient);
@@ -401,19 +415,26 @@ export class OfflineQueueService {
       return true;
     }
     if (item.type === 'location') {
-      const patient = await firstValueFrom(this.api.updatePatientLocation(patientId, item.body));
+      const patient = await firstValueFrom(
+        this.api.updatePatientLocation(patientId, item.body, item.writeId),
+      );
       this.responderState.replacePatient(patientId, patient);
       return true;
     }
     if (item.type === 'body-part') {
-      await firstValueFrom(this.api.toggleBodyPart({ ...item.body, idpatient: patientId }));
+      await firstValueFrom(
+        this.api.toggleBodyPart({ ...item.body, idpatient: patientId }, item.writeId),
+      );
       return true;
     }
-    const record = await firstValueFrom(this.api.saveProtokollPage1(patientId, item.body));
+    const record = await firstValueFrom(
+      this.api.saveProtokollPage1(patientId, item.body, item.writeId),
+    );
     return {
       patientId,
       sourcePatientId: item.patientId,
       writeId: item.writeId ?? item.createdAt,
+      legacyIdentity: protocolLegacyIdentity(item),
       record,
     };
   }
@@ -421,6 +442,16 @@ export class OfflineQueueService {
   private async add(item: QueueItem): Promise<void> {
     await this.withStore(queueStore, 'readwrite', (store) => request(store.put(item)));
     await this.refreshStatus();
+  }
+
+  private async ensureProtocolWriteId(item: ProtocolWrite): Promise<ProtocolWrite | null> {
+    return this.withStore(queueStore, 'readwrite', async (store) => {
+      const current = await request<QueueItem | undefined>(store.get(item.id));
+      if (!current || current.type !== 'protocol' || !sameQueueWrite(current, item)) return null;
+      const keyed = { ...current, writeId: current.writeId ?? crypto.randomUUID() };
+      await request(store.put(keyed));
+      return keyed;
+    });
   }
 
   private async deleteIfCurrent(item: QueueItem): Promise<boolean> {
@@ -601,6 +632,11 @@ export class OfflineQueueService {
       db.close();
     }
   }
+}
+
+// Local correlation for a snapshot loaded before its UUID was assigned. Never sent to the API.
+function protocolLegacyIdentity(item: ProtocolWrite): string {
+  return JSON.stringify([item.id, item.createdAt, item.body]);
 }
 
 function protocolDraft(item: ProtocolWrite): ProtokollDraftRecord {

@@ -43,11 +43,18 @@ describe('BodyMapPage intent ordering', () => {
     await Promise.resolve();
     initialLoad.next({ bodyParts: { kopf_vorne: 0 } });
 
-    expect(queue.queueBodyPart).toHaveBeenCalledWith(7, {
-      idpatient: 7,
-      bodyPartId: 'kopf_vorne',
-      isClicked: true,
-    });
+    const writeId = api.toggleBodyPart.mock.calls[0][1];
+    expect(writeId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+    // The queued replay must carry the key of the online attempt that may have reached the server.
+    expect(queue.queueBodyPart).toHaveBeenCalledWith(
+      7,
+      {
+        idpatient: 7,
+        bodyPartId: 'kopf_vorne',
+        isClicked: true,
+      },
+      writeId,
+    );
     expect(api.getBodyParts).toHaveBeenCalledTimes(1);
     expect((page as any).isMarked('kopf_vorne')).toBe(true);
   });
@@ -147,6 +154,7 @@ describe('BodyMapPage intent ordering', () => {
     first.next({ bodyParts: { kopf_vorne: 1 } });
     first.complete();
     expect(api.toggleBodyPart).toHaveBeenCalledTimes(2);
+    expect(api.toggleBodyPart.mock.calls[1][1]).not.toBe(api.toggleBodyPart.mock.calls[0][1]);
     second.next({ bodyParts: { kopf_vorne: 0 } });
 
     expect((page as any).isMarked('kopf_vorne')).toBe(false);

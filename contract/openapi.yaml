@@ -912,9 +912,22 @@ paths:
     post:
       tags: [persons]
       operationId: updatePatientLocation
-      description: Updates the patient's validated GPS or manually corrected location and publishes the new state.
+      description: >-
+        Updates the patient's validated GPS or manually corrected location and publishes the new state.
+        With Idempotency-Key, a repeated order for the same patient returns the current patient
+        without another write, audit or notification. Reusing the key with a different order
+        (including clientUpdatedAt) returns 409. Without the header, existing behavior is retained.
       summary: Update patient position (auto-captured device GPS or manual correction, FR-LOC-05/06). Publishes realtime update. Policy TriageWrite.
-      parameters: [{ $ref: "#/components/parameters/idPath" }]
+      parameters:
+        - { $ref: "#/components/parameters/idPath" }
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: Stable writeId of this location order; a new order requires a new non-empty UUID.
+          schema:
+            type: string
+            format: uuid
+            pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
       requestBody:
         required: true
         content:
@@ -939,6 +952,11 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Idempotency-Key was already used for a different location order.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/persons/{id}/reassign-qr-code:
     post:
@@ -1003,7 +1021,13 @@ paths:
     put:
       tags: [ambulanzprotokoll]
       operationId: saveAmbulanzprotokollPage1
-      description: Merges and saves page-one protocol data and returns the persisted record with any server validation warnings.
+      description: >-
+        Merges and saves page-one protocol data and returns the persisted record with any server validation warnings.
+        With Idempotency-Key, a repeated order for the same patient returns the current protocol and
+        its current warnings without another merge, write, audit, revision or notification.
+        Reusing the key with a different order (including status, formState, clientUpdatedAt or
+        correctionReason) returns 409. JSON object property order is irrelevant; array order and
+        explicit formState null values are preserved. Without the header, existing behavior is retained.
       summary: >
         Upsert the page-1 record. Draft accepts any partial data; missing branches
         are merged with the default state; concurrent saves merge field-level LWW
@@ -1012,7 +1036,13 @@ paths:
         never a hard block for empty fields. Post-finalize saves stay allowed
         (Leitstelle/Admin any form; responder their own records); all audit-logged.
         Policy TriageWrite.
-      parameters: [{ $ref: "#/components/parameters/patientIdPath" }]
+      parameters:
+        - { $ref: "#/components/parameters/patientIdPath" }
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: Non-empty UUID identifying one protocol save; retain the original key and body on retry.
+          schema: { type: string, format: uuid }
       requestBody:
         required: true
         content:
@@ -1043,7 +1073,13 @@ paths:
                         items: { type: string }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { description: Patient does not exist. }
+        "409":
+          description: Idempotency-Key was already used for a different protocol order.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/persons/{patientId}/ambulanzprotokoll-page1/export:
     get:
@@ -1092,8 +1128,21 @@ paths:
     put:
       tags: [body-parts]
       operationId: updateBodyPart
-      description: Sets one validated body-region marker and returns the patient's complete updated marker state.
+      description: >-
+        Sets one validated body-region marker and returns the patient's complete updated marker state.
+        With Idempotency-Key, a repeated order for the same patient returns the current marker state
+        without another write, audit or notification. Reusing the key with a different order returns 409.
+        Without the header, existing behavior is retained.
       summary: Toggle one region's marker. bodyPartId validated against the canonical key list. Publishes realtime update. Policy TriageWrite.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: Stable writeId of this body-part order; a new order requires a new non-empty UUID.
+          schema:
+            type: string
+            format: uuid
+            pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
       requestBody:
         required: true
         content:
@@ -1112,9 +1161,15 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/BodyParts" }
-        "400": { description: Unknown bodyPartId. }
+        "400": { description: Unknown bodyPartId or invalid Idempotency-Key. }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Idempotency-Key was already used for a different body-part order.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   # ------------------------------------------------------------- audit
   /api/audit:

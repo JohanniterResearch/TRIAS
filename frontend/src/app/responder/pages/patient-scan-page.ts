@@ -143,12 +143,15 @@ export class PatientScanPage {
       accuracyMeters: fix.accuracyMeters,
       clientUpdatedAt: new Date().toISOString(),
     };
-    const queue = () => this.offlineQueue.queueLocation(patientId, body).catch(() => undefined);
+    // The online attempt's writeId is reused so a request that did reach the server is not reapplied.
+    const writeId = crypto.randomUUID();
+    const queue = () =>
+      this.offlineQueue.queueLocation(patientId, body, writeId).catch(() => undefined);
     if (patientId < 0) {
       await queue();
       return;
     }
-    this.api.updatePatientLocation(patientId, body).subscribe({
+    this.api.updatePatientLocation(patientId, body, writeId).subscribe({
       next: (patient) => this.state.setPatient(patient),
       error: (error: unknown) => (isRetryableFailure(error) ? void queue() : undefined),
     });
