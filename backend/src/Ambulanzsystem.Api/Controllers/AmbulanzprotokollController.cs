@@ -65,7 +65,15 @@ public class AmbulanzprotokollController(AppDbContext db, AuditService audit, Sc
             // Missing required JSON cannot be serialized as a bound order.
             if (request.FormState.ValueKind == JsonValueKind.Undefined)
                 return BadRequest(new ErrorResponse("formState must be a JSON object."));
-            var checksum = ProtokollWriteChecksum.Compute(request);
+            string checksum;
+            try
+            {
+                checksum = ProtokollWriteChecksum.Compute(request);
+            }
+            catch (Exception ex) when (ex is JsonException or InvalidOperationException or FormatException)
+            {
+                return BadRequest(new ErrorResponse("formState contains a value that doesn't match the expected field types."));
+            }
             var processed = await db.ProtokollProcessedWrites.FindAsync(patientId, keyId);
             if (processed is not null)
             {

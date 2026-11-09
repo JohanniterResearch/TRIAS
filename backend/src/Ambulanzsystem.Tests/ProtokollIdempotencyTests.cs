@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Ambulanzsystem.Api.Controllers;
@@ -116,7 +117,7 @@ public class ProtokollIdempotencyTests
     }
 
     [Fact]
-    public async Task ReorderedNestedObjects_Replay_ButExplicitNullAndArrayOrderAreDistinct()
+    public async Task ReorderedNestedObjectsAndNullFields_Replay_ButArrayOrderIsDistinct()
     {
         var first = new UpsertProtokollRequest("draft", JsonSerializer.SerializeToElement(new
         {
@@ -124,8 +125,8 @@ public class ProtokollIdempotencyTests
             assessment_secondary = new { bodymap = new[] { new { x = 1, y = 2 }, new { x = 3, y = 4 } } },
         }), Timestamp);
         var reordered = first with { FormState = JsonDocument.Parse("""
-            {"assessment_secondary":{"bodymap":[{"y":2,"x":1},{"y":4,"x":3}]},
-             "patient":{"familienname":"B","vorname":"A"}}
+            {"assessment_secondary":{"bodymap":[{"y":2,"optional":null,"x":1},{"y":4,"x":3}]},
+             "patient":{"familienname":"B","optional":null,"vorname":"A"},"optional":null}
             """).RootElement };
         Assert.Equal(ProtokollWriteChecksum.Compute(first), ProtokollWriteChecksum.Compute(reordered));
         var reversed = first with { FormState = JsonDocument.Parse("""
@@ -133,9 +134,11 @@ public class ProtokollIdempotencyTests
              "assessment_secondary":{"bodymap":[{"x":3,"y":4},{"x":1,"y":2}]}}
             """).RootElement };
         Assert.NotEqual(ProtokollWriteChecksum.Compute(first), ProtokollWriteChecksum.Compute(reversed));
-        var absent = new UpsertProtokollRequest("draft", JsonDocument.Parse("{}").RootElement, null);
+        var absent = new UpsertProtokollRequest("draft", JsonDocument.Parse("{\"patient\":{}}").RootElement, null);
         var explicitNull = absent with { FormState = JsonDocument.Parse("{\"patient\":{\"vorname\":null}}").RootElement };
-        Assert.NotEqual(ProtokollWriteChecksum.Compute(absent), ProtokollWriteChecksum.Compute(explicitNull));
+        Assert.Equal(ProtokollWriteChecksum.Compute(absent), ProtokollWriteChecksum.Compute(explicitNull));
+        var changed = absent with { FormState = JsonDocument.Parse("{\"patient\":{\"vorname\":\"Changed\"}}").RootElement };
+        Assert.NotEqual(ProtokollWriteChecksum.Compute(absent), ProtokollWriteChecksum.Compute(changed));
 
         using var factory = new ProtocolFactory();
         var (client, id, _) = await SetupAsync(factory);
@@ -147,11 +150,57 @@ public class ProtokollIdempotencyTests
             """).RootElement)).EnsureSuccessStatusCode();
         Assert.Equal(snapshot, await SnapshotAsync(factory, id));
         var nullKey = Guid.NewGuid().ToString();
-        (await SendAsync(client, id, nullKey, new { status = "draft", formState = new { } })).EnsureSuccessStatusCode();
+        (await SendAsync(client, id, nullKey, new { status = "draft", formState = new { patient = new { } } })).EnsureSuccessStatusCode();
         snapshot = await SnapshotAsync(factory, id);
-        Assert.Equal(HttpStatusCode.Conflict, (await SendAsync(client, id, nullKey,
-            new { status = "draft", formState = new { patient = new { vorname = (string?)null } } })).StatusCode);
+        (await SendAsync(client, id, nullKey,
+            new { status = "draft", formState = new { patient = new { vorname = (string?)null } } })).EnsureSuccessStatusCode();
         Assert.Equal(snapshot, await SnapshotAsync(factory, id));
+        Assert.Equal(HttpStatusCode.Conflict, (await SendAsync(client, id, nullKey,
+            new { status = "draft", formState = new { patient = new { vorname = "Changed" } } })).StatusCode);
+        Assert.Equal(snapshot, await SnapshotAsync(factory, id));
+    }
+
+    [Fact]
+    public void Checksum_PreservesFalseZeroAndNullArrayElements()
+    {
+        var order = new UpsertProtokollRequest("draft",
+            JsonDocument.Parse("""{"values":[null,false,0],"object":{"flag":false,"count":0}}""").RootElement, null);
+        foreach (var json in new[]
+        {
+            """{"values":[false,0],"object":{"flag":false,"count":0}}""",
+            """{"values":[null,false,0],"object":{"flag":null,"count":0}}""",
+            """{"values":[null,false,0],"object":{"flag":false,"count":null}}""",
+        })
+        {
+            Assert.NotEqual(ProtokollWriteChecksum.Compute(order),
+                ProtokollWriteChecksum.Compute(order with { FormState = JsonDocument.Parse(json).RootElement }));
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task InvalidUtf16WithKey_ReturnsBadRequestWithoutEffects(bool existingProtocol)
+    {
+        using var factory = new ProtocolFactory();
+        var (client, id, _) = await SetupAsync(factory);
+        if (existingProtocol) (await SendAsync(client, id, null, Order())).EnsureSuccessStatusCode();
+        var snapshot = await SnapshotAsync(factory, id);
+        var key = Guid.NewGuid().ToString();
+        // Send the escaped lone surrogate verbatim; serializing a .NET string can replace it.
+        using var request = new HttpRequestMessage(HttpMethod.Put, $"/api/persons/{id}/ambulanzprotokoll-page1")
+        {
+            Content = new StringContent("""
+                {"status":"draft","formState":{"patient":{"vorname":"Broken \uD83D"}}}
+                """, Encoding.UTF8, "application/json"),
+        };
+        request.Headers.TryAddWithoutValidation("Idempotency-Key", key);
+
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.SendAsync(request)).StatusCode);
+        Assert.Equal(snapshot, await SnapshotAsync(factory, id));
+        // Rejection must not reserve the key.
+        (await SendAsync(client, id, key, Order())).EnsureSuccessStatusCode();
+        await AssertCountsAsync(factory, id, 1, existingProtocol ? 2 : 1, 0);
     }
 
     [Fact]
