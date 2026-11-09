@@ -1,6 +1,6 @@
-import { DatePipe } from '@angular/common';
 import { Component, inject, signal } from '@angular/core';
 
+import { formatDateTime } from '../shared/date-time-format';
 import { BlockedItem, OfflineQueueService } from './offline-queue.service';
 
 const typeLabels: Record<BlockedItem['type'], string> = {
@@ -15,7 +15,6 @@ const typeLabels: Record<BlockedItem['type'], string> = {
 // requires a file export first so no patient data is lost by clearing the device.
 @Component({
   selector: 'app-sync-issues',
-  imports: [DatePipe],
   template: `
     @if (queue.blockedItems().length) {
       <section class="sync-issues" aria-label="Nicht übertragene Einträge">
@@ -27,7 +26,7 @@ const typeLabels: Record<BlockedItem['type'], string> = {
             <li>
               <span
                 >{{ label(item) }} · Patient {{ item.patientId }} ·
-                {{ item.createdAt | date: 'short' }}</span
+                {{ formatDateTime(item.createdAt) }}</span
               >
               <span class="form-error">{{
                 item.errorStatus === 401
@@ -55,6 +54,7 @@ export class SyncIssues {
   protected readonly queue = inject(OfflineQueueService);
   protected readonly busy = signal(false);
   protected readonly error = signal('');
+  protected readonly formatDateTime = formatDateTime;
 
   protected label(item: BlockedItem): string {
     return typeLabels[item.type];
