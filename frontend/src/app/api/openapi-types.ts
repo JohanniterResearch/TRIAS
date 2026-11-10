@@ -834,7 +834,7 @@ export interface paths {
         get: operations["getBodyParts"];
         /**
          * Toggle one region's marker. bodyPartId validated against the canonical key list. Publishes realtime update. Policy TriageWrite.
-         * @description Sets one validated body-region marker and returns the patient's complete updated marker state. With Idempotency-Key, a repeated order for the same patient returns the current marker state without another write, audit or notification. Reusing the key with a different order returns 409. Without the header, duplicate detection is not performed. clientUpdatedAt is compared per patient and canonical region: a strictly older order is ignored, including when the stored value is zero. A newer order advances the region time even if its value is unchanged. Equal timestamps retain arrival-order behavior. Orders without a timestamp retain unconditional assignment and do not change the region time. Device times are not clamped. Retain the original timestamp and key on retry.
+         * @description Sets one validated body-region marker and returns the patient's complete updated marker state. With Idempotency-Key, a repeated order for the same patient returns the current marker state without another write, audit or notification. Reusing the key with a different order returns 409. Without the header, duplicate detection is not performed. clientUpdatedAt is compared per patient and canonical region: a strictly older order is ignored, including when the stored value is zero. A newer order advances the region time even if its value is unchanged. Equal timestamps retain arrival-order behavior. Orders without a timestamp retain unconditional assignment and do not change the region time. Device times are not clamped. Retain the original timestamp and key on retry. A stale order completes with HTTP 200 and writeResult.outcome=rejected, conflictReason=older_edit, the affected bodyPartId and its current serverValue (including 0). Its decision is persisted with the key: retries keep that decision but return the current region value, even after later writes. writeResult is absent/null for reads and retries of historical orders whose decision was not recorded. HTTP 409 remains reserved for key reuse with different order contents.
          */
         put: operations["updateBodyPart"];
         post?: never;
@@ -1156,6 +1156,23 @@ export interface components {
             };
             /** Format: date-time */
             updatedAt?: string;
+            writeResult?: components["schemas"]["BodyPartWriteResult"] | null;
+        };
+        BodyPartWriteResult: {
+            /** @enum {string} */
+            outcome: "applied" | "rejected";
+            /**
+             * @description older_edit for a rejected order; null when applied.
+             * @enum {string|null}
+             */
+            conflictReason: "older_edit" | null;
+            /** @description A canonical key from contract/body-regions.json. */
+            bodyPartId: string;
+            /**
+             * @description Current region value at response time
+             * @enum {integer}
+             */
+            serverValue: 0 | 1;
         };
         ProtokollRecord: {
             patientId: number;

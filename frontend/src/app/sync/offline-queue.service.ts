@@ -17,6 +17,21 @@ type ManualPatientRequest = JsonBody<'/api/persons/manual', 'post'>;
 type TriageUpdateRequest = JsonBody<'/api/persons/{id}/update-triage-color', 'post'>;
 type LocationRequest = JsonBody<'/api/persons/{id}/location', 'post'>;
 type BodyPartRequest = JsonBody<'/api/body-parts', 'put'>;
+export type BodyPartResponse = components['schemas']['BodyParts'];
+export interface BodyPartCompletion {
+  patientId: number;
+  sourcePatientId: number;
+  region: string;
+  writeId: string;
+  superseded: boolean;
+  record: BodyPartResponse;
+}
+export interface PendingBodyPart {
+  patientId: number;
+  sourcePatientId: number;
+  writeId?: string;
+  body: BodyPartRequest;
+}
 type SaveProtokollRequest = JsonBody<'/api/persons/{patientId}/ambulanzprotokoll-page1', 'put'>;
 
 type ProtocolResponse =
@@ -91,6 +106,9 @@ export class OfflineQueueService {
   );
   private readonly protocolSavedSubject = new Subject<ProtocolSaveResult>();
   readonly protocolSaved = this.protocolSavedSubject.asObservable();
+  readonly bodyPartResults = signal<BodyPartCompletion[]>([]);
+  readonly bodyPartPending = signal<PendingBodyPart[]>([]);
+  private bodyPartRefreshVersion = 0;
 
   constructor() {
     window.addEventListener('online', () => this.flush().catch(() => undefined));
@@ -282,6 +300,32 @@ export class OfflineQueueService {
             await this.reconcilePatientIds(item.provisionalId, patient.id, patient);
             continue;
           }
+          if (item.type === 'body-part') {
+            const patientId = await this.realPatientId(item.patientId);
+            if (patientId < 0) {
+              await this.defer(item, 'Patientenzuordnung ausstehend');
+              continue;
+            }
+            const record = await firstValueFrom(
+              this.api.toggleBodyPart({ ...item.body, idpatient: patientId }, item.writeId),
+            );
+            // Rejection is a terminal 200 result. Only acknowledge the exact queued write;
+            // a response for a replaced UUID must not erase or display over its successor.
+            const deleted = await this.deleteIfCurrent(item);
+            const completion: BodyPartCompletion = {
+              patientId,
+              sourcePatientId: item.patientId,
+              region: item.body.bodyPartId,
+              writeId: item.writeId ?? item.createdAt,
+              superseded: !deleted,
+              record,
+            };
+            this.bodyPartResults.update((results) => [
+              ...results.filter((r) => r.patientId !== patientId || r.region !== completion.region),
+              completion,
+            ]);
+            continue;
+          }
           const result = await this.replay(item);
           if (!result) {
             await this.defer(item, 'Patientenzuordnung ausstehend');
@@ -405,7 +449,9 @@ export class OfflineQueueService {
     ];
   }
 
-  private async replay(item: PendingWrite): Promise<boolean | ProtocolSaveResult> {
+  private async replay(
+    item: Exclude<PendingWrite, { type: 'body-part' }>,
+  ): Promise<boolean | ProtocolSaveResult> {
     const patientId = await this.realPatientId(item.patientId);
     if (patientId < 0) return false;
     if (item.type === 'triage') {
@@ -420,12 +466,6 @@ export class OfflineQueueService {
         this.api.updatePatientLocation(patientId, item.body, item.writeId),
       );
       this.responderState.replacePatient(patientId, patient);
-      return true;
-    }
-    if (item.type === 'body-part') {
-      await firstValueFrom(
-        this.api.toggleBodyPart({ ...item.body, idpatient: patientId }, item.writeId),
-      );
       return true;
     }
     const record = await firstValueFrom(
@@ -585,6 +625,7 @@ export class OfflineQueueService {
   }
 
   private async refreshStatus(): Promise<void> {
+    const bodyPartVersion = ++this.bodyPartRefreshVersion;
     let items: QueueItem[];
     try {
       items = await this.items();
@@ -593,6 +634,19 @@ export class OfflineQueueService {
       this.syncStatus.lastQueueError.set('Lokale Warteschlange konnte nicht gelesen werden.');
       return;
     }
+    const pendingBodyParts = await Promise.all(
+      items
+        .filter(
+          (item): item is Extract<QueueItem, { type: 'body-part' }> => item.type === 'body-part',
+        )
+        .map(async (item) => ({
+          patientId: await this.realPatientId(item.patientId),
+          sourcePatientId: item.patientId,
+          writeId: item.writeId,
+          body: item.body,
+        })),
+    );
+    if (bodyPartVersion === this.bodyPartRefreshVersion) this.bodyPartPending.set(pendingBodyParts);
     const failed = items.filter((item) => item.lastError);
     this.blockedItems.set(
       items

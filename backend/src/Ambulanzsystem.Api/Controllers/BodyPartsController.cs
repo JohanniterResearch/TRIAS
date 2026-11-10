@@ -54,6 +54,7 @@ public class BodyPartsController(AppDbContext db, AuditService audit, SceneNotif
         if (!await SceneAccess.CanAccessAsync(User, db, patient.OperationSceneId)) return Forbid();
 
         var parts = JsonSerializer.Deserialize<Dictionary<string, int>>(body.BodyPartsJson)!;
+        BodyPartProcessedWrite? processedWrite = null;
         if (writeId is Guid keyId)
         {
             var checksum = Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(request)));
@@ -62,13 +63,16 @@ public class BodyPartsController(AppDbContext db, AuditService audit, SceneNotif
             {
                 if (processed.Checksum != checksum)
                     return Conflict(new ErrorResponse("Idempotency-Key was already used for a different body-part order."));
-                return Ok(new BodyPartsResponse(request.Idpatient, parts, body.UpdatedAt));
+                return Ok(new BodyPartsResponse(request.Idpatient, parts, body.UpdatedAt,
+                    Result(processed.RejectedAsStale, request.BodyPartId, parts)));
             }
             // Committed with the marker and audit; the body lock serializes parallel replays.
-            db.BodyPartProcessedWrites.Add(new BodyPartProcessedWrite
+            processedWrite = new BodyPartProcessedWrite
             {
                 PatientId = request.Idpatient, WriteId = keyId, Checksum = checksum,
-            });
+                RejectedAsStale = false,
+            };
+            db.BodyPartProcessedWrites.Add(processedWrite);
         }
 
         var regionTimes = JsonSerializer.Deserialize<Dictionary<string, DateTime>>(body.RegionTimestampsJson)!;
@@ -77,9 +81,11 @@ public class BodyPartsController(AppDbContext db, AuditService audit, SceneNotif
             if (regionTimes.TryGetValue(request.BodyPartId, out var previousTime) && previousTime > editTime)
             {
                 // Persist the processed order even when stale, so its retry has no new effects.
+                if (processedWrite is not null) processedWrite.RejectedAsStale = true;
                 await db.SaveChangesAsync();
                 await tx.CommitAsync();
-                return Ok(new BodyPartsResponse(request.Idpatient, parts, body.UpdatedAt));
+                return Ok(new BodyPartsResponse(request.Idpatient, parts, body.UpdatedAt,
+                    Result(true, request.BodyPartId, parts)));
             }
 
             // Equal times keep the existing arrival-order behavior; clock policy remains open.
@@ -100,6 +106,12 @@ public class BodyPartsController(AppDbContext db, AuditService audit, SceneNotif
 
         await notifier.PatientUpdatedAsync(patient, false, bodyParts: parts);
 
-        return Ok(new BodyPartsResponse(request.Idpatient, parts, body.UpdatedAt));
+        return Ok(new BodyPartsResponse(request.Idpatient, parts, body.UpdatedAt,
+            Result(false, request.BodyPartId, parts)));
     }
+
+    private static BodyPartWriteResult? Result(bool? rejected, string region, Dictionary<string, int> parts) =>
+        rejected is bool stale
+            ? new(stale ? "rejected" : "applied", stale ? "older_edit" : null, region, parts.GetValueOrDefault(region, 0))
+            : null;
 }

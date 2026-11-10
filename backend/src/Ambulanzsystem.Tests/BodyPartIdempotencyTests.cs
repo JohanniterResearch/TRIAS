@@ -33,7 +33,10 @@ public class BodyPartIdempotencyTests
         (await SendAsync(client, patientId, Guid.NewGuid().ToString(), newerValue, newerTime)).EnsureSuccessStatusCode();
         var before = await SnapshotAsync(factory, patientId);
         var olderKey = Guid.NewGuid().ToString();
-        (await SendAsync(client, patientId, olderKey, !newerValue, newerTime.AddMinutes(-2))).EnsureSuccessStatusCode();
+        var rejected = await SendAsync(client, patientId, olderKey, !newerValue, newerTime.AddMinutes(-2));
+        rejected.EnsureSuccessStatusCode();
+        Assert.Equal(new BodyPartWriteResult("rejected", "older_edit", Region, newerValue ? 1 : 0),
+            (await rejected.Content.ReadFromJsonAsync<BodyPartsResponse>())!.WriteResult);
         Assert.Equal(before, await SnapshotAsync(factory, patientId));
         await AssertEffectsAsync(factory, patientId, 2, 1, auditCount: 1);
 
@@ -146,6 +149,38 @@ public class BodyPartIdempotencyTests
         using var scope = factory.Services.CreateScope();
         var body = await scope.ServiceProvider.GetRequiredService<AppDbContext>().Bodies.AsNoTracking().SingleAsync(b => b.PatientId == patientId);
         return (body.BodyPartsJson, body.RegionTimestampsJson, body.UpdatedAt);
+    }
+
+    [Fact]
+    public async Task RejectedRetry_AfterRestart_ReturnsOriginalDecisionAndLatestRegionValue()
+    {
+        var time = new DateTime(2026, 11, 1, 10, 0, 0, DateTimeKind.Utc);
+        var key = Guid.NewGuid().ToString();
+        int patientId;
+        using (var first = new BodyPartFactory())
+        {
+            var (client, id) = await SetupAsync(first);
+            patientId = id;
+            (await SendAsync(client, patientId, Guid.NewGuid().ToString(), false, time.AddMinutes(1))).EnsureSuccessStatusCode();
+            var rejected = await SendAsync(client, patientId, key, true, time);
+            Assert.Equal(HttpStatusCode.OK, rejected.StatusCode);
+            Assert.Equal(new BodyPartWriteResult("rejected", "older_edit", Region, 0),
+                (await rejected.Content.ReadFromJsonAsync<BodyPartsResponse>())!.WriteResult);
+            // Simulate losing the first response, then a distinct, newer server change.
+            (await SendAsync(client, patientId, Guid.NewGuid().ToString(), true, time.AddMinutes(2))).EnsureSuccessStatusCode();
+            await AssertEffectsAsync(first, patientId, 3, 2, auditCount: 2);
+        }
+        using var restarted = new BodyPartFactory();
+        var retryClient = await AdminClientAsync(restarted);
+        var before = await SnapshotAsync(restarted, patientId);
+        var retry = await SendAsync(retryClient, patientId, key, true, time);
+        Assert.Equal(HttpStatusCode.OK, retry.StatusCode);
+        var result = (await retry.Content.ReadFromJsonAsync<BodyPartsResponse>())!;
+        Assert.Equal(new BodyPartWriteResult("rejected", "older_edit", Region, 1), result.WriteResult);
+        Assert.Equal(1, result.BodyParts[Region]);
+        Assert.Equal(before, await SnapshotAsync(restarted, patientId));
+        Assert.Equal(HttpStatusCode.Conflict, (await SendAsync(retryClient, patientId, key, true, time.AddSeconds(1))).StatusCode);
+        await AssertEffectsAsync(restarted, patientId, 3, 0, auditCount: 2);
     }
 
     [Fact]

@@ -1,3 +1,4 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute } from '@angular/router';
 import { of, Subject } from 'rxjs';
@@ -8,9 +9,101 @@ import { ResponderStateStore } from '../services/responder-state';
 import { BodyMapPage } from './body-map-page';
 
 describe('BodyMapPage intent ordering', () => {
-  let queue: { queueBodyPart: ReturnType<typeof vi.fn> };
+  let queue: {
+    queueBodyPart: ReturnType<typeof vi.fn>;
+    bodyPartResults: ReturnType<typeof signal<any[]>>;
+    bodyPartPending: ReturnType<typeof signal<any[]>>;
+  };
   beforeEach(() => {
-    queue = { queueBodyPart: vi.fn().mockResolvedValue(undefined) };
+    queue = {
+      queueBodyPart: vi.fn().mockResolvedValue(undefined),
+      bodyPartResults: signal([]),
+      bodyPartPending: signal([]),
+    };
+  });
+
+  it.each([0, 1])(
+    'shows a direct stale-write rejection and current server value %i',
+    (serverValue) => {
+      // An older queued intent must not hide the result of the later direct click.
+      queue.bodyPartPending.set([
+        {
+          patientId: 7,
+          sourcePatientId: 7,
+          writeId: 'older-queued',
+          body: { idpatient: 7, bodyPartId: 'kopf_vorne', isClicked: true },
+        },
+      ]);
+      const response = new Subject<any>();
+      TestBed.configureTestingModule({
+        providers: [
+          {
+            provide: ApiClient,
+            useValue: {
+              getBodyParts: () => of({ bodyParts: { kopf_vorne: 0 } }),
+              toggleBodyPart: () => response,
+            },
+          },
+          { provide: OfflineQueueService, useValue: queue },
+          { provide: ResponderStateStore, useValue: { patient: () => ({ id: 7 }) } },
+          {
+            provide: ActivatedRoute,
+            useValue: { snapshot: { routeConfig: { path: 'body/front' } } },
+          },
+        ],
+      });
+      const page = TestBed.runInInjectionContext(() => new BodyMapPage());
+      (page as any).toggle('kopf_vorne');
+      response.next({
+        bodyParts: { kopf_vorne: serverValue },
+        writeResult: {
+          outcome: 'rejected',
+          conflictReason: 'older_edit',
+          bodyPartId: 'kopf_vorne',
+          serverValue,
+        },
+      });
+      expect((page as any).isMarked('kopf_vorne')).toBe(serverValue === 1);
+      expect((page as any).conflictMessages()[0]).toContain(
+        'kopf (vorne): Deine Änderung wurde nicht übernommen',
+      );
+    },
+  );
+
+  it('keeps a newer local edit over an earlier online rejection', () => {
+    const first = new Subject<any>();
+    const second = new Subject<any>();
+    const api = {
+      getBodyParts: () => of({ bodyParts: { kopf_vorne: 0 } }),
+      toggleBodyPart: vi.fn().mockReturnValueOnce(first).mockReturnValueOnce(second),
+    };
+    TestBed.configureTestingModule({
+      providers: [
+        { provide: ApiClient, useValue: api },
+        { provide: OfflineQueueService, useValue: queue },
+        { provide: ResponderStateStore, useValue: { patient: () => ({ id: 7 }) } },
+        {
+          provide: ActivatedRoute,
+          useValue: { snapshot: { routeConfig: { path: 'body/front' } } },
+        },
+      ],
+    });
+    const page = TestBed.runInInjectionContext(() => new BodyMapPage());
+    (page as any).toggle('kopf_vorne');
+    (page as any).toggle('kopf_vorne'); // Newer local value is 0; server's old reply says 1.
+    first.next({
+      bodyParts: { kopf_vorne: 1 },
+      writeResult: {
+        outcome: 'rejected',
+        conflictReason: 'older_edit',
+        bodyPartId: 'kopf_vorne',
+        serverValue: 1,
+      },
+    });
+    expect((page as any).isMarked('kopf_vorne')).toBe(false);
+    expect((page as any).latestIntent.get('kopf_vorne').writeId).not.toBe(
+      api.toggleBodyPart.mock.calls[0][1],
+    );
   });
 
   it('queues a toggle whose response was lost and keeps it over the initial load', async () => {

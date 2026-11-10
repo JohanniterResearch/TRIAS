@@ -15,7 +15,8 @@ Die Koordinaten-Körperkarte im Ambulanzprotokoll und PLS bleiben separat.
   Zustandsänderung, Audit und Vorgangsmarkierung. Die Duplikatprüfung erfolgt zuerst.
 - Strikt ältere datierte Aufträge ändern weder Wert noch Regionszeit oder Karten-Speicherzeit.
   Ihre Vorgangskennung wird trotzdem festgeschrieben. Sie erzeugen keinen Schreib-Audit-Eintrag
-  und keine Änderungsbenachrichtigung. Die Antwort bleibt der aktuelle Kartenstand (`200`).
+  und keine Änderungsbenachrichtigung. Die Antwort enthält den aktuellen Kartenstand (`200`)
+  und seit Schritt 3 ein ausdrückliches Verwerfungsergebnis (siehe unten).
 - Neuere Aufträge schreiben die Regionszeit auch bei gleichem Wert oder bei Entfernung (`0`)
   fort. Verschiedene Regionen werden unabhängig verglichen.
 - Der Zeitstempel gehört zur Prüfsumme. Bei fehlendem/null Zeitstempel bleibt die serialisierte
@@ -39,8 +40,8 @@ Die Koordinaten-Körperkarte im Ambulanzprotokoll und PLS bleiben separat.
 - **Admin-Korrekturen:** der bestehende Admin-Endpunkt ersetzt weiterhin die komplette Karte
   ohne Prüfung oder Fortschreibung der Regionszeiten. Seine Priorität und Einbeziehung in
   denselben Schutz sind separat zu entscheiden.
-- **Konfliktanzeige und Konflikt-Audit:** folgen separat. Das Gerät erhält weiterhin nur den
-  aktuellen Kartenstand. Verworfene Inhalte und Herkunft werden noch nicht im Audit erfasst.
+- **Konflikt-Audit:** folgt in Schritt 4. Verworfene Inhalte und Herkunft werden noch nicht im
+  Audit erfasst; die Konfliktanzeige ist mit Schritt 3 ergänzt.
 - **Kennungspflicht:** unverändert optional; der vorhandene Schutz gegen erneute Verarbeitung
   greift nur bei mitgesendeter Kennung. Ein Schlüssel mit verändertem Auftrag ergibt `409`.
 
@@ -59,3 +60,45 @@ zwischen PLS und Ambulanz oder für finalisierte Ambulanzprotokolle.
   Online-Fallback, Reload und Retry mit echter IndexedDB; bestanden.
 - Vertrag: `npm run generate`, `npm run lint` und `npm run check:generated` erfolgreich.
   Frontend-Typprüfung und Produktionsbuild erfolgreich; bestehende Budget-/CommonJS-Warnungen.
+
+## Schritt 3: Rückmeldung verworfener Aufträge
+
+- Neue PUT-Antworten enthalten `writeResult` mit `outcome` (`applied`/`rejected`),
+  `conflictReason` (`older_edit` bei Verwerfung, sonst null), kanonischer `bodyPartId`
+  und dem **aktuellen** `serverValue` (0 ist eine gültige Entfernung).
+  Eine Verwerfung ist ein abschließend bearbeiteter Auftrag mit HTTP 200, kein HTTP 409.
+- `BodyPartProcessedWrite.RejectedAsStale` speichert die ursprüngliche Entscheidung in
+  derselben Transaktion. Der Retry prüft zuerst Schlüssel und Prüfsumme, führt den Auftrag
+  nicht erneut aus und meldet dieselbe Entscheidung mit dem inzwischen gültigen Regionswert.
+  Ein veränderter Auftragsinhalt unter derselben Kennung bleibt HTTP 409.
+- Die additive Migration `20261110142334_AddBodyPartWriteDecision` lässt die neue Spalte
+  für Bestandsaufträge null. Ihre frühere Entscheidung lässt sich aus Prüfsumme und aktuellem
+  Kartenstand nicht zuverlässig rekonstruieren; deren Retry liefert weiterhin kein
+  `writeResult`. Bestehende Prüfsummen und Marker werden nicht verändert. GET liefert ebenfalls
+  kein Schreibergebnis. Für neue Aufträge ohne Schlüssel ist die Verwerfung sichtbar, aber
+  ohne stabile Kennung kann keine ursprüngliche Entscheidung für Wiederholungen garantiert werden.
+- Online und nach Offline-Synchronisierung zeigt die Körperkarte Region und Verwerfungsgrund.
+  Die Queue beendet den verworfenen Auftrag durch denselben atomaren `writeId`-Vergleich wie
+  bei anderen Antworten. Eine verspätete Antwort löscht keinen neueren Queue-Eintrag.
+- Ausstehende Regionswerte werden aus IndexedDB nach Reload wieder angezeigt. Noch neuere
+  lokale Absichten überlagern Serverantworten. Ein Ergebnis eines bereits ersetzten Auftrags
+  kann die Verwerfung melden, übernimmt aber keinen Wert über seine lokale Nachfolgeänderung.
+  Die Queue hält die zuletzt gemeldeten Ergebnisse je Patient/Region im Arbeitsspeicher bereit,
+  auch wenn die Karte zum Antwortzeitpunkt nicht geöffnet war. Diese Meldungen sind kein
+  dauerhaftes Konfliktarchiv und überleben keinen weiteren Browser-Neustart nach der Bestätigung.
+
+### Verifikation Schritt 3
+
+- 23 betroffene Backend-Tests bestanden (Körperkarten-Idempotenz, Nebenläufigkeit und Migrationen).
+  Der Test für eine verlorene Verwerfungsantwort prüft nach Host-Neustart dieselbe Entscheidung
+  bei inzwischen verändertem Serverwert sowie unveränderten Zustand, Audit- und Vorgangszähler.
+  Die Migration wurde in einer separaten kurzlebigen Datenbank auf eigenem PostgreSQL 16 geprüft.
+- Alle 166 Frontend-Unit-Tests sowie Live-Region- und Formularprüfungen bestanden.
+  Der bestehende `writeId`-Vergleich schützt die Queue auch während einer verspäteten Antwort;
+  zusätzlich werden nachfolgende lokale Bearbeitungen bei der Anzeige geschützt.
+- Alle 6 Chrome-Tests in `body-map-persistence.spec.ts` bestanden: ursprüngliche
+  Fallback-/Reload-/Retry-Persistenz, direkte Verwerfung mit Serverwert 0/1, Verwerfung nach
+  Reload und verlorener Antwort mit Retry-Wert 0/1 sowie eine verspätete Verwerfung bei
+  inzwischen neuerem Queue-Eintrag und neuerer lokaler Anzeige.
+- OpenAPI-Generierung, Vertragslint und `check:generated` bestanden; EF meldet keine
+  ausstehenden Modelländerungen. Produktionsbuild mit Budget-/CommonJS-Warnungen.

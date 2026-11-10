@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { of, throwError } from 'rxjs';
+import { of, Subject, throwError } from 'rxjs';
 
 import { ApiClient, ApiRequestError } from '../api/api-client';
 import { ProtokollDraftStore } from '../protokoll/services/protokoll-draft-store';
@@ -620,6 +620,100 @@ describe('OfflineQueueService', () => {
     await (service as any).deleteIfCurrent(triage('done', 1));
 
     expect(sync.markQueueFlushed).toHaveBeenCalledOnce();
+  });
+
+  it('finishes rejected body-part orders and exposes their region result without retry', async () => {
+    const item = {
+      id: 'body-part:7:kopf_vorne',
+      patientId: 7,
+      type: 'body-part',
+      writeId: 'old',
+      createdAt: '2026-11-01T10:00:00Z',
+      body: { idpatient: 7, bodyPartId: 'kopf_vorne', isClicked: true },
+    };
+    let stored: any = item;
+    vi.spyOn(service as any, 'items').mockImplementation(async () =>
+      stored ? [structuredClone(stored)] : [],
+    );
+    vi.spyOn(service as any, 'realPatientId').mockResolvedValue(7);
+    vi.spyOn(service as any, 'deleteIfCurrent').mockImplementation(async (expected: any) => {
+      if (!sameQueueWrite(stored, expected)) return false;
+      stored = undefined;
+      return true;
+    });
+    const record = {
+      idpatient: 7,
+      bodyParts: { kopf_vorne: 0 },
+      writeResult: {
+        outcome: 'rejected',
+        conflictReason: 'older_edit',
+        bodyPartId: 'kopf_vorne',
+        serverValue: 0,
+      },
+    };
+    api.toggleBodyPart.mockReturnValue(of(record));
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+    await service.flush();
+    expect(stored).toBeUndefined();
+    expect(service.bodyPartResults()).toEqual([
+      expect.objectContaining({ writeId: 'old', region: 'kopf_vorne', record }),
+    ]);
+    await service.flush();
+    expect(api.toggleBodyPart).toHaveBeenCalledOnce();
+  });
+
+  it('does not delete a newer body-part UUID and marks the old rejection as superseded', async () => {
+    const original = {
+      id: 'body-part:7:kopf_vorne',
+      patientId: 7,
+      type: 'body-part',
+      writeId: 'old',
+      createdAt: '2026-11-01T10:00:00Z',
+      body: { idpatient: 7, bodyPartId: 'kopf_vorne', isClicked: true },
+    };
+    let stored: any = original;
+    vi.spyOn(service as any, 'items').mockImplementation(async () => [structuredClone(stored)]);
+    vi.spyOn(service as any, 'realPatientId').mockResolvedValue(7);
+    // Exercise the real atomic deleteIfCurrent / UUID check using asynchronous IDB requests.
+    (service as any).withStore = vi.fn(async (_name: string, _mode: string, work: any) =>
+      work({
+        get: () => {
+          const req: any = { result: structuredClone(stored) };
+          queueMicrotask(() => req.onsuccess?.());
+          return req;
+        },
+        delete: () => {
+          stored = undefined;
+          const req: any = {};
+          queueMicrotask(() => req.onsuccess?.());
+          return req;
+        },
+      }),
+    );
+    const response = new Subject<any>();
+    api.toggleBodyPart.mockReturnValue(response);
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+    const flushing = service.flush();
+    await vi.waitFor(() => expect(api.toggleBodyPart).toHaveBeenCalledOnce());
+    const newer = { ...original, writeId: 'new', body: { ...original.body, isClicked: false } };
+    stored = structuredClone(newer);
+    response.next({
+      idpatient: 7,
+      bodyParts: { kopf_vorne: 1 },
+      writeResult: {
+        outcome: 'rejected',
+        conflictReason: 'older_edit',
+        bodyPartId: 'kopf_vorne',
+        serverValue: 1,
+      },
+    });
+    response.complete();
+    await flushing;
+    expect(stored).toEqual(newer);
+    expect(service.bodyPartResults()).toEqual([
+      expect.objectContaining({ writeId: 'old', superseded: true }),
+    ]);
+    expect(sync.markQueueFlushed).not.toHaveBeenCalled();
   });
 });
 

@@ -320,6 +320,10 @@ namespace Ambulanzsystem.Api.Data.Migrations
                         .HasColumnName("processed_at")
                         .HasDefaultValueSql("now()");
 
+                    b.Property<bool?>("RejectedAsStale")
+                        .HasColumnType("boolean")
+                        .HasColumnName("rejected_as_stale");
+
                     b.HasKey("PatientId", "WriteId")
                         .HasName("pk_body_part_processed_writes");
 

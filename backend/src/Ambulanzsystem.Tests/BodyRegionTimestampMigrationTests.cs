@@ -58,8 +58,7 @@ public class BodyRegionTimestampMigrationTests : IAsyncLifetime
         var writeId = Guid.NewGuid();
         var checksum = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
             System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new { Idpatient = patient.Id, BodyPartId = "kopf_vorne", IsClicked = true })));
-        db.BodyPartProcessedWrites.Add(new BodyPartProcessedWrite { PatientId = patient.Id, WriteId = writeId, Checksum = checksum });
-        await db.SaveChangesAsync();
+        await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO body_part_processed_writes (patient_id, write_id, checksum) VALUES ({patient.Id}, {writeId}, {checksum})");
 
         await migrator.MigrateAsync(TargetMigration);
         db.ChangeTracker.Clear();
@@ -69,7 +68,31 @@ public class BodyRegionTimestampMigrationTests : IAsyncLifetime
         Assert.Equal("{}", body.RegionTimestampsJson);
         Assert.Equal(legacyTime, body.CreatedAt);
         Assert.Equal(legacyTime, body.UpdatedAt);
-        Assert.Equal(checksum, (await db.BodyPartProcessedWrites.FindAsync(patient.Id, writeId))!.Checksum);
+        // The current EF model also contains step 3's later decision column.
+        var storedChecksum = await db.Database.SqlQuery<string>($"SELECT checksum AS \"Value\" FROM body_part_processed_writes WHERE patient_id = {patient.Id} AND write_id = {writeId}").SingleAsync();
+        Assert.Equal(checksum, storedChecksum);
         Assert.Contains(TargetMigration, await db.Database.GetAppliedMigrationsAsync());
+    }
+
+    [Fact]
+    public async Task DecisionUpgrade_PreservesHistoricalOrdersWithoutInventingAnOutcome()
+    {
+        await using var db = NewDb();
+        var migrator = db.GetInfrastructure().GetRequiredService<IMigrator>();
+        await migrator.MigrateAsync(TargetMigration);
+        var patient = new Patient { OperationScene = new OperationScene { Name = "historical decision" } };
+        db.Patients.Add(patient);
+        await db.SaveChangesAsync();
+        var writeId = Guid.NewGuid();
+        var checksum = new string('A', 64);
+        await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO body_part_processed_writes (patient_id, write_id, checksum) VALUES ({patient.Id}, {writeId}, {checksum})");
+        await migrator.MigrateAsync("20261110142334_AddBodyPartWriteDecision");
+        var order = (await db.BodyPartProcessedWrites.FindAsync(patient.Id, writeId))!;
+        Assert.Null(order.RejectedAsStale);
+        Assert.Equal(checksum, order.Checksum);
+        order.RejectedAsStale = true;
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        Assert.True((await db.BodyPartProcessedWrites.FindAsync(patient.Id, writeId))!.RejectedAsStale);
     }
 }

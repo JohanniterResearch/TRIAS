@@ -1138,6 +1138,12 @@ paths:
         even if its value is unchanged. Equal timestamps retain arrival-order behavior. Orders
         without a timestamp retain unconditional assignment and do not change the region time.
         Device times are not clamped. Retain the original timestamp and key on retry.
+        A stale order completes with HTTP 200 and writeResult.outcome=rejected,
+        conflictReason=older_edit, the affected bodyPartId and its current serverValue (including 0).
+        Its decision is persisted with the key: retries keep that decision but return the current
+        region value, even after later writes. writeResult is absent/null for reads and retries of
+        historical orders whose decision was not recorded. HTTP 409 remains reserved for key reuse
+        with different order contents.
       summary: Toggle one region's marker. bodyPartId validated against the canonical key list. Publishes realtime update. Policy TriageWrite.
       parameters:
         - name: Idempotency-Key
@@ -1578,6 +1584,19 @@ components:
           description: One entry per key in contract/body-regions.json; 0 = unmarked, non-zero = marked.
           additionalProperties: { type: integer }
         updatedAt: { type: string, format: date-time }
+        writeResult:
+          oneOf:
+            - $ref: "#/components/schemas/BodyPartWriteResult"
+            - type: "null"
+
+    BodyPartWriteResult:
+      type: object
+      required: [outcome, conflictReason, bodyPartId, serverValue]
+      properties:
+        outcome: { type: string, enum: [applied, rejected] }
+        conflictReason: { type: [string, "null"], enum: [older_edit, null], description: older_edit for a rejected order; null when applied. }
+        bodyPartId: { type: string, description: A canonical key from contract/body-regions.json. }
+        serverValue: { type: integer, enum: [0, 1], description: Current region value at response time, including on replay. }
 
     ProtokollRecord:
       type: object
