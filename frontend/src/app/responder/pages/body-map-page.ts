@@ -84,6 +84,7 @@ export class BodyMapPage {
     isClicked: boolean;
     generation: number;
     writeId: string;
+    clientUpdatedAt: string;
   }>();
   private readonly latestIntent = new Map<string, { isClicked: boolean; generation: number }>();
   private confirmedBodyParts: Record<string, number> = {};
@@ -102,6 +103,7 @@ export class BodyMapPage {
                     idpatient: intent.patientId,
                     bodyPartId: intent.region,
                     isClicked: intent.isClicked,
+                    clientUpdatedAt: intent.clientUpdatedAt,
                   },
                   intent.writeId,
                 )
@@ -147,6 +149,7 @@ export class BodyMapPage {
     region: string;
     isClicked: boolean;
     writeId: string;
+    clientUpdatedAt: string;
   }) {
     return from(
       this.offlineQueue.queueBodyPart(
@@ -155,6 +158,7 @@ export class BodyMapPage {
           idpatient: intent.patientId,
           bodyPartId: intent.region,
           isClicked: intent.isClicked,
+          clientUpdatedAt: intent.clientUpdatedAt,
         },
         intent.writeId,
       ),
@@ -194,6 +198,7 @@ export class BodyMapPage {
       isClicked,
       generation,
       writeId: crypto.randomUUID(),
+      clientUpdatedAt: new Date().toISOString(),
     });
   }
 

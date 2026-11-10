@@ -1,5 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
+using System.Text.Json;
 using Ambulanzsystem.Api.Controllers;
 using Ambulanzsystem.Api.Data;
 using Ambulanzsystem.Api.Dtos;
@@ -19,6 +21,132 @@ public class BodyPartIdempotencyTests
 {
     private const string Region = "kopf_vorne";
     private record IdResponse(int Id);
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task LateOlderOrder_AndItsRetry_PreserveNewerMarkOrRemoval(bool newerValue)
+    {
+        using var factory = new BodyPartFactory();
+        var (client, patientId) = await SetupAsync(factory);
+        var newerTime = new DateTime(2026, 11, 1, 10, 2, 0, DateTimeKind.Utc);
+        (await SendAsync(client, patientId, Guid.NewGuid().ToString(), newerValue, newerTime)).EnsureSuccessStatusCode();
+        var before = await SnapshotAsync(factory, patientId);
+        var olderKey = Guid.NewGuid().ToString();
+        (await SendAsync(client, patientId, olderKey, !newerValue, newerTime.AddMinutes(-2))).EnsureSuccessStatusCode();
+        Assert.Equal(before, await SnapshotAsync(factory, patientId));
+        await AssertEffectsAsync(factory, patientId, 2, 1, auditCount: 1);
+
+        (await SendAsync(client, patientId, olderKey, !newerValue, newerTime.AddMinutes(-2))).EnsureSuccessStatusCode();
+        Assert.Equal(before, await SnapshotAsync(factory, patientId));
+        await AssertEffectsAsync(factory, patientId, 2, 0, auditCount: 1);
+        Assert.Equal(newerValue ? 1 : 0, await MarkerAsync(client, patientId));
+    }
+
+    [Fact]
+    public async Task DifferentRegions_HaveIndependentEditTimes()
+    {
+        using var factory = new BodyPartFactory();
+        var (client, patientId) = await SetupAsync(factory);
+        var time = new DateTime(2026, 11, 1, 10, 2, 0, DateTimeKind.Utc);
+        const string otherRegion = "hand_links_vorne";
+        (await SendAsync(client, patientId, Guid.NewGuid().ToString(), true, time)).EnsureSuccessStatusCode();
+        (await SendAsync(client, patientId, Guid.NewGuid().ToString(), true, time.AddMinutes(-1), otherRegion)).EnsureSuccessStatusCode();
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var body = await db.Bodies.SingleAsync(b => b.PatientId == patientId);
+        var times = JsonSerializer.Deserialize<Dictionary<string, DateTime>>(body.RegionTimestampsJson)!;
+        Assert.Equal(time, times[Region]);
+        Assert.Equal(time.AddMinutes(-1), times[otherRegion]);
+        var parts = JsonSerializer.Deserialize<Dictionary<string, int>>(body.BodyPartsJson)!;
+        Assert.Equal(1, parts[Region]);
+        Assert.Equal(1, parts[otherRegion]);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task NewerSameValue_AdvancesTime_AndBlocksIntermediateChange(bool value)
+    {
+        using var factory = new BodyPartFactory();
+        var (client, patientId) = await SetupAsync(factory);
+        var time = new DateTime(2026, 11, 1, 10, 0, 0, DateTimeKind.Utc);
+        (await SendAsync(client, patientId, Guid.NewGuid().ToString(), value, time)).EnsureSuccessStatusCode();
+        (await SendAsync(client, patientId, Guid.NewGuid().ToString(), value, time.AddMinutes(2))).EnsureSuccessStatusCode();
+        var before = await SnapshotAsync(factory, patientId);
+        (await SendAsync(client, patientId, Guid.NewGuid().ToString(), !value, time.AddMinutes(1))).EnsureSuccessStatusCode();
+        Assert.Equal(before, await SnapshotAsync(factory, patientId));
+        using var scope = factory.Services.CreateScope();
+        var body = await scope.ServiceProvider.GetRequiredService<AppDbContext>().Bodies.SingleAsync(b => b.PatientId == patientId);
+        Assert.Equal(time.AddMinutes(2), JsonSerializer.Deserialize<Dictionary<string, DateTime>>(body.RegionTimestampsJson)![Region]);
+        Assert.Equal(value ? 1 : 0, await MarkerAsync(client, patientId));
+        await AssertEffectsAsync(factory, patientId, 3, 2, auditCount: 2);
+    }
+
+    [Fact]
+    public async Task TimestampIsBoundToKey_AndAcceptedRetryDoesNotAdvanceState()
+    {
+        using var factory = new BodyPartFactory();
+        var (client, patientId) = await SetupAsync(factory);
+        var key = Guid.NewGuid().ToString();
+        var time = new DateTime(2026, 11, 1, 10, 0, 0, DateTimeKind.Utc);
+        (await SendAsync(client, patientId, key, true, time)).EnsureSuccessStatusCode();
+        (await SendAsync(client, patientId, Guid.NewGuid().ToString(), false, time.AddMinutes(1))).EnsureSuccessStatusCode();
+        var before = await SnapshotAsync(factory, patientId);
+        (await SendAsync(client, patientId, key, true, time)).EnsureSuccessStatusCode();
+        Assert.Equal(HttpStatusCode.Conflict, (await SendAsync(client, patientId, key, true, time.AddMinutes(-1))).StatusCode);
+        Assert.Equal(before, await SnapshotAsync(factory, patientId));
+        await AssertEffectsAsync(factory, patientId, 2, 2);
+    }
+
+    [Fact]
+    public async Task LegacyChecksum_ReplaysWithoutAcquiringATimestamp()
+    {
+        using var factory = new BodyPartFactory();
+        var (client, patientId) = await SetupAsync(factory);
+        var key = Guid.NewGuid();
+        (await SendAsync(client, patientId, key.ToString(), true)).EnsureSuccessStatusCode();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var processed = await db.BodyPartProcessedWrites.FindAsync(patientId, key);
+            // Exact pre-change bound DTO shape and serializer options, independent of the new DTO.
+            var oldChecksum = Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(
+                new { Idpatient = patientId, BodyPartId = Region, IsClicked = true })));
+            Assert.Equal(oldChecksum, processed!.Checksum);
+            processed.Checksum = oldChecksum;
+            await db.SaveChangesAsync();
+        }
+        var before = await SnapshotAsync(factory, patientId);
+        (await SendAsync(client, patientId, key.ToString(), true)).EnsureSuccessStatusCode();
+        Assert.Equal(before, await SnapshotAsync(factory, patientId));
+        Assert.Equal("{}", before.Times);
+        await AssertEffectsAsync(factory, patientId, 1, 1);
+    }
+
+    [Fact]
+    public async Task EqualAndMissingTimes_KeepLegacyAssignmentBehavior_WithoutSyntheticTime()
+    {
+        using var factory = new BodyPartFactory();
+        var (client, patientId) = await SetupAsync(factory);
+        var future = DateTime.UtcNow.AddYears(1);
+        (await SendAsync(client, patientId, Guid.NewGuid().ToString(), true, future)).EnsureSuccessStatusCode();
+        (await SendAsync(client, patientId, Guid.NewGuid().ToString(), false, future)).EnsureSuccessStatusCode();
+        Assert.Equal(0, await MarkerAsync(client, patientId));
+        var before = await SnapshotAsync(factory, patientId);
+        (await SendAsync(client, patientId, Guid.NewGuid().ToString(), true)).EnsureSuccessStatusCode();
+        Assert.Equal(1, await MarkerAsync(client, patientId));
+        Assert.Equal(before.Times, (await SnapshotAsync(factory, patientId)).Times);
+        using var times = JsonDocument.Parse(before.Times);
+        Assert.Equal(future, times.RootElement.GetProperty(Region).GetDateTime());
+    }
+
+    private static async Task<(string Parts, string Times, DateTime UpdatedAt)> SnapshotAsync(BodyPartFactory factory, int patientId)
+    {
+        using var scope = factory.Services.CreateScope();
+        var body = await scope.ServiceProvider.GetRequiredService<AppDbContext>().Bodies.AsNoTracking().SingleAsync(b => b.PatientId == patientId);
+        return (body.BodyPartsJson, body.RegionTimestampsJson, body.UpdatedAt);
+    }
 
     [Fact]
     public async Task Replay_DoesNotWriteAuditOrPublish_AndReturnsCurrentState()
@@ -149,11 +277,12 @@ public class BodyPartIdempotencyTests
         return (client, patientId);
     }
 
-    private static Task<HttpResponseMessage> SendAsync(HttpClient client, int patientId, string? key, bool isClicked)
+    private static Task<HttpResponseMessage> SendAsync(HttpClient client, int patientId, string? key, bool isClicked,
+        DateTime? clientUpdatedAt = null, string region = Region)
     {
         var request = new HttpRequestMessage(HttpMethod.Put, "/api/body-parts")
         {
-            Content = JsonContent.Create(new { idpatient = patientId, bodyPartId = Region, isClicked }),
+            Content = JsonContent.Create(new { idpatient = patientId, bodyPartId = region, isClicked, clientUpdatedAt }),
         };
         if (key is not null) request.Headers.TryAddWithoutValidation("Idempotency-Key", key);
         return client.SendAsync(request);

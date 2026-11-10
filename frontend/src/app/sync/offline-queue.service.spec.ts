@@ -573,6 +573,45 @@ describe('OfflineQueueService', () => {
     expect(added[0].writeId).toBe('online-write');
     expect(added[1].writeId).toEqual(expect.any(String));
     expect(added[1].writeId).not.toBe('online-write');
+    expect(added[0].body).not.toHaveProperty('clientUpdatedAt');
+  });
+
+  it('preserves the body-part click time and key through persistence and retry', async () => {
+    const writeId = crypto.randomUUID();
+    const body = {
+      idpatient: 7,
+      bodyPartId: 'kopf_vorne',
+      isClicked: true,
+      clientUpdatedAt: '2026-11-01T10:00:00.000Z',
+    };
+    const original = structuredClone(body);
+    let persisted: any;
+    vi.spyOn(service as any, 'add').mockImplementation(async (item: any) => {
+      persisted = structuredClone(item);
+    });
+    await service.queueBodyPart(7, body, writeId);
+    body.clientUpdatedAt = '2026-11-01T11:00:00.000Z';
+    body.isClicked = false;
+    vi.spyOn(service as any, 'items').mockImplementation(async () => [structuredClone(persisted)]);
+    vi.spyOn(service as any, 'realPatientId').mockResolvedValue(7);
+    vi.spyOn(service as any, 'replaceIfCurrent').mockImplementation(
+      async (_old: any, next: any) => {
+        persisted = structuredClone(next);
+        return true;
+      },
+    );
+    const remove = vi.spyOn(service as any, 'deleteIfCurrent').mockResolvedValue(true);
+    api.toggleBodyPart
+      .mockReturnValueOnce(throwError(() => new TypeError('response lost')))
+      .mockReturnValueOnce(of({}));
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+    await service.flush();
+    expect(remove).not.toHaveBeenCalled();
+    expect(persisted).toMatchObject({ writeId, body: original, state: 'retrying' });
+    await service.retry(persisted.id);
+    expect(api.toggleBodyPart).toHaveBeenNthCalledWith(1, original, writeId);
+    expect(api.toggleBodyPart).toHaveBeenNthCalledWith(2, original, writeId);
+    expect(remove).toHaveBeenCalledOnce();
   });
 
   it('marks queue flush time only after a persisted queue deletion', async () => {

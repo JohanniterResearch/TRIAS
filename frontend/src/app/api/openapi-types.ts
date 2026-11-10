@@ -834,7 +834,7 @@ export interface paths {
         get: operations["getBodyParts"];
         /**
          * Toggle one region's marker. bodyPartId validated against the canonical key list. Publishes realtime update. Policy TriageWrite.
-         * @description Sets one validated body-region marker and returns the patient's complete updated marker state. With Idempotency-Key, a repeated order for the same patient returns the current marker state without another write, audit or notification. Reusing the key with a different order returns 409. Without the header, existing behavior is retained.
+         * @description Sets one validated body-region marker and returns the patient's complete updated marker state. With Idempotency-Key, a repeated order for the same patient returns the current marker state without another write, audit or notification. Reusing the key with a different order returns 409. Without the header, duplicate detection is not performed. clientUpdatedAt is compared per patient and canonical region: a strictly older order is ignored, including when the stored value is zero. A newer order advances the region time even if its value is unchanged. Equal timestamps retain arrival-order behavior. Orders without a timestamp retain unconditional assignment and do not change the region time. Device times are not clamped. Retain the original timestamp and key on retry.
          */
         put: operations["updateBodyPart"];
         post?: never;
@@ -2890,6 +2890,11 @@ export interface operations {
                     /** @description One key from contract/body-regions.json. */
                     bodyPartId: string;
                     isClicked: boolean;
+                    /**
+                     * Format: date-time
+                     * @description UTC edit time captured at the user action before the first send; optional for legacy orders.
+                     */
+                    clientUpdatedAt?: string;
                 };
             };
         };

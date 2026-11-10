@@ -178,7 +178,8 @@ export class OfflineQueueService {
       id: `body-part:${patientId}:${body.bodyPartId}`,
       type: 'body-part',
       patientId,
-      body,
+      // Preserve the click time exactly; legacy orders must not acquire a replay-time timestamp.
+      body: structuredClone(body),
       createdAt: new Date().toISOString(),
     });
     // Keep the key of an online attempt that may already have reached the server.

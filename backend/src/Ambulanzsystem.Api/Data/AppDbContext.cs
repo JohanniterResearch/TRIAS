@@ -124,6 +124,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         b.Entity<Body>(e =>
         {
             e.Property(x => x.BodyPartsJson).HasColumnType("jsonb").HasColumnName("body_parts");
+            e.Property(x => x.RegionTimestampsJson).HasColumnType("jsonb").HasDefaultValue("{}");
             e.HasIndex(x => x.PatientId).IsUnique();
             e.HasOne(x => x.Patient).WithOne(x => x.Body).HasForeignKey<Body>(x => x.PatientId).OnDelete(DeleteBehavior.Cascade);
         });

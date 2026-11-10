@@ -38,7 +38,10 @@ describe('BodyMapPage intent ordering', () => {
     const page = TestBed.runInInjectionContext(() => new BodyMapPage());
 
     initialLoad.next({ bodyParts: { kopf_vorne: 0 } });
+    const clickTime = '2026-11-01T10:00:00.000Z';
+    vi.spyOn(Date.prototype, 'toISOString').mockReturnValue(clickTime);
     (page as any).toggle('kopf_vorne');
+    vi.mocked(Date.prototype.toISOString).mockReturnValue('2026-11-01T10:05:00.000Z');
     toggle.error(new Error('response lost after server update'));
     await Promise.resolve();
     initialLoad.next({ bodyParts: { kopf_vorne: 0 } });
@@ -52,9 +55,11 @@ describe('BodyMapPage intent ordering', () => {
         idpatient: 7,
         bodyPartId: 'kopf_vorne',
         isClicked: true,
+        clientUpdatedAt: clickTime,
       },
       writeId,
     );
+    expect(api.toggleBodyPart.mock.calls[0][0].clientUpdatedAt).toBe(clickTime);
     expect(api.getBodyParts).toHaveBeenCalledTimes(1);
     expect((page as any).isMarked('kopf_vorne')).toBe(true);
   });
@@ -85,6 +90,9 @@ describe('BodyMapPage intent ordering', () => {
     });
     const page = TestBed.runInInjectionContext(() => new BodyMapPage());
 
+    vi.spyOn(Date.prototype, 'toISOString')
+      .mockReturnValueOnce('2026-11-01T10:00:00.000Z')
+      .mockReturnValueOnce('2026-11-01T10:00:01.000Z');
     (page as any).toggle('kopf_vorne');
     (page as any).toggle('kopf_vorne');
     (page as any).toggle('kopf_vorne');
@@ -94,6 +102,8 @@ describe('BodyMapPage intent ordering', () => {
     second.complete();
     third.next({ bodyParts: { kopf_vorne: 1 } });
     third.complete();
+    expect(api.toggleBodyPart.mock.calls[0][0].clientUpdatedAt).toBe('2026-11-01T10:00:00.000Z');
+    expect(api.toggleBodyPart.mock.calls[1][0].clientUpdatedAt).toBe('2026-11-01T10:00:01.000Z');
     initialLoad.next({ bodyParts: { kopf_vorne: 0 } });
 
     expect((page as any).isMarked('kopf_vorne')).toBe(true);

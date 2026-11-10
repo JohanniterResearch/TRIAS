@@ -277,6 +277,13 @@ namespace Ambulanzsystem.Api.Data.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("patient_id");
 
+                    b.Property<string>("RegionTimestampsJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasDefaultValue("{}")
+                        .HasColumnName("region_timestamps_json");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");

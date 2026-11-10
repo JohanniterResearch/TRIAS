@@ -71,6 +71,23 @@ public class BodyPartsController(AppDbContext db, AuditService audit, SceneNotif
             });
         }
 
+        var regionTimes = JsonSerializer.Deserialize<Dictionary<string, DateTime>>(body.RegionTimestampsJson)!;
+        if (request.ClientUpdatedAt is DateTime editTime)
+        {
+            if (regionTimes.TryGetValue(request.BodyPartId, out var previousTime) && previousTime > editTime)
+            {
+                // Persist the processed order even when stale, so its retry has no new effects.
+                await db.SaveChangesAsync();
+                await tx.CommitAsync();
+                return Ok(new BodyPartsResponse(request.Idpatient, parts, body.UpdatedAt));
+            }
+
+            // Equal times keep the existing arrival-order behavior; clock policy remains open.
+            // Persist newer times even for a same-value assignment or a removal.
+            regionTimes[request.BodyPartId] = editTime;
+            body.RegionTimestampsJson = JsonSerializer.Serialize(regionTimes);
+        }
+
         var before = parts.GetValueOrDefault(request.BodyPartId, 0);
         var after = request.IsClicked ? 1 : 0;
         parts[request.BodyPartId] = after;
