@@ -727,7 +727,7 @@ export interface paths {
         put?: never;
         /**
          * Update patient position (auto-captured device GPS or manual correction, FR-LOC-05/06). Publishes realtime update. Policy TriageWrite.
-         * @description Updates the patient's validated GPS or manually corrected location and publishes the new state.
+         * @description Updates the patient's validated GPS or manually corrected location and publishes the new state. With Idempotency-Key, a repeated order for the same patient returns the current patient without another write, audit or notification. Reusing the key with a different order (including clientUpdatedAt) returns 409. Without the header, existing behavior is retained.
          */
         post: operations["updatePatientLocation"];
         delete?: never;
@@ -790,7 +790,7 @@ export interface paths {
         get: operations["getAmbulanzprotokollPage1"];
         /**
          * Upsert the page-1 record. Draft accepts any partial data; missing branches are merged with the default state; concurrent saves merge field-level LWW (older non-empty values survive empty newer fields, NFR-SAFE-09). status=finalized stamps finalizedAt and returns soft-validation warnings — never a hard block for empty fields. Post-finalize saves stay allowed (Leitstelle/Admin any form; responder their own records); all audit-logged. Policy TriageWrite.
-         * @description Merges and saves page-one protocol data and returns the persisted record with any server validation warnings.
+         * @description Merges and saves page-one protocol data and returns the persisted record with any server validation warnings. With Idempotency-Key, a repeated order for the same patient returns the current protocol and its current warnings without another merge, write, audit, revision or notification. Reusing the key with a different order (including status, formState, clientUpdatedAt or correctionReason) returns 409. JSON object property order is irrelevant; array order and explicit formState null values are preserved. Without the header, existing behavior is retained.
          */
         put: operations["saveAmbulanzprotokollPage1"];
         post?: never;
@@ -834,7 +834,7 @@ export interface paths {
         get: operations["getBodyParts"];
         /**
          * Toggle one region's marker. bodyPartId validated against the canonical key list. Publishes realtime update. Policy TriageWrite.
-         * @description Sets one validated body-region marker and returns the patient's complete updated marker state.
+         * @description Sets one validated body-region marker and returns the patient's complete updated marker state. With Idempotency-Key, a repeated order for the same patient returns the current marker state without another write, audit or notification. Reusing the key with a different order returns 409. Without the header, existing behavior is retained.
          */
         put: operations["updateBodyPart"];
         post?: never;
@@ -2614,7 +2614,10 @@ export interface operations {
     updatePatientLocation: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Stable writeId of this location order; a new order requires a new non-empty UUID. */
+                "Idempotency-Key"?: string;
+            };
             path: {
                 id: components["parameters"]["idPath"];
             };
@@ -2658,6 +2661,15 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+            /** @description Idempotency-Key was already used for a different location order. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     reassignPatientQrCode: {
@@ -2754,7 +2766,10 @@ export interface operations {
     saveAmbulanzprotokollPage1: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Non-empty UUID identifying one protocol save; retain the original key and body on retry. */
+                "Idempotency-Key"?: string;
+            };
             path: {
                 patientId: components["parameters"]["patientIdPath"];
             };
@@ -2790,12 +2805,22 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             /** @description Patient does not exist. */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Idempotency-Key was already used for a different protocol order. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };
@@ -2851,7 +2876,10 @@ export interface operations {
     updateBodyPart: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Stable writeId of this body-part order; a new order requires a new non-empty UUID. */
+                "Idempotency-Key"?: string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -2875,7 +2903,7 @@ export interface operations {
                     "application/json": components["schemas"]["BodyParts"];
                 };
             };
-            /** @description Unknown bodyPartId. */
+            /** @description Unknown bodyPartId or invalid Idempotency-Key. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -2883,7 +2911,17 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            /** @description Idempotency-Key was already used for a different body-part order. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     queryAuditLog: {

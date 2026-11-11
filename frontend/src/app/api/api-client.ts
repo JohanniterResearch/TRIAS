@@ -330,10 +330,14 @@ export class ApiClient {
     );
   }
 
-  updatePatientLocation(patientId: number, body: JsonBody<'/api/persons/{id}/location', 'post'>) {
+  updatePatientLocation(
+    patientId: number,
+    body: JsonBody<'/api/persons/{id}/location', 'post'>,
+    writeId?: string,
+  ) {
     return this.unwrap(
       this.client.POST('/api/persons/{id}/location', {
-        params: { path: { id: patientId } },
+        params: { path: { id: patientId }, header: { 'Idempotency-Key': writeId } },
         body,
       }),
     );
@@ -359,9 +363,10 @@ export class ApiClient {
     );
   }
 
-  toggleBodyPart(body: JsonBody<'/api/body-parts', 'put'>) {
+  toggleBodyPart(body: JsonBody<'/api/body-parts', 'put'>, writeId?: string) {
     return this.unwrap(
       this.client.PUT('/api/body-parts', {
+        params: { header: { 'Idempotency-Key': writeId } },
         body,
       }),
     );
@@ -378,10 +383,11 @@ export class ApiClient {
   saveProtokollPage1(
     patientId: number,
     body: JsonBody<'/api/persons/{patientId}/ambulanzprotokoll-page1', 'put'>,
+    writeId?: string,
   ) {
     return this.unwrap(
       this.client.PUT('/api/persons/{patientId}/ambulanzprotokoll-page1', {
-        params: { path: { patientId } },
+        params: { path: { patientId }, header: { 'Idempotency-Key': writeId } },
         body,
       }),
     );

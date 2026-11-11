@@ -12,8 +12,8 @@ import { TriagePage } from './triage-page';
 
 describe('triage flag edits', () => {
   const patient = signal<any>(null);
-  const api = { updateTriage: vi.fn() };
-  const queue = { pendingTriage: vi.fn(), queueTriage: vi.fn() };
+  const api = { updateTriage: vi.fn(), updatePatientLocation: vi.fn() };
+  const queue = { pendingTriage: vi.fn(), queueTriage: vi.fn(), queueLocation: vi.fn() };
 
   beforeEach(() => {
     localStorage.clear();
@@ -30,6 +30,7 @@ describe('triage flag edits', () => {
     });
     queue.pendingTriage.mockResolvedValue([]);
     queue.queueTriage.mockResolvedValue(undefined);
+    queue.queueLocation.mockResolvedValue(undefined);
     api.updateTriage.mockImplementation((_id, body) => of({ ...patient(), ...body }));
     TestBed.configureTestingModule({
       providers: [
@@ -162,5 +163,17 @@ describe('triage flag edits', () => {
     expect(second[2]).not.toBe(first[2]);
     expect(second[1].transport).toBe(false);
     expect(queue.queueTriage.mock.calls[1]).toEqual(second);
+  });
+
+  it('queues a manual location whose response was lost with the ID of the online attempt', async () => {
+    const instance = await page();
+    api.updatePatientLocation.mockReturnValue(throwError(() => new TypeError('response lost')));
+    instance.locationForm.patchValue({ lat: 48.2, lng: 16.3 });
+    instance.saveManualLocation();
+    const online = api.updatePatientLocation.mock.calls[0];
+    expect(online[2]).toMatch(/^[0-9a-f-]{36}$/);
+    expect(queue.queueLocation.mock.calls[0]).toEqual(online);
+    instance.saveManualLocation();
+    expect(api.updatePatientLocation.mock.calls[1][2]).not.toBe(online[2]);
   });
 });

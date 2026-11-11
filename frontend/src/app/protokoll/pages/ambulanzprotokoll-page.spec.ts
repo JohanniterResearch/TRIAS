@@ -210,6 +210,84 @@ describe('AmbulanzprotokollPage finalized lock', () => {
   });
 });
 
+describe('AmbulanzprotokollPage legacy queue acknowledgement', () => {
+  it.each([false, true])(
+    'correlates the loaded legacy snapshot and protects newer edits (newer=%s)',
+    async (newer) => {
+      const offline = queue();
+      offline.pendingProtocol.mockResolvedValue({
+        ...record('Legacy'),
+        patientId: 1,
+        legacyIdentity: 'exact-loaded-snapshot',
+      });
+      let persistNew!: (writeId: string) => void;
+      offline.queueProtocol.mockReturnValue(
+        new Promise<string>((resolve) => {
+          persistNew = resolve;
+        }),
+      );
+      TestBed.configureTestingModule({
+        providers: [
+          {
+            provide: ActivatedRoute,
+            useValue: { paramMap: new BehaviorSubject(convertToParamMap({ patientId: '1' })) },
+          },
+          { provide: Router, useValue: { navigateByUrl: vi.fn() } },
+          { provide: ApiClient, useValue: { getProtokollPage1: () => new Subject<any>() } },
+          { provide: ProtokollDraftStore, useValue: { get: () => Promise.resolve(null) } },
+          { provide: OfflineQueueService, useValue: offline },
+          { provide: ResponderStateStore, useValue: { patient: () => null, scene: () => null } },
+        ],
+      });
+      const page = TestBed.runInInjectionContext(() => new AmbulanzprotokollPage()) as any;
+      await tick();
+      expect(page.currentWriteId).toBeUndefined();
+      expect(page.form().patient.vorname).toBe('Legacy');
+      const confirmation = {
+        patientId: 1,
+        sourcePatientId: 1,
+        writeId: 'persisted-uuid',
+        legacyIdentity: 'exact-loaded-snapshot',
+        record: {
+          ...record('Legacy'),
+          status: 'finalized',
+          finalizedAt: '2026-11-01T12:00:00Z',
+          warnings: ['Confirmed server warning'],
+        },
+      };
+      // Missing currentWriteId alone must never authorize an unrelated acknowledgement.
+      offline.protocolSaved.next({ ...confirmation, legacyIdentity: 'other-snapshot' });
+      expect(page.status()).toBe('draft');
+      expect(page.warnings()).toEqual([]);
+      if (newer) page.setValue('patient.vorname', 'Newer edit');
+      const saveState = page.saveState();
+      offline.protocolSaved.next(confirmation);
+      if (newer) {
+        // Reject the old result even while the new UUID has not yet returned from persistence.
+        expect(page.currentWriteId).toBeUndefined();
+        expect(page.form().patient.vorname).toBe('Newer edit');
+        expect(page.status()).toBe('draft');
+        expect(page.finalizedAt()).toBeNull();
+        expect(page.warnings()).toEqual([]);
+        expect(page.saveState()).toBe(saveState);
+        persistNew('newer-uuid');
+        await tick();
+        offline.protocolSaved.next(confirmation);
+        expect(page.currentWriteId).toBe('newer-uuid');
+        expect(page.status()).toBe('draft');
+        expect(page.warnings()).toEqual([]);
+      } else {
+        expect(page.currentWriteId).toBe('persisted-uuid');
+        expect(page.status()).toBe('finalized');
+        expect(page.finalizedAt()).toBe('2026-11-01T12:00:00Z');
+        expect(page.warnings()).toEqual(['Confirmed server warning']);
+        expect(page.saveState()).toMatch(/^server /);
+      }
+      page.ngOnDestroy();
+    },
+  );
+});
+
 function record(name: string): any {
   return {
     status: 'draft',

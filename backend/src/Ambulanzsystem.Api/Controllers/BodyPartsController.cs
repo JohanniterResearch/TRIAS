@@ -1,4 +1,5 @@
 using System.Data;
+using System.Security.Cryptography;
 using System.Text.Json;
 using Ambulanzsystem.Api.Auth;
 using Ambulanzsystem.Api.Data;
@@ -37,6 +38,15 @@ public class BodyPartsController(AppDbContext db, AuditService audit, SceneNotif
             return BadRequest(new ErrorResponse("Unknown bodyPartId."));
         }
 
+        Guid? writeId = null;
+        if (Request.Headers.TryGetValue("Idempotency-Key", out var key))
+        {
+            if (key.Count != 1 || key[0]?.Length != 36 ||
+                !Guid.TryParseExact(key[0], "D", out var parsed) || parsed == Guid.Empty)
+                return BadRequest(new ErrorResponse("Idempotency-Key must be a non-empty UUID in hyphenated format."));
+            writeId = parsed;
+        }
+
         await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
         var body = await RowLocks.BodyAsync(db, request.Idpatient);
         if (body is null) return NotFound();
@@ -44,6 +54,23 @@ public class BodyPartsController(AppDbContext db, AuditService audit, SceneNotif
         if (!await SceneAccess.CanAccessAsync(User, db, patient.OperationSceneId)) return Forbid();
 
         var parts = JsonSerializer.Deserialize<Dictionary<string, int>>(body.BodyPartsJson)!;
+        if (writeId is Guid keyId)
+        {
+            var checksum = Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(request)));
+            var processed = await db.BodyPartProcessedWrites.FindAsync(request.Idpatient, keyId);
+            if (processed is not null)
+            {
+                if (processed.Checksum != checksum)
+                    return Conflict(new ErrorResponse("Idempotency-Key was already used for a different body-part order."));
+                return Ok(new BodyPartsResponse(request.Idpatient, parts, body.UpdatedAt));
+            }
+            // Committed with the marker and audit; the body lock serializes parallel replays.
+            db.BodyPartProcessedWrites.Add(new BodyPartProcessedWrite
+            {
+                PatientId = request.Idpatient, WriteId = keyId, Checksum = checksum,
+            });
+        }
+
         var before = parts.GetValueOrDefault(request.BodyPartId, 0);
         var after = request.IsClicked ? 1 : 0;
         parts[request.BodyPartId] = after;

@@ -316,10 +316,39 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
     [Authorize(Policy = AuthPolicies.TriageWrite)]
     public async Task<IActionResult> UpdateLocation(int id, LocationRequest request)
     {
+        Guid? writeId = null;
+        if (Request.Headers.TryGetValue("Idempotency-Key", out var key))
+        {
+            if (key.Count != 1 || key[0]?.Length != 36 ||
+                !Guid.TryParseExact(key[0], "D", out var parsed) || parsed == Guid.Empty)
+            {
+                return BadRequest(new ErrorResponse("Idempotency-Key must be a non-empty UUID in hyphenated format."));
+            }
+            writeId = parsed;
+        }
+
         await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
         var patient = await RowLocks.PatientAsync(db, id);
         if (patient is null) return NotFound();
         if (!await SceneAccess.CanAccessAsync(User, db, patient.OperationSceneId)) return Forbid();
+
+        if (writeId is Guid keyId)
+        {
+            // Hash the bound order, including its original timestamp, before the field merge.
+            var checksum = Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(request)));
+            var processed = await db.LocationProcessedWrites.FindAsync(id, keyId);
+            if (processed is not null)
+            {
+                if (processed.Checksum != checksum)
+                    return Conflict(new ErrorResponse("Idempotency-Key was already used for a different location order."));
+                return Ok(PatientResponse.From(patient));
+            }
+            // Committed with the patient and audit; the patient lock serializes parallel replays.
+            db.LocationProcessedWrites.Add(new LocationProcessedWrite
+            {
+                PatientId = id, WriteId = keyId, Checksum = checksum,
+            });
+        }
 
         var merge = FieldMerge.Load(patient.FieldTimestampsJson);
         if (merge.TryApply("location", request.ClientUpdatedAt, DateTime.UtcNow))

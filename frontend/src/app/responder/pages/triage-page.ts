@@ -277,16 +277,18 @@ export class TriagePage implements AfterViewInit, OnDestroy {
       indoorLocation: raw.indoorLocation || undefined,
       clientUpdatedAt: new Date().toISOString(),
     };
+    // The online attempt's writeId is reused so a request that did reach the server is not reapplied.
+    const writeId = crypto.randomUUID();
     const queue = () =>
       this.offlineQueue
-        .queueLocation(patient.id, body)
+        .queueLocation(patient.id, body, writeId)
         .then(() => this.message.set('Lokal gespeichert, Sync ausstehend.'))
         .catch(() => this.error.set('Lokale Sync-Warteschlange konnte nicht gespeichert werden.'));
     if (patient.id < 0) {
       void queue();
       return;
     }
-    this.api.updatePatientLocation(patient.id, body).subscribe({
+    this.api.updatePatientLocation(patient.id, body, writeId).subscribe({
       next: (updated) => {
         this.state.setPatient(updated);
         this.message.set('Position gespeichert.');
