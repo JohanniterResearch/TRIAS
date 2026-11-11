@@ -76,12 +76,17 @@ public class BodyPartsController(AppDbContext db, AuditService audit, SceneNotif
         }
 
         var regionTimes = JsonSerializer.Deserialize<Dictionary<string, DateTime>>(body.RegionTimestampsJson)!;
+        var before = parts.GetValueOrDefault(request.BodyPartId, 0);
+        var after = request.IsClicked ? 1 : 0;
+        DateTime? storedTime = regionTimes.TryGetValue(request.BodyPartId, out var knownTime) ? knownTime : null;
         if (request.ClientUpdatedAt is DateTime editTime)
         {
             if (regionTimes.TryGetValue(request.BodyPartId, out var previousTime) && previousTime > editTime)
             {
                 // Persist the processed order even when stale, so its retry has no new effects.
                 if (processedWrite is not null) processedWrite.RejectedAsStale = true;
+                audit.LogBodyPartWrite(User, body.Id, request.Idpatient, request.BodyPartId,
+                    writeId, before, storedTime, after, editTime, rejected: true);
                 await db.SaveChangesAsync();
                 await tx.CommitAsync();
                 return Ok(new BodyPartsResponse(request.Idpatient, parts, body.UpdatedAt,
@@ -94,12 +99,11 @@ public class BodyPartsController(AppDbContext db, AuditService audit, SceneNotif
             body.RegionTimestampsJson = JsonSerializer.Serialize(regionTimes);
         }
 
-        var before = parts.GetValueOrDefault(request.BodyPartId, 0);
-        var after = request.IsClicked ? 1 : 0;
         parts[request.BodyPartId] = after;
         body.BodyPartsJson = JsonSerializer.Serialize(parts);
 
-        audit.LogFieldWrite(User, "body", body.Id, request.Idpatient, request.BodyPartId, before, after);
+        audit.LogBodyPartWrite(User, body.Id, request.Idpatient, request.BodyPartId,
+            writeId, before, storedTime, after, request.ClientUpdatedAt, rejected: false);
 
         await db.SaveChangesAsync();
         await tx.CommitAsync();

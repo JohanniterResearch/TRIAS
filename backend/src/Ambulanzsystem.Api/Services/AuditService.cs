@@ -21,6 +21,30 @@ public class AuditService(AppDbContext db)
     public void LogFieldWrite(ClaimsPrincipal actor, string entityType, int? entityId, int? patientId, string field, object? before, object? after) =>
         LogEvent(actor.SubjectId(), actor.TokenType() ?? "unknown", "write", entityType, entityId, patientId, new[] { field }, before, after);
 
+    // One audit row for a triage body-region order, including rejected attempts. Reuse the
+    // existing JSON snapshots; other field-write consumers keep their scalar before/after.
+    // Null edit times mean unknown, never the audit/server receipt time.
+    public void LogBodyPartWrite(ClaimsPrincipal actor, int bodyId, int patientId, string region,
+        Guid? writeId, int storedValue, DateTime? storedTime, int requestedValue, DateTime? requestedTime,
+        bool rejected)
+    {
+        var resultValue = rejected ? storedValue : requestedValue;
+        var resultTime = rejected || requestedTime is null ? storedTime : requestedTime;
+        var decision = rejected ? "rejected_older_edit"
+            : resultValue != storedValue ? "value_changed"
+            : resultTime != storedTime ? "timestamp_only" : "unchanged";
+        LogEvent(actor.SubjectId(), actor.TokenType() ?? "unknown", "write", "body", bodyId, patientId,
+            new[] { region },
+            new { value = storedValue, clientUpdatedAt = storedTime },
+            new
+            {
+                value = resultValue, clientUpdatedAt = resultTime,
+                requested = new { value = requestedValue, clientUpdatedAt = requestedTime },
+                writeId, decision,
+            },
+            rejected ? "newer_stored_edit" : null);
+    }
+
     // Multi-leaf writes (protocol formState diffs, team/scene multi-field PUTs): records every
     // changed leaf path and its before/after value in one row, e.g. {"vitals.pulse": 80} ->
     // {"vitals.pulse": 92}, rather than a single generic field name. Always logs — even zero

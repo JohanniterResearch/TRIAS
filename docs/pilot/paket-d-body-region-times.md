@@ -14,8 +14,8 @@ Die Koordinaten-Körperkarte im Ambulanzprotokoll und PLS bleiben separat.
 - Die bestehende Körpersperre und Transaktion umfassen Duplikatprüfung, Zeitvergleich,
   Zustandsänderung, Audit und Vorgangsmarkierung. Die Duplikatprüfung erfolgt zuerst.
 - Strikt ältere datierte Aufträge ändern weder Wert noch Regionszeit oder Karten-Speicherzeit.
-  Ihre Vorgangskennung wird trotzdem festgeschrieben. Sie erzeugen keinen Schreib-Audit-Eintrag
-  und keine Änderungsbenachrichtigung. Die Antwort enthält den aktuellen Kartenstand (`200`)
+  Ihre Vorgangskennung wird trotzdem festgeschrieben. Seit Schritt 4 erzeugen sie einen
+  Audit-Eintrag zur Verwerfung, aber keine Änderungsbenachrichtigung. Die Antwort enthält den aktuellen Kartenstand (`200`)
   und seit Schritt 3 ein ausdrückliches Verwerfungsergebnis (siehe unten).
 - Neuere Aufträge schreiben die Regionszeit auch bei gleichem Wert oder bei Entfernung (`0`)
   fort. Verschiedene Regionen werden unabhängig verglichen.
@@ -40,8 +40,7 @@ Die Koordinaten-Körperkarte im Ambulanzprotokoll und PLS bleiben separat.
 - **Admin-Korrekturen:** der bestehende Admin-Endpunkt ersetzt weiterhin die komplette Karte
   ohne Prüfung oder Fortschreibung der Regionszeiten. Seine Priorität und Einbeziehung in
   denselben Schutz sind separat zu entscheiden.
-- **Konflikt-Audit:** folgt in Schritt 4. Verworfene Inhalte und Herkunft werden noch nicht im
-  Audit erfasst; die Konfliktanzeige ist mit Schritt 3 ergänzt.
+- **Konfliktanzeige und Konflikt-Audit:** sind mit Schritt 3 und 4 ergänzt; siehe unten.
 - **Kennungspflicht:** unverändert optional; der vorhandene Schutz gegen erneute Verarbeitung
   greift nur bei mitgesendeter Kennung. Ein Schlüssel mit verändertem Auftrag ergibt `409`.
 
@@ -102,3 +101,55 @@ zwischen PLS und Ambulanz oder für finalisierte Ambulanzprotokolle.
   inzwischen neuerem Queue-Eintrag und neuerer lokaler Anzeige.
 - OpenAPI-Generierung, Vertragslint und `check:generated` bestanden; EF meldet keine
   ausstehenden Modelländerungen. Produktionsbuild mit Budget-/CommonJS-Warnungen.
+
+## Schritt 4: Audit für Regionsaufträge
+
+Die vorhandenen Audit-Spalten werden wiederverwendet; keine Migration, keine neue API-Struktur.
+Jeder neue Regionsauftrag erzeugt genau **eine** Zeile mit `action=write`, `entityType=body`,
+Körperkarten-ID, Patienten-ID, Akteur-ID/-Rolle und dem Regionsschlüssel in `changedFields`.
+Das bisherige einfache Schreib-Audit wird durch diesen angereicherten Eintrag ersetzt.
+
+Für neue Einträge dieses Endpunkts enthalten `before`/`after` strukturierte JSON-Schnappschüsse
+(die Audit-API liefert sie unverändert als JSON-Strings). Historische skalare Einträge bleiben
+unverändert. Andere Schreibwege, insbesondere Admin-Korrekturen und Triage, behalten ihr Format.
+
+- `before`: gespeicherter `value` und dessen bekannte `clientUpdatedAt` vor der Entscheidung.
+- `after.value`/`after.clientUpdatedAt`: tatsächlich gültiger Wert und Regionszeit nach der
+  Entscheidung; bei Verwerfung unverändert gegenüber `before`.
+- `after.requested`: angeforderter `value` und übermittelte `clientUpdatedAt`, auch wenn verworfen.
+- `after.writeId`: mitgesendete UUID oder null. Fehlende Bearbeitungszeiten bleiben null und
+  werden nicht durch den Audit-Zeitpunkt oder `Body.UpdatedAt` ersetzt.
+- `after.decision`: `rejected_older_edit` bei Verwerfung; zusätzlich `reason=newer_stored_edit`.
+  Bei angenommener Wertänderung `value_changed` (einschließlich Entfernung auf 0), bei reinem
+  Erfassen/Fortschreiben der Zeit `timestamp_only`, sonst `unchanged`. Eine reine Zeitänderung
+  wird damit nicht als Wertüberschreibung ausgewiesen. Gleiche oder fehlende Zeitstempel
+  erhalten keine neue Konfliktregel; das protokollierte Ergebnis folgt dem bisherigen Verhalten.
+
+Duplikatprüfung unter der Körpersperre erfolgt weiterhin **vor** Zeitvergleich und Audit.
+Ein Retry mit derselben UUID und Prüfsumme erzeugt keine zweite Audit-Zeile. Die ursprünglichen
+Audit-Werte bleiben auch dann unverändert, wenn der Retry inzwischen einen anderen aktuellen
+Serverwert zurückliefert. HTTP 409 bei geänderten Nutzdaten erzeugt ebenfalls kein zweites Audit.
+Historisch bereits verarbeitete Aufträge erhalten beim Replay keinen nachträglichen Eintrag.
+Ohne UUID gibt es weiterhin keine garantierte Duplikaterkennung.
+
+Audit, Vorgangsentscheidung und etwaige Markierungs-/Regionszeitänderung werden innerhalb
+derselben vorhandenen Transaktion gespeichert. Der Audit-Dienst ruft kein eigenes Save/Commit auf.
+Die offenen Regeln zu Gleichständen, undatierten Aufträgen, Geräteuhren und Admin-Korrekturen
+werden durch diese Ergänzung nicht verändert.
+
+### Verifikation Schritt 4
+
+- 37 Backend-Tests aus `BodyPartIdempotencyTests`, `BodyPartsConcurrencyTests`,
+  `BodyRegionTimestampMigrationTests` und `AuditTests` bestanden, auf eigenem PostgreSQL-16-
+  Testcontainer mit isolierter Testdatenbank. Bestehende Migrationstests nutzen zusätzlich
+  ihre eigenen kurzlebigen Datenbanken; für Schritt 4 ist keine Migration erforderlich.
+- Geprüft: angeforderte/gespeicherte/ergebniswirksame Werte und Zeiten bei Verwerfung,
+  Überschreibung in beide Richtungen einschließlich 0, reine Zeitänderung bei gleichem Wert,
+  unbekannte historische Zeiten, fehlende UUID sowie Zuordnung zu Akteur/Patient/Region.
+- API-Rückmeldung und Idempotenzschutz aus Schritt 3 bleiben geprüft: verlorene Antwort mit
+  Retry nach Host-Neustart und inzwischen verändertem Regionswert, parallele Wiederholungen,
+  HTTP 409 bei verändertem Auftragsinhalt sowie unveränderlicher ursprünglicher Audit-Eintrag.
+- Erzwungene Fehler nach dem Datenbank-Save, aber vor dem Commit, prüfen für angenommene und
+  verworfene Aufträge das gemeinsame Rollback von Audit, Entscheidung und Markierung.
+  Die vorhandene Audit-API liefert die neuen Schnappschüsse unverändert zurück.
+- EF meldet keine ausstehenden Modelländerungen. Frontend und OpenAPI-Vertrag bleiben unverändert.

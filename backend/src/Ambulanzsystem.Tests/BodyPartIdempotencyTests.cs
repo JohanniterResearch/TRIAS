@@ -5,14 +5,17 @@ using System.Text.Json;
 using Ambulanzsystem.Api.Controllers;
 using Ambulanzsystem.Api.Data;
 using Ambulanzsystem.Api.Dtos;
+using Ambulanzsystem.Api.Domain;
 using Ambulanzsystem.Api.Realtime;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 
 namespace Ambulanzsystem.Tests;
@@ -38,11 +41,16 @@ public class BodyPartIdempotencyTests
         Assert.Equal(new BodyPartWriteResult("rejected", "older_edit", Region, newerValue ? 1 : 0),
             (await rejected.Content.ReadFromJsonAsync<BodyPartsResponse>())!.WriteResult);
         Assert.Equal(before, await SnapshotAsync(factory, patientId));
-        await AssertEffectsAsync(factory, patientId, 2, 1, auditCount: 1);
+        await AssertEffectsAsync(factory, patientId, 2, 1, auditCount: 2);
+        var entry = await AuditForWriteAsync(factory, patientId, olderKey);
+        AssertAudit(entry, newerValue ? 1 : 0, newerTime, !newerValue ? 1 : 0,
+            newerTime.AddMinutes(-2), newerValue ? 1 : 0, newerTime, "rejected_older_edit");
+        Assert.Equal("newer_stored_edit", entry.Reason);
 
         (await SendAsync(client, patientId, olderKey, !newerValue, newerTime.AddMinutes(-2))).EnsureSuccessStatusCode();
         Assert.Equal(before, await SnapshotAsync(factory, patientId));
-        await AssertEffectsAsync(factory, patientId, 2, 0, auditCount: 1);
+        await AssertEffectsAsync(factory, patientId, 2, 0, auditCount: 2);
+        Assert.Equal(entry.AfterJson, (await AuditForWriteAsync(factory, patientId, olderKey)).AfterJson);
         Assert.Equal(newerValue ? 1 : 0, await MarkerAsync(client, patientId));
     }
 
@@ -83,7 +91,7 @@ public class BodyPartIdempotencyTests
         var body = await scope.ServiceProvider.GetRequiredService<AppDbContext>().Bodies.SingleAsync(b => b.PatientId == patientId);
         Assert.Equal(time.AddMinutes(2), JsonSerializer.Deserialize<Dictionary<string, DateTime>>(body.RegionTimestampsJson)![Region]);
         Assert.Equal(value ? 1 : 0, await MarkerAsync(client, patientId));
-        await AssertEffectsAsync(factory, patientId, 3, 2, auditCount: 2);
+        await AssertEffectsAsync(factory, patientId, 3, 2, auditCount: 3);
     }
 
     [Fact]
@@ -168,7 +176,7 @@ public class BodyPartIdempotencyTests
                 (await rejected.Content.ReadFromJsonAsync<BodyPartsResponse>())!.WriteResult);
             // Simulate losing the first response, then a distinct, newer server change.
             (await SendAsync(client, patientId, Guid.NewGuid().ToString(), true, time.AddMinutes(2))).EnsureSuccessStatusCode();
-            await AssertEffectsAsync(first, patientId, 3, 2, auditCount: 2);
+            await AssertEffectsAsync(first, patientId, 3, 2, auditCount: 3);
         }
         using var restarted = new BodyPartFactory();
         var retryClient = await AdminClientAsync(restarted);
@@ -180,7 +188,143 @@ public class BodyPartIdempotencyTests
         Assert.Equal(1, result.BodyParts[Region]);
         Assert.Equal(before, await SnapshotAsync(restarted, patientId));
         Assert.Equal(HttpStatusCode.Conflict, (await SendAsync(retryClient, patientId, key, true, time.AddSeconds(1))).StatusCode);
-        await AssertEffectsAsync(restarted, patientId, 3, 0, auditCount: 2);
+        await AssertEffectsAsync(restarted, patientId, 3, 0, auditCount: 3);
+        // The original audit must keep the value/time at rejection, not the retry's current 1.
+        AssertAudit(await AuditForWriteAsync(restarted, patientId, key), 0, time.AddMinutes(1),
+            1, time, 0, time.AddMinutes(1), "rejected_older_edit");
+    }
+
+    [Theory]
+    [InlineData(true, false)] // Removal is an ordinary value change.
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    public async Task NewerEdit_AuditsValueChangeOrTimestampOnly_InOneRow(bool original, bool incoming)
+    {
+        using var factory = new BodyPartFactory();
+        var (client, patientId) = await SetupAsync(factory);
+        var time = new DateTime(2026, 11, 1, 10, 0, 0, DateTimeKind.Utc);
+        (await SendAsync(client, patientId, Guid.NewGuid().ToString(), original, time)).EnsureSuccessStatusCode();
+        var key = Guid.NewGuid().ToString();
+        var response = await SendAsync(client, patientId, key, incoming, time.AddMinutes(2));
+        response.EnsureSuccessStatusCode();
+        Assert.Equal(new BodyPartWriteResult("applied", null, Region, incoming ? 1 : 0),
+            (await response.Content.ReadFromJsonAsync<BodyPartsResponse>())!.WriteResult);
+        var entry = await AuditForWriteAsync(factory, patientId, key);
+        AssertAudit(entry, original ? 1 : 0, time, incoming ? 1 : 0, time.AddMinutes(2),
+            incoming ? 1 : 0, time.AddMinutes(2), original == incoming ? "timestamp_only" : "value_changed");
+        Assert.Null(entry.Reason);
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var username = factory.Services.GetRequiredService<IConfiguration>()["Bootstrap:AdminUsername"] ?? "admin";
+            Assert.Equal((await db.Users.SingleAsync(u => u.Username == username)).Id, entry.ActorId);
+            Assert.Equal((await db.Bodies.SingleAsync(b => b.PatientId == patientId)).Id, entry.EntityId);
+        }
+        var state = await SnapshotAsync(factory, patientId);
+        (await SendAsync(client, patientId, key, incoming, time.AddMinutes(2))).EnsureSuccessStatusCode();
+        Assert.Equal(state, await SnapshotAsync(factory, patientId));
+        await AssertEffectsAsync(factory, patientId, 2, 2);
+        // Existing audit API exposes the enriched snapshots without a contract/schema change.
+        var audit = await client.GetFromJsonAsync<AuditQueryResponse>($"/api/audit?patientId={patientId}&entityType=body&action=write");
+        Assert.Equal(2, audit!.Total);
+        Assert.Equal(entry.AfterJson, audit.Entries.Single(a => a.Id == entry.Id).After);
+    }
+
+    [Fact]
+    public async Task HistoricalAndMissingTimes_RemainUnknown_AndUnkeyedAuditHasNoWriteId()
+    {
+        using var factory = new BodyPartFactory();
+        var (client, patientId) = await SetupAsync(factory);
+        (await SendAsync(client, patientId, null, true)).EnsureSuccessStatusCode();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var entry = await db.AuditLogs.SingleAsync(a => a.PatientId == patientId && a.EntityType == "body");
+            AssertAudit(entry, 0, null, 1, null, 1, null, "value_changed");
+            using var after = JsonDocument.Parse(entry.AfterJson!);
+            Assert.Equal(JsonValueKind.Null, after.RootElement.GetProperty("writeId").ValueKind);
+        }
+        var key = Guid.NewGuid().ToString();
+        var time = new DateTime(2026, 11, 1, 10, 0, 0, DateTimeKind.Utc);
+        (await SendAsync(client, patientId, key, false, time)).EnsureSuccessStatusCode();
+        AssertAudit(await AuditForWriteAsync(factory, patientId, key), 1, null, 0, time, 0, time, "value_changed");
+        await AssertEffectsAsync(factory, patientId, 1, 2, auditCount: 2);
+    }
+
+    [Fact]
+    public async Task ParallelRejectedReplays_CreateExactlyOneRejectionAudit()
+    {
+        using var factory = new BodyPartFactory();
+        var (client, patientId) = await SetupAsync(factory);
+        var time = new DateTime(2026, 11, 1, 10, 0, 0, DateTimeKind.Utc);
+        (await SendAsync(client, patientId, Guid.NewGuid().ToString(), false, time.AddMinutes(1))).EnsureSuccessStatusCode();
+        var before = await SnapshotAsync(factory, patientId);
+        var key = Guid.NewGuid().ToString();
+        var replies = await Task.WhenAll(Enumerable.Range(0, 8).Select(_ => SendAsync(client, patientId, key, true, time)));
+        foreach (var reply in replies)
+        {
+            Assert.Equal(HttpStatusCode.OK, reply.StatusCode);
+            Assert.Equal("rejected", (await reply.Content.ReadFromJsonAsync<BodyPartsResponse>())!.WriteResult!.Outcome);
+        }
+        Assert.Equal(before, await SnapshotAsync(factory, patientId));
+        await AssertEffectsAsync(factory, patientId, 2, 1);
+        AssertAudit(await AuditForWriteAsync(factory, patientId, key), 0, time.AddMinutes(1), 1, time,
+            0, time.AddMinutes(1), "rejected_older_edit");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FailureBeforeCommit_RollsBackAuditDecisionAndMarker(bool rejected)
+    {
+        var failure = new FailAfterBodyPartSave();
+        using var factory = new BodyPartFactory(failure);
+        var (client, patientId) = await SetupAsync(factory);
+        var time = new DateTime(2026, 11, 1, 10, 0, 0, DateTimeKind.Utc);
+        (await SendAsync(client, patientId, Guid.NewGuid().ToString(), false, time)).EnsureSuccessStatusCode();
+        var before = await SnapshotAsync(factory, patientId);
+        var key = Guid.NewGuid().ToString();
+        var editTime = rejected ? time.AddMinutes(-1) : time.AddMinutes(1);
+        failure.FailNextSave = true;
+        Assert.Equal(HttpStatusCode.InternalServerError, (await SendAsync(client, patientId, key, true, editTime)).StatusCode);
+        Assert.Equal(before, await SnapshotAsync(factory, patientId));
+        await AssertEffectsAsync(factory, patientId, 1, 1);
+        (await SendAsync(client, patientId, key, true, editTime)).EnsureSuccessStatusCode();
+        await AssertEffectsAsync(factory, patientId, 2, rejected ? 0 : 1);
+        using var audit = JsonDocument.Parse((await AuditForWriteAsync(factory, patientId, key)).AfterJson!);
+        Assert.Equal(rejected ? "rejected_older_edit" : "value_changed", audit.RootElement.GetProperty("decision").GetString());
+    }
+
+    private static async Task<AuditLog> AuditForWriteAsync(BodyPartFactory factory, int patientId, string key)
+    {
+        using var scope = factory.Services.CreateScope();
+        var entries = await scope.ServiceProvider.GetRequiredService<AppDbContext>().AuditLogs.AsNoTracking()
+            .Where(a => a.PatientId == patientId && a.EntityType == "body").ToListAsync();
+        return Assert.Single(entries, a =>
+        {
+            using var after = JsonDocument.Parse(a.AfterJson!);
+            return after.RootElement.GetProperty("writeId").GetString() == key;
+        });
+    }
+
+    private static void AssertAudit(AuditLog entry, int stored, DateTime? storedTime,
+        int requested, DateTime? requestedTime, int result, DateTime? resultTime, string decision)
+    {
+        Assert.Equal("write", entry.Action);
+        Assert.Equal("body", entry.EntityType);
+        Assert.Equal($"[\"{Region}\"]", entry.ChangedFieldsJson);
+        Assert.NotNull(entry.ActorId);
+        Assert.Equal("admin", entry.ActorRole);
+        using var before = JsonDocument.Parse(entry.BeforeJson!);
+        using var after = JsonDocument.Parse(entry.AfterJson!);
+        Assert.Equal(stored, before.RootElement.GetProperty("value").GetInt32());
+        Assert.Equal(storedTime, before.RootElement.GetProperty("clientUpdatedAt").Deserialize<DateTime?>());
+        Assert.Equal(result, after.RootElement.GetProperty("value").GetInt32());
+        Assert.Equal(resultTime, after.RootElement.GetProperty("clientUpdatedAt").Deserialize<DateTime?>());
+        Assert.Equal(requested, after.RootElement.GetProperty("requested").GetProperty("value").GetInt32());
+        Assert.Equal(requestedTime, after.RootElement.GetProperty("requested").GetProperty("clientUpdatedAt").Deserialize<DateTime?>());
+        Assert.Equal(decision, after.RootElement.GetProperty("decision").GetString());
     }
 
     [Fact]
@@ -340,12 +484,32 @@ public class BodyPartIdempotencyTests
     }
 
     // Keep the real publisher, but stop its background consumer so enqueue counts are deterministic.
-    private sealed class BodyPartFactory : WebApplicationFactory<Program>
+    private sealed class BodyPartFactory(FailAfterBodyPartSave? failure = null) : WebApplicationFactory<Program>
     {
         protected override void ConfigureWebHost(IWebHostBuilder builder) => builder.ConfigureServices(services =>
         {
             var dispatcher = services.Single(s => s.ServiceType == typeof(IHostedService) && s.ImplementationType == typeof(RealtimeDispatcher));
             services.Remove(dispatcher);
+            if (failure is not null)
+            {
+                services.RemoveAll<DbContextOptions<AppDbContext>>();
+                services.AddDbContext<AppDbContext>(options => options.UseNpgsql(TestDatabaseIsolation.TestConnectionString)
+                    .UseSnakeCaseNamingConvention().AddInterceptors(failure));
+            }
         });
+    }
+
+    private sealed class FailAfterBodyPartSave : SaveChangesInterceptor
+    {
+        public bool FailNextSave { get; set; }
+        public override ValueTask<int> SavedChangesAsync(SaveChangesCompletedEventData eventData, int result, CancellationToken cancellationToken = default)
+        {
+            if (FailNextSave && eventData.Context!.ChangeTracker.Entries<BodyPartProcessedWrite>().Any())
+            {
+                FailNextSave = false;
+                throw new InvalidOperationException("Injected failure after audit/decision/marker save, before commit.");
+            }
+            return ValueTask.FromResult(result);
+        }
     }
 }
