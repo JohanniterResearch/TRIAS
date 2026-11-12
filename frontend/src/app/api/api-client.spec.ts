@@ -88,6 +88,16 @@ describe('ApiClient response handling', () => {
     });
   });
 
+  it('probes the health endpoint and marks server contact on success', async () => {
+    (api as any).client.GET = vi.fn(() =>
+      Promise.resolve({ data: { status: 'healthy' }, response: new Response('{"status":"healthy"}') }),
+    );
+    const result = await firstValueFrom(api.getHealth());
+    expect((api as any).client.GET).toHaveBeenCalledWith('/health', {});
+    expect(result).toEqual({ status: 'healthy' });
+    expect(sync.markServerContact).toHaveBeenCalledOnce();
+  });
+
   it.each([401, 403, 404, 500])(
     'throws ApiRequestError for an empty %i response',
     async (status) => {

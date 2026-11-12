@@ -253,6 +253,9 @@ export class OfflineQueueService {
       for (const item of this.unsavedProtocols.values()) await this.persistProtocol(item);
       await this.persistence;
       if (!navigator.onLine) return;
+      if (!this.syncStatus.serverReachable()) {
+        await firstValueFrom(this.api.getHealth()).catch(() => undefined);
+      }
       for (let item of await this.items()) {
         if (
           item.type === 'protocol' &&

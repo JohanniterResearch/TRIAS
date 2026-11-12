@@ -442,6 +442,10 @@ export class ApiClient {
     );
   }
 
+  getHealth() {
+    return this.unwrap(this.client.GET('/health', {}));
+  }
+
   private unwrap<T>(
     request: Promise<{ data?: T; error?: unknown; response: Response }>,
   ): Observable<T> {
