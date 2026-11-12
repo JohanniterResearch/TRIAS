@@ -6,7 +6,7 @@ import { SyncStatusService } from '../sync/sync-status.service';
 import { apiErrorMessage, ApiClient, ApiRequestError } from './api-client';
 
 describe('ApiClient response handling', () => {
-  const sync = { markServerContact: vi.fn() };
+  const sync = { markServerContact: vi.fn(), markServerUnreachable: vi.fn() };
   const auth = {
     bearerToken: vi.fn(() => null),
     activeSession: vi.fn<() => any>(() => null),
@@ -17,6 +17,7 @@ describe('ApiClient response handling', () => {
 
   beforeEach(() => {
     sync.markServerContact.mockReset();
+    sync.markServerUnreachable.mockReset();
     auth.activeSession.mockReset().mockReturnValue(null);
     auth.refreshTokens.mockReset();
     auth.sessionIdentity.mockReturnValue({});
@@ -87,6 +88,16 @@ describe('ApiClient response handling', () => {
     });
   });
 
+  it('probes the health endpoint and marks server contact on success', async () => {
+    (api as any).client.GET = vi.fn(() =>
+      Promise.resolve({ data: { status: 'healthy' }, response: new Response('{"status":"healthy"}') }),
+    );
+    const result = await firstValueFrom(api.getHealth());
+    expect((api as any).client.GET).toHaveBeenCalledWith('/health', {});
+    expect(result).toEqual({ status: 'healthy' });
+    expect(sync.markServerContact).toHaveBeenCalledOnce();
+  });
+
   it.each([401, 403, 404, 500])(
     'throws ApiRequestError for an empty %i response',
     async (status) => {
@@ -100,6 +111,11 @@ describe('ApiClient response handling', () => {
 
       await expect(result).rejects.toMatchObject({ status } satisfies Partial<ApiRequestError>);
       expect(sync.markServerContact).not.toHaveBeenCalled();
+      if (status >= 500) {
+        expect(sync.markServerUnreachable).toHaveBeenCalledOnce();
+      } else {
+        expect(sync.markServerUnreachable).not.toHaveBeenCalled();
+      }
     },
   );
 

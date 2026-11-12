@@ -10,10 +10,14 @@ import { SyncStatusService } from './sync-status.service';
 
 describe('OfflineQueueService', () => {
   let api: Record<
-    'updateTriage' | 'saveProtokollPage1' | 'updatePatientLocation' | 'toggleBodyPart',
+    'updateTriage' | 'saveProtokollPage1' | 'updatePatientLocation' | 'toggleBodyPart' | 'getHealth',
     ReturnType<typeof vi.fn>
   >;
-  let sync: { setPending: ReturnType<typeof vi.fn>; markQueueFlushed: ReturnType<typeof vi.fn> };
+  let sync: {
+    setPending: ReturnType<typeof vi.fn>;
+    markQueueFlushed: ReturnType<typeof vi.fn>;
+    serverReachable: ReturnType<typeof vi.fn>;
+  };
   let service: OfflineQueueService;
 
   beforeEach(() => {
@@ -27,8 +31,13 @@ describe('OfflineQueueService', () => {
       saveProtokollPage1: vi.fn(),
       updatePatientLocation: vi.fn(),
       toggleBodyPart: vi.fn(),
+      getHealth: vi.fn().mockReturnValue(of({ status: 'healthy' })),
     };
-    sync = { setPending: vi.fn(), markQueueFlushed: vi.fn() };
+    sync = {
+      setPending: vi.fn(),
+      markQueueFlushed: vi.fn(),
+      serverReachable: vi.fn().mockReturnValue(true),
+    };
     TestBed.configureTestingModule({
       providers: [
         OfflineQueueService,
@@ -581,6 +590,36 @@ describe('OfflineQueueService', () => {
     await (service as any).deleteIfCurrent(triage('done', 1));
 
     expect(sync.markQueueFlushed).toHaveBeenCalledOnce();
+  });
+
+  it('probes health when server is unreachable and online', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+    sync.serverReachable.mockReturnValue(false);
+    vi.spyOn(service as any, 'items').mockResolvedValue([]);
+
+    await service.flush();
+
+    expect(api.getHealth).toHaveBeenCalledOnce();
+  });
+
+  it('does not probe health when server is already reachable and queue is empty', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+    sync.serverReachable.mockReturnValue(true);
+    vi.spyOn(service as any, 'items').mockResolvedValue([]);
+
+    await service.flush();
+
+    expect(api.getHealth).not.toHaveBeenCalled();
+  });
+
+  it('handles health check failures gracefully during flush', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+    sync.serverReachable.mockReturnValue(false);
+    api.getHealth.mockReturnValue(throwError(() => new Error('still down')));
+    vi.spyOn(service as any, 'items').mockResolvedValue([]);
+
+    await expect(service.flush()).resolves.toBeUndefined();
+    expect(api.getHealth).toHaveBeenCalledOnce();
   });
 });
 
