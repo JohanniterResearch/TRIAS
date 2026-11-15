@@ -187,8 +187,16 @@ button:disabled {
 .camera-panel video {
   background: #102033;
   border-radius: 0.5rem;
+  display: block;
   max-height: 16rem;
   width: 100%;
+}
+
+@media (orientation: portrait) {
+  .camera-panel video {
+    max-height: none;
+    width: 100%;
+  }
 }
 
 .dev-button {
