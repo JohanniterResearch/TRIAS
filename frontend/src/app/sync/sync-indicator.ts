@@ -21,7 +21,9 @@ import { SyncStatusService } from './sync-status.service';
     >
       <span role="status" aria-live="polite">
         <span class="sync-dot" aria-hidden="true"></span>
-        <span>{{ !sync.online() ? 'Offline' : sync.serverReachable() ? 'Online' : 'Server nicht erreichbar' }}</span>
+        <span>{{
+          !sync.online() ? 'Offline' : sync.serverReachable() ? 'Online' : 'Server nicht erreichbar'
+        }}</span>
         @if (sync.validationDegraded()) {
           <span class="form-error"
             >Anmeldung kann nicht bestätigt werden · erneuter Versuch folgt</span

@@ -10,7 +10,11 @@ import { SyncStatusService } from './sync-status.service';
 
 describe('OfflineQueueService', () => {
   let api: Record<
-    'updateTriage' | 'saveProtokollPage1' | 'updatePatientLocation' | 'toggleBodyPart' | 'getHealth',
+    | 'updateTriage'
+    | 'saveProtokollPage1'
+    | 'updatePatientLocation'
+    | 'toggleBodyPart'
+    | 'getHealth',
     ReturnType<typeof vi.fn>
   >;
   let sync: {

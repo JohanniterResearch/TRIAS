@@ -90,7 +90,10 @@ describe('ApiClient response handling', () => {
 
   it('probes the health endpoint and marks server contact on success', async () => {
     (api as any).client.GET = vi.fn(() =>
-      Promise.resolve({ data: { status: 'healthy' }, response: new Response('{"status":"healthy"}') }),
+      Promise.resolve({
+        data: { status: 'healthy' },
+        response: new Response('{"status":"healthy"}'),
+      }),
     );
     const result = await firstValueFrom(api.getHealth());
     expect((api as any).client.GET).toHaveBeenCalledWith('/health', {});
