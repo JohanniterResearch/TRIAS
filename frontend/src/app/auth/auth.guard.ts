@@ -146,7 +146,7 @@ export const guestOnly: CanActivateFn = (_route, state) => {
   const router = inject(Router);
   const session = auth.activeSession();
   if (!session) {
-    return true;
+    return state.url === '/' ? router.createUrlTree(['/login']) : true;
   }
   const requiredLogin =
     session.tokenType === 'admin' || session.tokenType === 'leitstelle' ? '/admin/login' : '/login';
