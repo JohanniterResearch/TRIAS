@@ -10,6 +10,57 @@ import { ProtokollDraftStore } from '../services/protokoll-draft-store';
 import { AmbulanzprotokollPage } from './ambulanzprotokoll-page';
 
 describe('AmbulanzprotokollPage route reuse', () => {
+  it('restores the signature when its canvas is recreated', async () => {
+    history.replaceState({}, '');
+    TestBed.configureTestingModule({
+      imports: [AmbulanzprotokollPage],
+      providers: [
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            paramMap: new BehaviorSubject(convertToParamMap({ patientId: '1' })),
+          },
+        },
+        { provide: Router, useValue: { navigateByUrl: vi.fn() } },
+        {
+          provide: ApiClient,
+          useValue: { getProtokollPage1: () => new Subject<any>() },
+        },
+        { provide: ProtokollDraftStore, useValue: { get: () => Promise.resolve(null) } },
+        { provide: OfflineQueueService, useValue: queue() },
+        { provide: ResponderStateStore, useValue: { patient: () => null, scene: () => null } },
+        { provide: AuthStore, useValue: { activeSession: () => null } },
+      ],
+    });
+    TestBed.overrideComponent(AmbulanzprotokollPage, {
+      set: {
+        imports: [],
+        template: '@if (selectedZone()?.id === "signature") { <canvas #signatureCanvas></canvas> }',
+      },
+    });
+
+    const fixture = TestBed.createComponent(AmbulanzprotokollPage);
+    const page = fixture.componentInstance as any;
+    const restoreSignature = vi.spyOn(page, 'restoreSignature');
+    page.selectedZone.set({ id: 'signature' });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('canvas')).not.toBeNull();
+    const callsAfterCreate = restoreSignature.mock.calls.length;
+
+    page.selectedZone.set(null);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('canvas')).toBeNull();
+
+    page.selectedZone.set({ id: 'signature' });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('canvas')).not.toBeNull();
+    expect(restoreSignature.mock.calls.length).toBeGreaterThan(callsAfterCreate);
+    fixture.destroy();
+  });
+
   it('resets and loads the new patient when only the route parameter changes', async () => {
     history.replaceState({}, '');
     const params = new BehaviorSubject(convertToParamMap({ patientId: '1' }));

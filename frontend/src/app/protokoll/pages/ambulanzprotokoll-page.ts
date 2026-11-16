@@ -2,9 +2,11 @@ import {
   Component,
   computed,
   ElementRef,
+  effect,
   inject,
   OnDestroy,
   signal,
+  untracked,
   viewChild,
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
@@ -917,6 +919,10 @@ export class AmbulanzprotokollPage implements OnDestroy {
   }
 
   constructor() {
+    effect(() => {
+      this.signatureCanvas();
+      untracked(() => this.restoreSignature());
+    });
     this.offlineQueue.protocolSaved
       .pipe(takeUntilDestroyed())
       .subscribe(({ patientId, sourcePatientId, writeId, legacyIdentity, record }) => {
