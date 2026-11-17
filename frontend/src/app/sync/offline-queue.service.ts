@@ -10,6 +10,7 @@ import {
 import { ResponderStateStore } from '../responder/services/responder-state';
 import { TriageDraftStore } from '../responder/services/triage-draft-store';
 import { request, transactionDone } from '../shared/idb';
+import { FieldConflicts } from './field-conflicts';
 import { SyncStatusService } from './sync-status.service';
 
 type Patient = components['schemas']['Patient'];
@@ -85,6 +86,24 @@ const mapStore = 'patient-map';
 @Injectable({ providedIn: 'root' })
 export class OfflineQueueService {
   private readonly api = inject(ApiClient);
+  private readonly conflicts = inject(FieldConflicts);
+  private readonly protocolResultsSubject = new Subject<ProtocolSaveResult>();
+  private readonly patientResultsSubject = new Subject<{
+    patientId: number;
+    sourcePatientId: number;
+    writeId: string;
+    type: 'triage' | 'location';
+    superseded: boolean;
+    patient: Patient;
+  }>();
+  readonly patientResults = this.patientResultsSubject.asObservable();
+  readonly protocolResults = this.protocolResultsSubject.asObservable();
+  private readonly receivedProtocolResults = new Map<number, ProtocolSaveResult>();
+
+  protocolResult(patientId: number, writeId: string | undefined): ProtocolSaveResult | undefined {
+    const result = this.receivedProtocolResults.get(patientId);
+    return result?.writeId === writeId ? result : undefined;
+  }
   private readonly responderState = inject(ResponderStateStore);
   private readonly triageDrafts = inject(TriageDraftStore);
   private readonly protocolDrafts = inject(ProtokollDraftStore);
@@ -368,6 +387,7 @@ export class OfflineQueueService {
                 ? this.api.updateTriage(patientId, item.body, item.writeId)
                 : this.api.updatePatientLocation(patientId, item.body, item.writeId),
             );
+            this.conflicts.report(patientId, item.writeId!, patient.fieldResults);
             const pending = [...(await this.items()), ...this.unsavedClinical.values()].filter(
               (other) =>
                 (other.type === 'triage' || other.type === 'location') &&
@@ -380,7 +400,15 @@ export class OfflineQueueService {
               patientId,
               this.withPendingPatientEdits(patient, pending),
             );
-            await this.deleteIfCurrent(item);
+            const deleted = await this.deleteIfCurrent(item);
+            this.patientResultsSubject.next({
+              patientId,
+              sourcePatientId,
+              writeId: item.writeId!,
+              type: item.type,
+              superseded: !deleted,
+              patient,
+            });
             continue;
           }
           const result = await this.replay(item);
@@ -389,6 +417,11 @@ export class OfflineQueueService {
             continue;
           }
           if (item.type === 'protocol' && typeof result !== 'boolean') {
+            this.conflicts.report(result.patientId, result.writeId, result.record.fieldResults);
+            // Retain a received business answer while a page is still loading its pending draft.
+            this.receivedProtocolResults.set(result.patientId, result);
+            this.receivedProtocolResults.set(result.sourcePatientId, result);
+            this.protocolResultsSubject.next(result);
             const current = await this.withStore(queueStore, 'readonly', (store) =>
               request<QueueItem | undefined>(store.get(item.id)),
             );

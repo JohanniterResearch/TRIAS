@@ -90,6 +90,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         b.Entity<TriageProcessedWrite>(e =>
         {
+            e.Property(x => x.DecisionsJson).HasColumnType("jsonb");
             e.HasKey(x => new { x.PatientId, x.WriteId });
             e.Property(x => x.Checksum).HasMaxLength(64).IsRequired();
             e.Property(x => x.ProcessedAt)
@@ -101,6 +102,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         b.Entity<LocationProcessedWrite>(e =>
         {
+            e.Property(x => x.DecisionsJson).HasColumnType("jsonb");
             e.HasKey(x => new { x.PatientId, x.WriteId });
             e.Property(x => x.Checksum).HasMaxLength(64).IsRequired();
             e.Property(x => x.ProcessedAt)
@@ -123,6 +125,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         b.Entity<ProtokollProcessedWrite>(e =>
         {
+            e.Property(x => x.DecisionsJson).HasColumnType("jsonb");
             e.HasKey(x => new { x.PatientId, x.WriteId });
             e.Property(x => x.Checksum).HasMaxLength(64).IsRequired();
             e.Property(x => x.ProcessedAt)
@@ -200,6 +203,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(x => x.ChangedFieldsJson).HasColumnType("jsonb").HasColumnName("changed_fields");
             e.Property(x => x.BeforeJson).HasColumnType("jsonb").HasColumnName("before");
             e.Property(x => x.AfterJson).HasColumnType("jsonb").HasColumnName("after");
+            e.Property(x => x.WriteDetailsJson).HasColumnType("jsonb");
             e.Property(x => x.Reason).HasMaxLength(500);
             e.HasIndex(x => x.PatientId);
             e.HasIndex(x => x.Timestamp);

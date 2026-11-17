@@ -88,6 +88,16 @@ public sealed class PatientWriteFilter(string scope, AppDbContext db, SceneNotif
                     if (scene is null) { context.Result = new NotFoundResult(); return; }
                     if (!await SceneAccess.CanAccessAsync(context.HttpContext.User, db, scene.Value)) { context.Result = new ForbidResult(); return; }
                 }
+                if (scope == "respiration" && receipt.Checksum == checksum && receipt.PatientId is int respirationPatient)
+                {
+                    var original = JsonSerializer.Deserialize<PatientResponse>(receipt.ResultJson, jsonOptions.Value.JsonSerializerOptions)!;
+                    var patient = await db.Patients.AsNoTracking().SingleAsync(p => p.Id == respirationPatient);
+                    // Old receipt: unknown decision stays unknown. Do not infer from today's value.
+                    var decisions = original.FieldResults is null ? null : JsonSerializer.Serialize(original.FieldResults
+                        .Select(r => new Ambulanzsystem.Api.Services.FieldDecision(r.Field, r.Outcome, r.ConflictReason)), new JsonSerializerOptions(JsonSerializerDefaults.Web));
+                    context.Result = new OkObjectResult(PatientResponse.From(patient) with { FieldResults = Ambulanzsystem.Api.Services.FieldWriteDecisions.PatientResults(decisions, patient) });
+                    return;
+                }
                 context.Result = receipt.Checksum != checksum
                     ? new ConflictObjectResult(new ErrorResponse("The order key was already used with different contents."))
                     : new ContentResult { StatusCode = 200, ContentType = "application/json", Content = receipt.ResultJson };

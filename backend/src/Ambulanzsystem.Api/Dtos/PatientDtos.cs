@@ -25,7 +25,8 @@ public record PatientResponse(
     int OperationSceneId,
     bool QrCodeBound,
     DateTime CreatedAt,
-    DateTime UpdatedAt)
+    DateTime UpdatedAt,
+    IReadOnlyList<FieldWriteResult>? FieldResults = null)
 {
     public static PatientResponse From(Patient p) => new(
         p.Id, p.HumanReadableId, p.ClientGeneratedId, p.Name, p.Triagefarbe,

@@ -1552,6 +1552,10 @@ components:
       type: object
       required: [id, operationSceneId, createdAt, updatedAt]
       properties:
+        fieldResults:
+          type: [array, "null"]
+          description: Original per-field decisions with current server values. Null for historical receipts without recorded decisions.
+          items: { $ref: "#/components/schemas/FieldWriteResult" }
         id: { type: integer }
         humanReadableId: { type: [string, "null"], description: Set for manually created patients; no patient-identifying content (FR-PAT-07). }
         clientGeneratedId: { type: [string, "null"], format: uuid }
@@ -1610,6 +1614,15 @@ components:
             - $ref: "#/components/schemas/BodyPartWriteResult"
             - type: "null"
 
+    FieldWriteResult:
+      type: object
+      required: [field, outcome, conflictReason, serverValue]
+      properties:
+        field: { type: string, description: Patient field key or protocol leaf path; location is one aggregate. }
+        outcome: { type: string, enum: [applied, rejected] }
+        conflictReason: { type: [string, "null"], enum: [older_edit, null] }
+        serverValue: { description: Current JSON value at response time including false, zero and null; refreshed on replay. }
+
     BodyPartWriteResult:
       type: object
       required: [outcome, conflictReason, bodyPartId, serverValue]
@@ -1623,6 +1636,10 @@ components:
       type: object
       required: [patientId, status, formState, updatedAt]
       properties:
+        fieldResults:
+          type: [array, "null"]
+          description: Original per-field decisions with current server values. Null for historical receipts without recorded decisions.
+          items: { $ref: "#/components/schemas/FieldWriteResult" }
         patientId: { type: integer }
         status: { type: string, enum: [draft, finalized] }
         formState:
@@ -1682,3 +1699,4 @@ components:
         before: { type: [string, "null"], description: JSON-encoded value before the action, or null when no prior value applies. }
         after: { type: [string, "null"], description: JSON-encoded value after the action, or null when no resulting value applies. }
         reason: { type: [string, "null"], description: Required justification for an administrative clinical correction. }
+        writeDetails: { type: [string, "null"], description: JSON-encoded per-field requested/stored/result values and edit times plus writeId and decision. Unknown edit times remain null. }

@@ -185,6 +185,8 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
         if (patient is null) return NotFound();
         if (!await SceneAccess.CanAccessAsync(User, db, patient.OperationSceneId)) return Forbid();
 
+        TriageProcessedWrite? receipt = null;
+        var decisions = new FieldWriteDecisions(writeId);
         if (writeId is Guid keyId)
         {
             // Hash the bound order, including its original timestamp, before normalization/merge.
@@ -198,10 +200,10 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
             {
                 if (processed.Checksum != checksum)
                     return Conflict(new ErrorResponse("Idempotency-Key was already used for a different triage order."));
-                return Ok(PatientResponse.From(patient));
+                return Ok(PatientResponse.From(patient) with { FieldResults = FieldWriteDecisions.PatientResults(processed.DecisionsJson, patient) });
             }
             // Committed with the patient and audit; the patient lock serializes parallel replays.
-            db.TriageProcessedWrites.Add(new TriageProcessedWrite
+            db.TriageProcessedWrites.Add(receipt = new TriageProcessedWrite
             {
                 PatientId = id, WriteId = keyId, Checksum = checksum,
             });
@@ -217,32 +219,34 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
                 return BadRequest(new ErrorResponse("triageColor must be one of rot, gelb, gruen, schwarz."));
             }
 
-            if (merge.TryApply("triagefarbe", update.ClientUpdatedAt, now))
+            if (decisions.Apply(merge, "triagefarbe", patient.Triagefarbe, normalized, update.ClientUpdatedAt, now))
             {
-                audit.LogFieldWrite(User, "patient", id, id, "triagefarbe", patient.Triagefarbe, normalized);
                 patient.Triagefarbe = normalized;
             }
+            var detail = decisions.Details[^1];
+            audit.LogFieldWrite(User, "patient", id, id, "triagefarbe", detail.StoredValue, detail.ResultValue, detail);
         }
 
-        ApplyOptionalBool(update.Respiration, merge, update.ClientUpdatedAt, now, "atmung", patient, id,
+        ApplyOptionalBool(update.Respiration, decisions, merge, update.ClientUpdatedAt, now, "atmung", patient, id,
             () => patient.Atmung, v => patient.Atmung = v);
-        ApplyOptionalBool(update.Blutung, merge, update.ClientUpdatedAt, now, "blutung", patient, id,
+        ApplyOptionalBool(update.Blutung, decisions, merge, update.ClientUpdatedAt, now, "blutung", patient, id,
             () => patient.Blutung, v => patient.Blutung = v);
-        ApplyOptionalBool(update.Radialispuls, merge, update.ClientUpdatedAt, now, "radialispuls", patient, id,
+        ApplyOptionalBool(update.Radialispuls, decisions, merge, update.ClientUpdatedAt, now, "radialispuls", patient, id,
             () => patient.Radialispuls, v => patient.Radialispuls = v);
-        ApplyOptionalBool(update.Transport, merge, update.ClientUpdatedAt, now, "transport", patient, id,
+        ApplyOptionalBool(update.Transport, decisions, merge, update.ClientUpdatedAt, now, "transport", patient, id,
             () => patient.Transport, v => patient.Transport = v);
-        ApplyOptionalBool(update.Dringend, merge, update.ClientUpdatedAt, now, "dringend", patient, id,
+        ApplyOptionalBool(update.Dringend, decisions, merge, update.ClientUpdatedAt, now, "dringend", patient, id,
             () => patient.Dringend, v => patient.Dringend = v);
-        ApplyOptionalBool(update.Kontaminiert, merge, update.ClientUpdatedAt, now, "kontaminiert", patient, id,
+        ApplyOptionalBool(update.Kontaminiert, decisions, merge, update.ClientUpdatedAt, now, "kontaminiert", patient, id,
             () => patient.Kontaminiert, v => patient.Kontaminiert = v);
 
+        if (receipt is not null) receipt.DecisionsJson = decisions.Save();
         patient.FieldTimestampsJson = merge.Save();
         await db.SaveChangesAsync();
         await tx.CommitAsync();
         await notifier.PatientUpdatedAsync(patient, false);
 
-        return Ok(PatientResponse.From(patient));
+        return Ok(PatientResponse.From(patient) with { FieldResults = FieldWriteDecisions.PatientResults(decisions.Save(), patient) });
     }
 
     private async Task PublishScenePatientListAsync(int sceneId)
@@ -252,14 +256,14 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
     }
 
     private void ApplyOptionalBool(
-        bool? value, FieldMerge merge, DateTime? clientUpdatedAt, DateTime now,
+        bool? value, FieldWriteDecisions decisions, FieldMerge merge, DateTime? clientUpdatedAt, DateTime now,
         string fieldName, Patient patient, int patientId, Func<bool?> getter, Action<bool?> setter)
     {
         if (value is null) return;
-        if (!merge.TryApply(fieldName, clientUpdatedAt, now)) return;
-
-        audit.LogFieldWrite(User, "patient", patientId, patientId, fieldName, getter(), value);
-        setter(value);
+        var applied = decisions.Apply(merge, fieldName, getter(), value, clientUpdatedAt, now);
+        var detail = decisions.Details[^1];
+        audit.LogFieldWrite(User, "patient", patientId, patientId, fieldName, detail.StoredValue, detail.ResultValue, detail);
+        if (applied) setter(value);
     }
 
     [HttpPost("persons/{id:int}/respiration")]
@@ -272,16 +276,18 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
         if (!await SceneAccess.CanAccessAsync(User, db, patient.OperationSceneId)) return Forbid();
 
         var merge = FieldMerge.Load(patient.FieldTimestampsJson);
-        if (merge.TryApply("atmung", request.ClientUpdatedAt, DateTime.UtcNow))
+        Guid? writeId = Guid.TryParse(Request.Headers["Idempotency-Key"], out var parsed) ? parsed : null;
+        var decisions = new FieldWriteDecisions(writeId);
+        if (decisions.Apply(merge, "atmung", patient.Atmung, request.Respiration, request.ClientUpdatedAt, DateTime.UtcNow))
         {
-            audit.LogFieldWrite(User, "patient", id, id, "atmung", patient.Atmung, request.Respiration);
             patient.Atmung = request.Respiration;
             patient.FieldTimestampsJson = merge.Save();
         }
-
+        var detail = decisions.Details[^1];
+        audit.LogFieldWrite(User, "patient", id, id, "atmung", detail.StoredValue, detail.ResultValue, detail);
         await db.SaveChangesAsync();
         await notifier.PatientUpdatedAsync(patient, false);
-        return Ok(PatientResponse.From(patient));
+        return Ok(PatientResponse.From(patient) with { FieldResults = FieldWriteDecisions.PatientResults(decisions.Save(), patient) });
     }
 
     [HttpPost("persons/{id:int}/location")]
@@ -304,6 +310,8 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
         if (patient is null) return NotFound();
         if (!await SceneAccess.CanAccessAsync(User, db, patient.OperationSceneId)) return Forbid();
 
+        LocationProcessedWrite? receipt = null;
+        var decisions = new FieldWriteDecisions(writeId);
         if (writeId is Guid keyId)
         {
             // Hash the bound order, including its original timestamp, before the field merge.
@@ -313,21 +321,19 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
             {
                 if (processed.Checksum != checksum)
                     return Conflict(new ErrorResponse("Idempotency-Key was already used for a different location order."));
-                return Ok(PatientResponse.From(patient));
+                return Ok(PatientResponse.From(patient) with { FieldResults = FieldWriteDecisions.PatientResults(processed.DecisionsJson, patient) });
             }
             // Committed with the patient and audit; the patient lock serializes parallel replays.
-            db.LocationProcessedWrites.Add(new LocationProcessedWrite
+            db.LocationProcessedWrites.Add(receipt = new LocationProcessedWrite
             {
                 PatientId = id, WriteId = keyId, Checksum = checksum,
             });
         }
 
         var merge = FieldMerge.Load(patient.FieldTimestampsJson);
-        if (merge.TryApply("location", request.ClientUpdatedAt, DateTime.UtcNow))
+        var requested = new { lat = (double?)request.Lat, lng = (double?)request.Lng, source = request.Source ?? "gps", accuracyMeters = request.AccuracyMeters, indoorLocation = request.IndoorLocation };
+        if (decisions.Apply(merge, "location", FieldWriteDecisions.Location(patient), requested, request.ClientUpdatedAt, DateTime.UtcNow))
         {
-            var before = new { patient.LatitudePatient, patient.LongitudePatient };
-            audit.LogFieldWrite(User, "patient", id, id, "location", before,
-                new { lat = request.Lat, lng = request.Lng });
 
             patient.LatitudePatient = request.Lat;
             patient.LongitudePatient = request.Lng;
@@ -338,10 +344,13 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
             patient.FieldTimestampsJson = merge.Save();
         }
 
+        var detail = decisions.Details[^1];
+        audit.LogFieldWrite(User, "patient", id, id, "location", detail.StoredValue, detail.ResultValue, detail);
+        if (receipt is not null) receipt.DecisionsJson = decisions.Save();
         await db.SaveChangesAsync();
         await tx.CommitAsync();
         await notifier.PatientUpdatedAsync(patient, false);
-        return Ok(PatientResponse.From(patient));
+        return Ok(PatientResponse.From(patient) with { FieldResults = FieldWriteDecisions.PatientResults(decisions.Save(), patient) });
     }
 
     [HttpGet("persons/{id:int}/triage-history")]

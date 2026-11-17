@@ -110,7 +110,16 @@ public class PatientWriteReceiptTests
         foreach (var reply in replies)
         {
             Assert.Equal(HttpStatusCode.OK, reply.StatusCode);
-            Assert.True(JsonNode.DeepEquals(original, JsonNode.Parse(await reply.Content.ReadAsStringAsync())));
+            var replay = JsonNode.Parse(await reply.Content.ReadAsStringAsync());
+            if (kind == "respiration")
+            {
+                // LWW responses refresh current patient data; PG timestamps have microsecond precision.
+                if (original!["updatedAt"] is not null)
+                    Assert.True(Math.Abs(DateTime.Parse(original["updatedAt"]!.GetValue<string>()).Ticks - DateTime.Parse(replay!["updatedAt"]!.GetValue<string>()).Ticks) < 10);
+                original.AsObject().Remove("updatedAt");
+                replay!.AsObject().Remove("updatedAt");
+            }
+            Assert.True(JsonNode.DeepEquals(original, replay));
         }
         if (kind != "protocol-export") Assert.Equal(HttpStatusCode.Conflict, (await Send(client, url, key, changed)).StatusCode);
         Assert.Equal(snapshot, await Snapshot(factory, scene, tokens));
@@ -136,7 +145,9 @@ public class PatientWriteReceiptTests
         using var restarted = new ReceiptFactory();
         var retry = await Send(await Login(restarted), url, key, body);
         retry.EnsureSuccessStatusCode();
-        Assert.True(JsonNode.DeepEquals(original, JsonNode.Parse(await retry.Content.ReadAsStringAsync())));
+        var restartedReply = JsonNode.Parse(await retry.Content.ReadAsStringAsync());
+        if (kind == "respiration") restartedReply!.AsObject().Remove("updatedAt");
+        Assert.True(JsonNode.DeepEquals(original, restartedReply));
         Assert.Equal(0, restarted.Services.GetRequiredService<RealtimePublisher>().PendingCount);
         Assert.Equal(HttpStatusCode.Unauthorized, (await Send(restarted.CreateClient(), url, key, body)).StatusCode);
     }

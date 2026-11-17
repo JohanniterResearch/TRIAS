@@ -761,6 +761,8 @@ export class AmbulanzprotokollPage implements OnDestroy {
   private readonly signatureCanvas = viewChild<ElementRef<HTMLCanvasElement>>('signatureCanvas');
   private readonly currentPatientId = signal(0);
   private editVersion = 0;
+  private readonly fieldVersions = new Map<string, number>();
+  private readonly submittedVersions = new Map<string, Map<string, number>>();
   private currentWriteId: string | undefined;
   private currentLegacyIdentity: string | undefined;
   private loadGeneration = 0;
@@ -768,6 +770,9 @@ export class AmbulanzprotokollPage implements OnDestroy {
   private signaturePoint: { x: number; y: number } | null = null;
 
   constructor() {
+    this.offlineQueue.protocolResults
+      ?.pipe(takeUntilDestroyed())
+      .subscribe((result) => this.applyFieldResults(result));
     this.offlineQueue.protocolSaved
       .pipe(takeUntilDestroyed())
       .subscribe(({ patientId, sourcePatientId, writeId, legacyIdentity, record }) => {
@@ -827,6 +832,7 @@ export class AmbulanzprotokollPage implements OnDestroy {
 
   protected setValue(path: string, value: unknown): void {
     if (this.locked()) return;
+    this.fieldVersions.set(path, this.editVersion + 1);
     this.form.update((current) => setPath(current, path, value));
     this.persistSnapshot();
   }
@@ -890,6 +896,7 @@ export class AmbulanzprotokollPage implements OnDestroy {
     value: string,
   ): void {
     if (this.locked()) return;
+    this.fieldVersions.set('medications_administered', this.editVersion + 1);
     this.form.update((current) => {
       const rows = [...current.medications_administered];
       const row = rows[index] ?? { medikament: '', dosis: '', art: '', uhrzeit: null };
@@ -905,6 +912,7 @@ export class AmbulanzprotokollPage implements OnDestroy {
     const box = target.getBoundingClientRect();
     const x = ((event.clientX - box.left) / box.width) * 100;
     const y = ((event.clientY - box.top) / box.height) * 100;
+    this.fieldVersions.set('assessment_secondary.bodymap', this.editVersion + 1);
     this.form.update((current) => ({
       ...current,
       assessment_secondary: {
@@ -926,6 +934,7 @@ export class AmbulanzprotokollPage implements OnDestroy {
 
   protected removeMarker(marker: FormState['assessment_secondary']['bodymap'][number]): void {
     if (this.locked()) return;
+    this.fieldVersions.set('assessment_secondary.bodymap', this.editVersion + 1);
     this.form.update((current) => ({
       ...current,
       assessment_secondary: {
@@ -1008,6 +1017,7 @@ export class AmbulanzprotokollPage implements OnDestroy {
     const version = ++this.editVersion;
     this.currentWriteId = undefined;
     this.currentLegacyIdentity = undefined;
+    const capturedVersions = new Map(this.fieldVersions);
     const correctionReason = this.correctionReason();
     const body = {
       status: this.status(),
@@ -1022,6 +1032,7 @@ export class AmbulanzprotokollPage implements OnDestroy {
         finalizedAt: body.status === 'finalized' ? this.finalizedAt() : null,
       })
       .then((writeId) => {
+        this.submittedVersions.set(writeId, capturedVersions);
         if (
           generation === this.loadGeneration &&
           patientId === this.patientId() &&
@@ -1065,6 +1076,24 @@ export class AmbulanzprotokollPage implements OnDestroy {
     window.print();
   }
 
+  private applyFieldResults({
+    patientId,
+    sourcePatientId,
+    writeId,
+    record,
+  }: import('../../sync/offline-queue.service').ProtocolSaveResult): void {
+    if (patientId !== this.patientId() && sourcePatientId !== this.patientId()) return;
+    const captured = this.submittedVersions.get(writeId);
+    for (const result of record.fieldResults ?? []) {
+      if (result.outcome !== 'rejected') continue;
+      const safe = captured
+        ? captured.get(result.field) === this.fieldVersions.get(result.field)
+        : writeId === this.currentWriteId;
+      if (safe) this.form.update((current) => setPath(current, result.field, result.serverValue));
+    }
+    this.submittedVersions.delete(writeId);
+  }
+
   private async load(patientId: number, generation: number): Promise<void> {
     // Legacy provisional-ID mappings are reconciled during app startup. Wait for that atomic
     // rekey before selecting this patient's local draft, otherwise the page can permanently load
@@ -1090,6 +1119,9 @@ export class AmbulanzprotokollPage implements OnDestroy {
       this.saveState.set(`lokal ${this.formatTime(local.updatedAt)}`);
       this.restoreSignature();
     }
+
+    const received = this.offlineQueue.protocolResult?.(patientId, this.currentWriteId);
+    if (received) this.applyFieldResults(received);
 
     this.loadSub = this.api.getProtokollPage1(patientId).subscribe({
       next: (record) => {

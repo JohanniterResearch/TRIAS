@@ -286,6 +286,102 @@ describe('AmbulanzprotokollPage legacy queue acknowledgement', () => {
       page.ngOnDestroy();
     },
   );
+  it('applies rejected server fields individually and preserves a newer local edit, even an edit back to the same value', async () => {
+    const offline = queue();
+    let counter = 0;
+    offline.queueProtocol.mockImplementation(() => Promise.resolve('order-' + ++counter));
+    TestBed.configureTestingModule({
+      providers: [
+        {
+          provide: ActivatedRoute,
+          useValue: { paramMap: new BehaviorSubject(convertToParamMap({ patientId: '1' })) },
+        },
+        { provide: Router, useValue: { navigateByUrl: vi.fn() } },
+        { provide: ApiClient, useValue: { getProtokollPage1: () => of(record('Alt')) } },
+        {
+          provide: ProtokollDraftStore,
+          useValue: { get: () => Promise.resolve(null), put: vi.fn() },
+        },
+        { provide: OfflineQueueService, useValue: offline },
+        { provide: ResponderStateStore, useValue: { patient: () => null, scene: () => null } },
+      ],
+    });
+    const page: any = TestBed.runInInjectionContext(() => new AmbulanzprotokollPage());
+    await tick();
+    page.setValue('patient.vorname', 'Alt');
+    await tick();
+    page.setValue('patient.familienname', 'Neu');
+    await tick();
+    const results = ['patient.vorname', 'patient.familienname'].map((field) => ({
+      field,
+      outcome: 'rejected',
+      conflictReason: 'older_edit',
+      serverValue: 'Server',
+    }));
+    offline.protocolResults.next({
+      patientId: 1,
+      sourcePatientId: 1,
+      writeId: 'order-1',
+      record: { ...record('Server'), fieldResults: results },
+    });
+    expect(page.form().patient.vorname).toBe('Server');
+    expect(page.form().patient.familienname).toBe('Neu');
+    page.setValue('patient.vorname', 'Andere');
+    await tick();
+    page.setValue('patient.vorname', 'Server');
+    await tick();
+    offline.protocolResults.next({
+      patientId: 1,
+      sourcePatientId: 1,
+      writeId: 'order-3',
+      record: {
+        ...record('Veraltet'),
+        fieldResults: [{ field: 'patient.vorname', outcome: 'rejected', serverValue: 'Veraltet' }],
+      },
+    });
+    expect(page.form().patient.vorname).toBe('Server');
+    page.ngOnDestroy();
+  });
+  it('reconciles a conflict received while the pending draft is still loading after reload', async () => {
+    const offline = queue();
+    let finish!: (value: any) => void;
+    offline.pendingProtocol.mockReturnValue(new Promise((resolve) => (finish = resolve)));
+    const result = {
+      patientId: 1,
+      sourcePatientId: 1,
+      writeId: 'reloaded',
+      record: {
+        ...record('Server'),
+        fieldResults: [{ field: 'patient.vorname', outcome: 'rejected', serverValue: 'Server' }],
+      },
+    };
+    let received: any;
+    (offline as any).protocolResult = () => received;
+    TestBed.configureTestingModule({
+      providers: [
+        {
+          provide: ActivatedRoute,
+          useValue: { paramMap: new BehaviorSubject(convertToParamMap({ patientId: '1' })) },
+        },
+        { provide: Router, useValue: { navigateByUrl: vi.fn() } },
+        { provide: ApiClient, useValue: { getProtokollPage1: () => of(record('Server')) } },
+        {
+          provide: ProtokollDraftStore,
+          useValue: { get: () => Promise.resolve(record('Alt')), put: vi.fn() },
+        },
+        { provide: OfflineQueueService, useValue: offline },
+        { provide: ResponderStateStore, useValue: { patient: () => null, scene: () => null } },
+      ],
+    });
+    const page: any = TestBed.runInInjectionContext(() => new AmbulanzprotokollPage());
+    await tick();
+    received = result;
+    offline.protocolResults.next(result); // Response arrives before pending.writeId is loaded.
+    finish({ ...record('Alt'), patientId: 1, writeId: 'reloaded' });
+    await tick();
+    expect(page.form().patient.vorname).toBe('Server');
+    page.ngOnDestroy();
+  });
 });
 
 function record(name: string): any {
@@ -307,6 +403,7 @@ function queue() {
     whenReady: () => Promise.resolve(),
     pendingProtocol: vi.fn().mockResolvedValue(null),
     protocolSaved: new Subject<any>(),
+    protocolResults: new Subject<any>(),
     flush: vi.fn().mockResolvedValue(undefined),
   };
 }

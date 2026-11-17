@@ -179,6 +179,7 @@ public class ProtokollIdempotencyTests
         Assert.Equal(ProtokollWriteChecksum.Compute(order), receipt.Checksum);
         Assert.NotEqual(receipt.Checksum, historicalChecksum);
         receipt.Checksum = historicalChecksum;
+        receipt.DecisionsJson = null;
         await db.SaveChangesAsync();
     }
 
@@ -556,6 +557,9 @@ public class ProtokollIdempotencyTests
             Assert.Equal(expected[name]?.GetValue<DateTime>().Ticks / 10, actual[name]?.GetValue<DateTime>().Ticks / 10);
             expected[name] = actual[name]?.DeepClone();
         }
+        // Form/status are current; per-order decisions can legitimately differ.
+        expected.AsObject().Remove("fieldResults");
+        actual.AsObject().Remove("fieldResults");
         Assert.True(JsonNode.DeepEquals(expected, actual));
     }
 

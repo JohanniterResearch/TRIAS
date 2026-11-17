@@ -1,3 +1,4 @@
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DecimalPipe } from '@angular/common';
 import {
   AfterViewInit,
@@ -154,9 +155,46 @@ export class TriagePage implements AfterViewInit, OnDestroy {
   private map: L.Map | null = null;
   private marker: L.CircleMarker | null = null;
   private flagsRevision = 0;
+  private locationRevision = 0;
+  private readonly locationVersions = new Map<string, number>();
   private flagsEdited = false;
 
   constructor() {
+    this.locationForm.valueChanges
+      .pipe(takeUntilDestroyed())
+      .subscribe(() => this.locationRevision++);
+    this.offlineQueue.patientResults?.pipe(takeUntilDestroyed()).subscribe((result) => {
+      if (
+        result.type !== 'location' ||
+        result.superseded ||
+        (result.patientId !== this.state.patient()?.id &&
+          result.sourcePatientId !== this.state.patient()?.id)
+      )
+        return;
+      const version = this.locationVersions.get(result.writeId) ?? 0;
+      if (version !== this.locationRevision) return;
+      if (
+        !result.patient.fieldResults?.some(
+          (r) => r.field === 'location' && r.outcome === 'rejected',
+        )
+      )
+        return;
+      this.locationForm.patchValue(
+        {
+          lat: result.patient.latitudePatient ?? null,
+          lng: result.patient.longitudePatient ?? null,
+          indoorLocation: result.patient.indoorLocation ?? '',
+        },
+        { emitEvent: false },
+      );
+      if (
+        result.patient.latitudePatient != null &&
+        result.patient.longitudePatient != null &&
+        this.map
+      )
+        this.setMarker(result.patient.latitudePatient, result.patient.longitudePatient);
+      this.locationVersions.delete(result.writeId);
+    });
     effect(() => {
       this.syncStatus.lastSuccessfulQueueFlush();
       this.syncStatus.pendingCount();
@@ -168,7 +206,7 @@ export class TriagePage implements AfterViewInit, OnDestroy {
       return;
     }
     const draft = this.drafts.get(patient.id);
-    this.locationForm.patchValue(draft);
+    this.locationForm.patchValue(draft, { emitEvent: false });
   }
 
   ngAfterViewInit(): void {
@@ -182,11 +220,14 @@ export class TriagePage implements AfterViewInit, OnDestroy {
     this.map = osmMap(element, [lat, lng], patient?.latitudePatient == null ? 13 : 17);
     if (patient?.latitudePatient != null && patient.longitudePatient != null) {
       this.setMarker(patient.latitudePatient, patient.longitudePatient);
-      this.locationForm.patchValue({
-        lat: patient.latitudePatient,
-        lng: patient.longitudePatient,
-        indoorLocation: patient.indoorLocation ?? '',
-      });
+      this.locationForm.patchValue(
+        {
+          lat: patient.latitudePatient,
+          lng: patient.longitudePatient,
+          indoorLocation: patient.indoorLocation ?? '',
+        },
+        { emitEvent: false },
+      );
     }
     this.map.on('click', ({ latlng }: L.LeafletMouseEvent) => {
       this.locationForm.patchValue({ lat: latlng.lat, lng: latlng.lng });
@@ -266,6 +307,7 @@ export class TriagePage implements AfterViewInit, OnDestroy {
     const writeId = crypto.randomUUID();
     this.error.set('');
     try {
+      this.locationVersions.set(writeId, this.locationRevision);
       await this.offlineQueue.queueLocation(patient.id, body, writeId);
       this.message.set('Lokal gespeichert, Sync ausstehend.');
       await this.offlineQueue.flush(true);

@@ -1103,6 +1103,8 @@ export interface components {
             updatedAt: string;
         };
         Patient: {
+            /** @description Original per-field decisions with current server values. Null for historical receipts without recorded decisions. */
+            fieldResults?: components["schemas"]["FieldWriteResult"][] | null;
             id: number;
             /** @description Set for manually created patients; no patient-identifying content (FR-PAT-07). */
             humanReadableId?: string | null;
@@ -1158,6 +1160,16 @@ export interface components {
             updatedAt?: string;
             writeResult?: components["schemas"]["BodyPartWriteResult"] | null;
         };
+        FieldWriteResult: {
+            /** @description Patient field key or protocol leaf path; location is one aggregate. */
+            field: string;
+            /** @enum {string} */
+            outcome: "applied" | "rejected";
+            /** @enum {string|null} */
+            conflictReason: "older_edit" | null;
+            /** @description Current JSON value at response time including false */
+            serverValue: unknown;
+        };
         BodyPartWriteResult: {
             /** @enum {string} */
             outcome: "applied" | "rejected";
@@ -1175,6 +1187,8 @@ export interface components {
             serverValue: 0 | 1;
         };
         ProtokollRecord: {
+            /** @description Original per-field decisions with current server values. Null for historical receipts without recorded decisions. */
+            fieldResults?: components["schemas"]["FieldWriteResult"][] | null;
             patientId: number;
             /** @enum {string} */
             status: "draft" | "finalized";
@@ -1232,6 +1246,8 @@ export interface components {
             after?: string | null;
             /** @description Required justification for an administrative clinical correction. */
             reason?: string | null;
+            /** @description JSON-encoded per-field requested/stored/result values and edit times plus writeId and decision. Unknown edit times remain null. */
+            writeDetails?: string | null;
         };
         incident: {
             ambulanzort?: string;

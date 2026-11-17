@@ -243,6 +243,10 @@ namespace Ambulanzsystem.Api.Data.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("timestamp");
 
+                    b.Property<string>("WriteDetailsJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("write_details_json");
+
                     b.HasKey("Id")
                         .HasName("pk_audit_logs");
 
@@ -345,6 +349,10 @@ namespace Ambulanzsystem.Api.Data.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)")
                         .HasColumnName("checksum");
+
+                    b.Property<string>("DecisionsJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("decisions_json");
 
                     b.Property<DateTime>("ProcessedAt")
                         .ValueGeneratedOnAdd()
@@ -630,6 +638,10 @@ namespace Ambulanzsystem.Api.Data.Migrations
                         .HasColumnType("character varying(64)")
                         .HasColumnName("checksum");
 
+                    b.Property<string>("DecisionsJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("decisions_json");
+
                     b.Property<DateTime>("ProcessedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("timestamp with time zone")
@@ -879,6 +891,10 @@ namespace Ambulanzsystem.Api.Data.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)")
                         .HasColumnName("checksum");
+
+                    b.Property<string>("DecisionsJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("decisions_json");
 
                     b.Property<DateTime>("ProcessedAt")
                         .ValueGeneratedOnAdd()

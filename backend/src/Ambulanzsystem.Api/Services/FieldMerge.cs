@@ -12,6 +12,8 @@ public class FieldMerge
     public static FieldMerge Load(string json) =>
         new(JsonSerializer.Deserialize<Dictionary<string, DateTime>>(json) ?? []);
 
+    public DateTime? Timestamp(string field) => _timestamps.TryGetValue(field, out var time) ? time : null;
+
     public string Save() => JsonSerializer.Serialize(_timestamps);
 
     // Returns true (and records the new timestamp) if this write should be applied — i.e. its
