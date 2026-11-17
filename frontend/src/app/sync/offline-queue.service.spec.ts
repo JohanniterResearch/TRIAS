@@ -48,6 +48,35 @@ describe('OfflineQueueService', () => {
     service = TestBed.inject(OfflineQueueService);
   });
 
+  it.each(['triage', 'location', 'body-part', 'manual-patient'])(
+    'durably upgrades legacy %s identity without inventing an edit time',
+    async (type) => {
+      let stored: any = {
+        id: 'legacy',
+        type,
+        patientId: 7,
+        createdAt: '2026-01-01T00:00:00Z',
+        body: {},
+      };
+      (service as any).withStore = vi.fn(async (_name: string, _mode: string, work: any) =>
+        work({
+          get: () => successfulRequest(structuredClone(stored)),
+          put: (item: any) => {
+            stored = structuredClone(item);
+            return successfulRequest(item);
+          },
+        }),
+      );
+      const first = await (service as any).ensureQueueWriteId(structuredClone(stored));
+      expect(first.writeId).toMatch(/^[0-9a-f-]{36}$/);
+      expect(stored.writeId).toBe(first.writeId);
+      expect(first.body).not.toHaveProperty('clientUpdatedAt');
+      if (type === 'manual-patient') expect(first.body.clientGeneratedId).toBe(first.writeId);
+      const retry = await (service as any).ensureQueueWriteId(structuredClone(stored));
+      expect(retry).toEqual(first);
+    },
+  );
+
   it('uses one intentional replacement key for full protocol snapshots', async () => {
     const added: any[] = [];
     vi.spyOn(service as any, 'add').mockImplementation((item: any) => added.push(item));
@@ -174,6 +203,7 @@ describe('OfflineQueueService', () => {
   it('commits a legacy protocol key before transmission and reuses a concurrently assigned key', async () => {
     const item = {
       ...triage('protocol:7', 7),
+      writeId: undefined,
       type: 'protocol',
       body: { status: 'draft', formState: {} },
     };
@@ -229,6 +259,7 @@ describe('OfflineQueueService', () => {
   it('does not send a legacy protocol when persisting its key fails or a newer snapshot replaced it', async () => {
     const item = {
       ...triage('protocol:7', 7),
+      writeId: undefined,
       type: 'protocol',
       body: { status: 'draft', formState: {} },
     };
@@ -369,7 +400,7 @@ describe('OfflineQueueService', () => {
     await service.flush();
 
     expect(api.updateTriage).toHaveBeenCalledOnce();
-    expect(api.updateTriage).toHaveBeenCalledWith(2, expect.anything(), undefined);
+    expect(api.updateTriage).toHaveBeenCalledWith(2, expect.anything(), expect.any(String));
     expect(remove).toHaveBeenCalledWith(expect.objectContaining({ id: 'ready' }));
     expect((service as any).replaceIfCurrent).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'dependent' }),
@@ -718,7 +749,14 @@ describe('OfflineQueueService', () => {
 });
 
 function triage(id: string, patientId: number): any {
-  return { id, type: 'triage', patientId, body: {}, createdAt: '2026-01-01T00:00:00Z' };
+  return {
+    id,
+    type: 'triage',
+    patientId,
+    writeId: crypto.randomUUID(),
+    body: {},
+    createdAt: '2026-01-01T00:00:00Z',
+  };
 }
 
 function successfulRequest(result: any): any {

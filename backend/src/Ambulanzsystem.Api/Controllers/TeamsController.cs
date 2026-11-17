@@ -1,3 +1,4 @@
+using Ambulanzsystem.Api.Filters;
 using System.Text.Json;
 using Ambulanzsystem.Api.Auth;
 using Ambulanzsystem.Api.Data;
@@ -72,6 +73,7 @@ public class TeamsController(AppDbContext db, SceneNotifier notifier, AuditServi
     // binding can't distinguish "absent" from "null", so this reads the raw JSON body instead.
     [HttpPut("{id:int}")]
     [Authorize(Policy = AuthPolicies.TriageWrite)]
+    [PatientWrite("team")]
     public async Task<IActionResult> Update(int id, [FromBody] JsonElement body)
     {
         var team = await db.Teams.FindAsync(id);

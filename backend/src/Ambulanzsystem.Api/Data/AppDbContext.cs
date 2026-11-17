@@ -22,9 +22,20 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<ProtokollProcessedWrite> ProtokollProcessedWrites => Set<ProtokollProcessedWrite>();
     public DbSet<BodyPartProcessedWrite> BodyPartProcessedWrites => Set<BodyPartProcessedWrite>();
     public DbSet<LocationProcessedWrite> LocationProcessedWrites => Set<LocationProcessedWrite>();
+    public DbSet<PatientWriteReceipt> PatientWriteReceipts => Set<PatientWriteReceipt>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
+        b.Entity<PatientWriteReceipt>(e =>
+        {
+            e.HasKey(x => new { x.Scope, x.Target, x.WriteId });
+            e.Property(x => x.Scope).HasMaxLength(32);
+            e.Property(x => x.Target).HasMaxLength(64);
+            e.Property(x => x.Checksum).HasMaxLength(64).IsRequired();
+            e.Property(x => x.ResultJson).HasColumnType("jsonb");
+            e.Property(x => x.ProcessedAt).HasDefaultValueSql("now()");
+            e.HasOne<Patient>().WithMany().HasForeignKey(x => x.PatientId).OnDelete(DeleteBehavior.Cascade);
+        });
         b.Entity<User>(e =>
         {
             e.HasIndex(x => x.Username).IsUnique();

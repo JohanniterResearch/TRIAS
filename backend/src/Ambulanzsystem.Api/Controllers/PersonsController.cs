@@ -1,3 +1,4 @@
+using Ambulanzsystem.Api.Filters;
 using System.Data;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -11,7 +12,6 @@ using Ambulanzsystem.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
 
 namespace Ambulanzsystem.Api.Controllers;
 
@@ -40,11 +40,11 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
     // create two patients. See B4 verification for a parallel-request test proving this.
     [HttpPost("verify-patient-qr-code")]
     [Authorize(Policy = AuthPolicies.TriageWrite)]
+    [PatientWrite("qr-intake")]
     public async Task<IActionResult> VerifyQrCode(VerifyQrCodeRequest request)
     {
         if (!await SceneAccess.CanAccessAsync(User, db, request.OperationSceneId)) return Forbid();
 
-        await using var tx = await db.Database.BeginTransactionAsync();
 
         var code = await db.QrCodePatients
             .FromSqlInterpolated($"SELECT * FROM qr_code_patients WHERE qr_token = {request.qr_code} FOR UPDATE")
@@ -52,7 +52,6 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
 
         if (code is null)
         {
-            await tx.RollbackAsync();
             return NotFound(new ErrorResponse("Unknown QR code."));
         }
 
@@ -61,7 +60,6 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
             var existing = await db.Patients.Include(p => p.QrCodePatient).FirstAsync(p => p.Id == existingPatientId);
             if (!await SceneAccess.CanAccessAsync(User, db, existing.OperationSceneId))
             {
-                await tx.RollbackAsync();
                 return Forbid();
             }
 
@@ -70,7 +68,6 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
             code.OperationSceneId = request.OperationSceneId;
             audit.LogFieldWrite(User, "patient", existing.Id, existing.Id, "operationSceneId", previousScene, request.OperationSceneId);
             await db.SaveChangesAsync();
-            await tx.CommitAsync();
 
             await notifier.PatientUpdatedAsync(existing, false);
             if (previousScene != request.OperationSceneId)
@@ -91,7 +88,6 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
         code.OperationSceneId = request.OperationSceneId;
         audit.LogFieldWrite(User, "patient", patient.Id, patient.Id, "created", null, "qr-scan");
         await db.SaveChangesAsync();
-        await tx.CommitAsync();
 
         patient.QrCodePatient = code;
         await notifier.PatientUpdatedAsync(patient, true);
@@ -102,6 +98,7 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
 
     [HttpPost("persons/manual")]
     [Authorize(Policy = AuthPolicies.TriageWrite)]
+    [PatientWrite("manual")]
     public async Task<IActionResult> CreateManual(ManualPatientRequest request)
     {
         if (request.ClientGeneratedId is Guid cgid)
@@ -125,32 +122,13 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
             UserIdUser = User.OwnerUserId(),
         };
 
-        // Patient + Body + audit row commit as one all-or-nothing unit (rebuild spec transactional
-        // requirement). The unique index on ClientGeneratedId is the concurrency authority for
-        // offline replay (D3): if two devices race to replay the same client-generated id, the
-        // loser's insert hits that constraint here rather than throwing past the caller — we
-        // discard the failed tracked insert and return the winner's already-committed row instead.
-        await using var tx = await db.Database.BeginTransactionAsync();
-
+        // PatientWriteFilter owns the transaction and scoped creation lock.
         db.Patients.Add(patient);
-        try
-        {
-            await db.SaveChangesAsync();
-        }
-        catch (DbUpdateException ex) when (request.ClientGeneratedId is not null && IsClientGeneratedIdConflict(ex))
-        {
-            await tx.RollbackAsync();
-            db.Entry(patient).State = EntityState.Detached;
-
-            var winner = await db.Patients.FirstAsync(p => p.ClientGeneratedId == request.ClientGeneratedId);
-            if (!await SceneAccess.CanAccessAsync(User, db, winner.OperationSceneId)) return Forbid();
-            return Ok(PatientResponse.From(winner));
-        }
+        await db.SaveChangesAsync();
 
         db.Bodies.Add(new Body { PatientId = patient.Id, BodyPartsJson = BodyRegions.DefaultBodyPartsJson() });
         audit.LogFieldWrite(User, "patient", patient.Id, patient.Id, "created", null, "manual");
         await db.SaveChangesAsync();
-        await tx.CommitAsync();
 
         await notifier.PatientUpdatedAsync(patient, true);
         await PublishScenePatientListAsync(patient.OperationSceneId);
@@ -158,14 +136,9 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
         return StatusCode(201, PatientResponse.From(patient));
     }
 
-    // 23505 is postgres's unique-violation SQL state; the only unique constraint that can fire on
-    // a fresh Patient insert is the ClientGeneratedId index (see AppDbContext), so any unique
-    // violation here is by construction a concurrent replay of the same offline-generated id.
-    private static bool IsClientGeneratedIdConflict(DbUpdateException ex) =>
-        ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation };
-
     [HttpPost("persons/{id:int}/reassign-qr-code")]
     [Authorize(Policy = AuthPolicies.TriageWrite)]
+    [PatientWrite("qr-reassign")]
     public async Task<IActionResult> ReassignQrCode(int id, ReassignQrCodeRequest request)
     {
         var patient = await db.Patients.Include(p => p.QrCodePatient).FirstOrDefaultAsync(p => p.Id == id);
@@ -291,9 +264,9 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
 
     [HttpPost("persons/{id:int}/respiration")]
     [Authorize(Policy = AuthPolicies.TriageWrite)]
+    [PatientWrite("respiration")]
     public async Task<IActionResult> UpdateRespiration(int id, RespirationUpdateRequest request)
     {
-        await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
         var patient = await RowLocks.PatientAsync(db, id);
         if (patient is null) return NotFound();
         if (!await SceneAccess.CanAccessAsync(User, db, patient.OperationSceneId)) return Forbid();
@@ -307,7 +280,6 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
         }
 
         await db.SaveChangesAsync();
-        await tx.CommitAsync();
         await notifier.PatientUpdatedAsync(patient, false);
         return Ok(PatientResponse.From(patient));
     }

@@ -32,7 +32,9 @@ Die Koordinaten-Körperkarte im Ambulanzprotokoll und PLS bleiben separat.
   Gleichstände werden nicht als Konflikt gemeldet. Es gibt keinen zusätzlichen Tie-Breaker.
 - **Altaufträge ohne Zeitstempel:** bleiben unbedingte Zuweisungen. Sie ändern eine vorhandene
   Regionszeit nicht und können auch einen neueren Wert überschreiben. Alte Queue-Einträge ohne
-  `writeId` erhalten in diesem Schritt weiterhin keine nachträgliche UUID.
+  `writeId` erhielten in Schritt 2 keine nachträgliche UUID. Schritt 5 ergänzt diese vor dem
+  nächsten Versand dauerhaft, weiterhin ohne einen Zeitstempel zu erfinden; siehe
+  [Vorgangsabsicherung](paket-d-write-orders.md).
 - **Geräteuhren:** die übermittelte Bearbeitungszeit wird unverändert verglichen; keine
   Begrenzung auf Serverzeit, keine Driftkorrektur und keine neue Prüfungsregel. Eine vorgehende
   Uhr kann spätere reale Änderungen blockieren. Die tatsächliche zeitliche Reihenfolge lässt

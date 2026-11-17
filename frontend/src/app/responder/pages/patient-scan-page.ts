@@ -97,33 +97,38 @@ export class PatientScanPage {
     });
   }
 
-  protected createManual(): void {
+  protected async createManual(): Promise<void> {
     const scene = this.state.scene();
     if (!scene) {
       return;
     }
 
-    const clientGeneratedId = crypto.randomUUID();
     this.run();
-    this.api
-      .createManualPatient({
+    try {
+      // The existing durable queue owns the order before the very first HTTP attempt.
+      const patient = await this.offlineQueue.createProvisionalPatient({
         operationSceneId: scene.id,
         name: this.manualForm.controls.name.value || undefined,
-        clientGeneratedId,
-      })
-      .subscribe({
-        next: async (patient) => {
-          this.state.setPatient(patient);
-          await this.captureLocation(patient.id);
-          this.router.navigateByUrl(`/patient/${patient.id}`);
-        },
-        // "Online" Wi-Fi without uplink, or a proxy 5xx, must not lose the intake: queue it with the
-        // same clientGeneratedId, which the server treats idempotently if the request did arrive.
-        error: (error: unknown) =>
-          isRetryableFailure(error)
-            ? this.createManualOffline(clientGeneratedId)
-            : this.fail(apiErrorMessage(error, 'Patient konnte nicht angelegt werden.')),
+        clientGeneratedId: crypto.randomUUID(),
       });
+      this.state.setPatient(patient);
+      if (navigator.onLine) await this.offlineQueue.flush(true);
+      const blocked = this.offlineQueue
+        .blockedItems()
+        .find((item) => item.patientId === patient.id);
+      if (blocked) {
+        this.fail(blocked.lastError ?? 'Patientenaufnahme wurde abgelehnt.');
+        return;
+      }
+      const current = this.state.patient() ?? patient;
+      await this.captureLocation(current.id);
+      this.busy.set(false);
+      this.router.navigateByUrl(`/patient/${current.id}`);
+    } catch (error) {
+      this.fail(
+        apiErrorMessage(error, 'Patientenaufnahme konnte nicht dauerhaft gespeichert werden.'),
+      );
+    }
   }
 
   protected online(): boolean {
@@ -155,24 +160,6 @@ export class PatientScanPage {
       next: (patient) => this.state.setPatient(patient),
       error: (error: unknown) => (isRetryableFailure(error) ? void queue() : undefined),
     });
-  }
-
-  private async createManualOffline(clientGeneratedId = crypto.randomUUID()): Promise<void> {
-    const scene = this.state.scene();
-    if (!scene) {
-      return;
-    }
-
-    const patient = await this.offlineQueue.createProvisionalPatient({
-      operationSceneId: scene.id,
-      name: this.manualForm.controls.name.value || undefined,
-      clientGeneratedId,
-    });
-    this.state.setPatient(patient);
-    this.busy.set(false);
-    // GPS works without network; the fix is replayed once the patient exists on the server.
-    void this.captureLocation(patient.id).catch(() => undefined);
-    this.router.navigateByUrl(`/patient/${patient.id}`);
   }
 
   private run(): void {

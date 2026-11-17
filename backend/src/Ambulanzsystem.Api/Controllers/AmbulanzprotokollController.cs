@@ -1,4 +1,5 @@
 using System.Data;
+using Ambulanzsystem.Api.Filters;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Ambulanzsystem.Api.Auth;
@@ -65,20 +66,20 @@ public class AmbulanzprotokollController(AppDbContext db, AuditService audit, Sc
             // Missing required JSON cannot be serialized as a bound order.
             if (request.FormState.ValueKind == JsonValueKind.Undefined)
                 return BadRequest(new ErrorResponse("formState must be a JSON object."));
+            var processed = await db.ProtokollProcessedWrites.FindAsync(patientId, keyId);
             string checksum;
             try
             {
                 checksum = ProtokollWriteChecksum.Compute(request);
+                if (processed is not null && !ProtokollWriteChecksum.MatchesStored(request, checksum, processed.Checksum))
+                    return Conflict(new ErrorResponse("Idempotency-Key was already used for a different protocol order."));
             }
             catch (Exception ex) when (ex is JsonException or InvalidOperationException or FormatException)
             {
                 return BadRequest(new ErrorResponse("formState contains a value that doesn't match the expected field types."));
             }
-            var processed = await db.ProtokollProcessedWrites.FindAsync(patientId, keyId);
             if (processed is not null)
             {
-                if (processed.Checksum != checksum)
-                    return Conflict(new ErrorResponse("Idempotency-Key was already used for a different protocol order."));
                 // Access was checked above. A replay is not a new correction, even after finalize.
                 var currentJson = FormStateMerge.WithDefaults(record?.FormStateJson ?? "{}");
                 return Ok(new ProtokollRecordResponse(patientId, record?.Status ?? "draft",
@@ -197,6 +198,7 @@ public class AmbulanzprotokollController(AppDbContext db, AuditService audit, Sc
     // JSON export (FR-DOC-09): persists an immutable archive snapshot (FR-DOC-14) and
     // audit-logs the export action, distinct from the live/mutable AmbulanzprotokollPage1 row.
     [HttpGet("export")]
+    [PatientWrite("protocol-export")]
     public async Task<IActionResult> Export(int patientId)
     {
         var patient = await db.Patients.Include(p => p.OperationScene).FirstOrDefaultAsync(p => p.Id == patientId);

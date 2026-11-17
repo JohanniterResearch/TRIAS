@@ -3,7 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { of, throwError } from 'rxjs';
 
-import { ApiClient } from '../../api/api-client';
+import { ApiClient, ApiRequestError } from '../../api/api-client';
 import { OfflineQueueService } from '../../sync/offline-queue.service';
 import { SyncStatusService } from '../../sync/sync-status.service';
 import { ResponderStateStore } from '../services/responder-state';
@@ -75,6 +75,28 @@ describe('triage flag edits', () => {
     instance.saveFlags('transport');
     expect(api.updateTriage).toHaveBeenCalledWith(
       7,
+      { transport: true, clientUpdatedAt: expect.any(String) },
+      expect.any(String),
+    );
+  });
+
+  it('keeps the online UUID and body when a structured 503 response is queued', async () => {
+    const instance = await page();
+    api.updateTriage.mockReturnValue(
+      throwError(() => new ApiRequestError(503, { message: 'Server temporarily unavailable' })),
+    );
+    instance.flagsForm.controls.transport.setValue(true);
+    instance.saveFlags('transport');
+    expect(queue.queueTriage).toHaveBeenCalledWith(...api.updateTriage.mock.calls[0]);
+  });
+
+  it('queues provisional-patient edits without sending an invalid negative patient id', async () => {
+    patient.set({ ...patient(), id: -7 });
+    const instance = await page();
+    instance.save({ transport: true });
+    expect(api.updateTriage).not.toHaveBeenCalled();
+    expect(queue.queueTriage).toHaveBeenCalledWith(
+      -7,
       { transport: true, clientUpdatedAt: expect.any(String) },
       expect.any(String),
     );

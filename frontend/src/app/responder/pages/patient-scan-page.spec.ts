@@ -11,15 +11,21 @@ import { PatientScanPage } from './patient-scan-page';
 describe('PatientScanPage manual intake', () => {
   function setup(error: unknown) {
     const createProvisionalPatient = vi.fn().mockResolvedValue({ id: -1 });
+    const flush = vi.fn().mockResolvedValue(undefined);
+    const blockedItems = () =>
+      error instanceof ApiRequestError ? [{ patientId: -1, lastError: 'Abgelehnt' }] : [];
     TestBed.configureTestingModule({
       providers: [
         { provide: ApiClient, useValue: { createManualPatient: () => throwError(() => error) } },
-        { provide: OfflineQueueService, useValue: { createProvisionalPatient } },
+        {
+          provide: OfflineQueueService,
+          useValue: { createProvisionalPatient, flush, blockedItems },
+        },
         { provide: GeolocationService, useValue: { currentPosition: () => Promise.resolve(null) } },
         { provide: Router, useValue: { navigateByUrl: vi.fn() } },
         {
           provide: ResponderStateStore,
-          useValue: { scene: () => ({ id: 4 }), setPatient: vi.fn() },
+          useValue: { scene: () => ({ id: 4 }), patient: () => ({ id: -1 }), setPatient: vi.fn() },
         },
       ],
     });
@@ -46,7 +52,7 @@ describe('PatientScanPage manual intake', () => {
     page.createManual();
     await new Promise((resolve) => setTimeout(resolve));
 
-    expect(createProvisionalPatient).not.toHaveBeenCalled();
+    expect(createProvisionalPatient).toHaveBeenCalledOnce();
     expect(page.error()).not.toBe('');
   });
 });

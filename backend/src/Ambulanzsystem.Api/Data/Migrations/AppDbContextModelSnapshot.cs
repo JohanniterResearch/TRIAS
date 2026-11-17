@@ -568,6 +568,52 @@ namespace Ambulanzsystem.Api.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Ambulanzsystem.Api.Domain.PatientWriteReceipt", b =>
+                {
+                    b.Property<string>("Scope")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("scope");
+
+                    b.Property<string>("Target")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("target");
+
+                    b.Property<Guid>("WriteId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("write_id");
+
+                    b.Property<string>("Checksum")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("checksum");
+
+                    b.Property<int?>("PatientId")
+                        .HasColumnType("integer")
+                        .HasColumnName("patient_id");
+
+                    b.Property<DateTime>("ProcessedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("processed_at")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("ResultJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("result_json");
+
+                    b.HasKey("Scope", "Target", "WriteId")
+                        .HasName("pk_patient_write_receipts");
+
+                    b.HasIndex("PatientId")
+                        .HasDatabaseName("ix_patient_write_receipts_patient_id");
+
+                    b.ToTable("patient_write_receipts", (string)null);
+                });
+
             modelBuilder.Entity("Ambulanzsystem.Api.Domain.ProtokollProcessedWrite", b =>
                 {
                     b.Property<int>("PatientId")
@@ -1051,6 +1097,15 @@ namespace Ambulanzsystem.Api.Data.Migrations
                     b.Navigation("OperationScene");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Ambulanzsystem.Api.Domain.PatientWriteReceipt", b =>
+                {
+                    b.HasOne("Ambulanzsystem.Api.Domain.Patient", null)
+                        .WithMany()
+                        .HasForeignKey("PatientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("fk_patient_write_receipts_patients_patient_id");
                 });
 
             modelBuilder.Entity("Ambulanzsystem.Api.Domain.ProtokollProcessedWrite", b =>

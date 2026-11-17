@@ -123,7 +123,7 @@ export class OfflineQueueService {
   }
 
   async createProvisionalPatient(body: ManualPatientRequest): Promise<Patient> {
-    const provisionalId = -Date.now();
+    const provisionalId = -Math.floor(Math.random() * Number.MAX_SAFE_INTEGER) - 1;
     const now = new Date().toISOString();
     const clientGeneratedId = body.clientGeneratedId ?? crypto.randomUUID();
     await this.add(
@@ -291,6 +291,11 @@ export class OfflineQueueService {
           if (item.type === 'protocol' && !item.writeId) {
             // Legacy orders must have a durable identity before any HTTP request is started.
             const keyed = await this.ensureProtocolWriteId(item);
+            if (!keyed) continue;
+            item = keyed;
+          }
+          if (!item.writeId || (item.type === 'manual-patient' && !item.body.clientGeneratedId)) {
+            const keyed = await this.ensureQueueWriteId(item);
             if (!keyed) continue;
             item = keyed;
           }
@@ -490,6 +495,18 @@ export class OfflineQueueService {
       const current = await request<QueueItem | undefined>(store.get(item.id));
       if (!current || current.type !== 'protocol' || !sameQueueWrite(current, item)) return null;
       const keyed = { ...current, writeId: current.writeId ?? crypto.randomUUID() };
+      await request(store.put(keyed));
+      return keyed;
+    });
+  }
+
+  private async ensureQueueWriteId(item: QueueItem): Promise<QueueItem | null> {
+    return this.withStore(queueStore, 'readwrite', async (store) => {
+      const current = await request<QueueItem | undefined>(store.get(item.id));
+      if (!current || current.type !== item.type || !sameQueueWrite(current, item)) return null;
+      const keyed = { ...current, writeId: current.writeId ?? crypto.randomUUID() };
+      if (keyed.type === 'manual-patient' && !keyed.body.clientGeneratedId)
+        keyed.body = { ...keyed.body, clientGeneratedId: keyed.writeId };
       await request(store.put(keyed));
       return keyed;
     });

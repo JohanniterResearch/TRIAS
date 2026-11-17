@@ -1410,6 +1410,8 @@ export interface components {
         };
     };
     parameters: {
+        /** @description Stable non-empty UUID per new user action, scoped to operation and target. Keep key and body on retry. Matching replays return the original result (creation replays use 200) without effects; changed contents return 409. Current access is checked on every replay. Without a key no reliable duplicate protection is possible. */
+        patientWriteKey: string;
         idPath: number;
         patientIdPath: number;
         /** @description Opaque, Admin-only reference returned by the patient search; it is not a patient primary key. */
@@ -1793,7 +1795,10 @@ export interface operations {
     updateAdminPatient: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Stable non-empty UUID per new user action, scoped to operation and target. Keep key and body on retry. Matching replays return the original result (creation replays use 200) without effects; changed contents return 409. Current access is checked on every replay. Without a key no reliable duplicate protection is possible. */
+                "Idempotency-Key"?: components["parameters"]["patientWriteKey"];
+            };
             path: {
                 /** @description Opaque, Admin-only reference returned by the patient search; it is not a patient primary key. */
                 reference: components["parameters"]["adminPatientReferencePath"];
@@ -1853,7 +1858,10 @@ export interface operations {
     updateAdminPatientBodyParts: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Stable non-empty UUID per new user action, scoped to operation and target. Keep key and body on retry. Matching replays return the original result (creation replays use 200) without effects; changed contents return 409. Current access is checked on every replay. Without a key no reliable duplicate protection is possible. */
+                "Idempotency-Key"?: components["parameters"]["patientWriteKey"];
+            };
             path: {
                 /** @description Opaque, Admin-only reference returned by the patient search; it is not a patient primary key. */
                 reference: components["parameters"]["adminPatientReferencePath"];
@@ -1876,6 +1884,13 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            /** @description Idempotency-Key reused with different order contents. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     availableAdminPatientQrCodes: {
@@ -1904,7 +1919,10 @@ export interface operations {
     assignAdminPatientQrCode: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Stable non-empty UUID per new user action, scoped to operation and target. Keep key and body on retry. Matching replays return the original result (creation replays use 200) without effects; changed contents return 409. Current access is checked on every replay. Without a key no reliable duplicate protection is possible. */
+                "Idempotency-Key"?: components["parameters"]["patientWriteKey"];
+            };
             path: {
                 /** @description Opaque, Admin-only reference returned by the patient search; it is not a patient primary key. */
                 reference: components["parameters"]["adminPatientReferencePath"];
@@ -2398,7 +2416,10 @@ export interface operations {
     updateTeam: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Stable non-empty UUID per new user action, scoped to operation and target. Keep key and body on retry. Matching replays return the original result (creation replays use 200) without effects; changed contents return 409. Current access is checked on every replay. Without a key no reliable duplicate protection is possible. */
+                "Idempotency-Key"?: components["parameters"]["patientWriteKey"];
+            };
             path: {
                 id: components["parameters"]["idPath"];
             };
@@ -2427,6 +2448,13 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+            /** @description Idempotency-Key reused with different order contents. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     listPersons: {
@@ -2455,7 +2483,10 @@ export interface operations {
     verifyPatientQrCode: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Stable non-empty UUID per new user action, scoped to operation and target. Keep key and body on retry. Matching replays return the original result (creation replays use 200) without effects; changed contents return 409. Current access is checked on every replay. Without a key no reliable duplicate protection is possible. */
+                "Idempotency-Key"?: components["parameters"]["patientWriteKey"];
+            };
             path?: never;
             cookie?: never;
         };
@@ -2489,6 +2520,13 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             /** @description Unknown QR token — rejected (UC-04). */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Idempotency-Key reused with different order contents. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2536,6 +2574,13 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            /** @description clientGeneratedId reused with different creation contents. Historical patients without a recorded creation checksum retain legacy replay behavior. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     updatePatientTriage: {
@@ -2595,7 +2640,10 @@ export interface operations {
     updatePatientRespiration: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Stable non-empty UUID per new user action, scoped to operation and target. Keep key and body on retry. Matching replays return the original result (creation replays use 200) without effects; changed contents return 409. Current access is checked on every replay. Without a key no reliable duplicate protection is possible. */
+                "Idempotency-Key"?: components["parameters"]["patientWriteKey"];
+            };
             path: {
                 id: components["parameters"]["idPath"];
             };
@@ -2626,6 +2674,13 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+            /** @description Idempotency-Key reused with different order contents. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     updatePatientLocation: {
@@ -2692,7 +2747,10 @@ export interface operations {
     reassignPatientQrCode: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Stable non-empty UUID per new user action, scoped to operation and target. Keep key and body on retry. Matching replays return the original result (creation replays use 200) without effects; changed contents return 409. Current access is checked on every replay. Without a key no reliable duplicate protection is possible. */
+                "Idempotency-Key"?: components["parameters"]["patientWriteKey"];
+            };
             path: {
                 id: components["parameters"]["idPath"];
             };
@@ -2844,7 +2902,10 @@ export interface operations {
     exportAmbulanzprotokollPage1: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Stable non-empty UUID per new user action, scoped to operation and target. Keep key and body on retry. Matching replays return the original result (creation replays use 200) without effects; changed contents return 409. Current access is checked on every replay. Without a key no reliable duplicate protection is possible. */
+                "Idempotency-Key"?: components["parameters"]["patientWriteKey"];
+            };
             path: {
                 patientId: components["parameters"]["patientIdPath"];
             };
@@ -2864,6 +2925,13 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            /** @description Idempotency-Key reused with different order contents. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     getBodyParts: {

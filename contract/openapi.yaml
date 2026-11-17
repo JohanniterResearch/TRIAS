@@ -308,7 +308,7 @@ paths:
       tags: [admin]
       operationId: updateAdminPatient
       description: Applies an administrative clinical correction with an audit reason where required.
-      parameters: [{ $ref: "#/components/parameters/adminPatientReferencePath" }]
+      parameters: [{ $ref: "#/components/parameters/adminPatientReferencePath" }, { $ref: "#/components/parameters/patientWriteKey" }]
       requestBody: { required: true, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
       responses:
         "200": { description: Updated, content: { application/json: { schema: { $ref: "#/components/schemas/AdminPatient" } } } }
@@ -327,11 +327,13 @@ paths:
       tags: [admin]
       operationId: updateAdminPatientBodyParts
       description: Replaces the complete validated canonical body-map state as an administrative clinical correction.
-      parameters: [{ $ref: "#/components/parameters/adminPatientReferencePath" }]
+      parameters: [{ $ref: "#/components/parameters/adminPatientReferencePath" }, { $ref: "#/components/parameters/patientWriteKey" }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/AdminBodyPartsUpdate" } } } }
       responses:
         "200": { description: Updated detailed record, content: { application/json: { schema: { $ref: "#/components/schemas/AdminPatientDetails" } } } }
         "400": { $ref: "#/components/responses/BadRequest" }
+        "409": { description: Idempotency-Key reused with different order contents. }
+
   /api/admin/patient-qr-codes/available:
     get:
       tags: [admin]
@@ -347,7 +349,7 @@ paths:
       tags: [admin]
       operationId: assignAdminPatientQrCode
       description: Atomically assigns either an unused opaque QR reference or a new QR code. A newly generated token is returned only for one-time printing.
-      parameters: [{ $ref: "#/components/parameters/adminPatientReferencePath" }]
+      parameters: [{ $ref: "#/components/parameters/adminPatientReferencePath" }, { $ref: "#/components/parameters/patientWriteKey" }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/AssignAdminPatientQrCode" } } } }
       responses:
         "200": { description: Assigned, content: { application/json: { schema: { $ref: "#/components/schemas/AssignAdminPatientQrCodeResponse" } } } }
@@ -710,7 +712,7 @@ paths:
         online-only in V1: requests carry no client timestamp, disjoint fields are updated
         independently, and concurrent writes to the same field use database-arrival order.
       summary: Update any subset of optional coordination fields (FR-TEAM-07 — every field independently optional/clearable). Policy TriageWrite.
-      parameters: [{ $ref: "#/components/parameters/idPath" }]
+      parameters: [{ $ref: "#/components/parameters/idPath" }, { $ref: "#/components/parameters/patientWriteKey" }]
       requestBody:
         required: true
         content:
@@ -735,6 +737,8 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
 
   # ----------------------------------------------------------- persons
+        "409": { description: Idempotency-Key reused with different order contents. }
+
   /api/persons:
     get:
       tags: [persons]
@@ -766,6 +770,8 @@ paths:
         fully-seeded Body, binds code, links scene (201). Bound -> returns existing
         patient, refreshes scene link (200). Concurrency-safe (row lock) — parallel
         scans of the same code yield the same patient. Online-only. Policy TriageWrite.
+      parameters:
+        - { $ref: "#/components/parameters/patientWriteKey" }
       requestBody:
         required: true
         content:
@@ -789,6 +795,8 @@ paths:
               schema: { $ref: "#/components/schemas/VerifyQrResult" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Unknown QR token — rejected (UC-04). }
+
+        "409": { description: Idempotency-Key reused with different order contents. }
 
   /api/persons/manual:
     post:
@@ -824,6 +832,8 @@ paths:
               schema: { $ref: "#/components/schemas/Patient" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+
+        "409": { description: clientGeneratedId reused with different creation contents. Historical patients without a recorded creation checksum retain legacy replay behavior. }
   /api/persons/{id}/update-triage-color:
     post:
       tags: [persons]
@@ -886,7 +896,7 @@ paths:
       operationId: updatePatientRespiration
       description: Updates the patient's breathing-sufficient flag and publishes the resulting patient state.
       summary: Set the breathing-sufficient flag. Publishes realtime update. Policy TriageWrite.
-      parameters: [{ $ref: "#/components/parameters/idPath" }]
+      parameters: [{ $ref: "#/components/parameters/idPath" }, { $ref: "#/components/parameters/patientWriteKey" }]
       requestBody:
         required: true
         content:
@@ -907,6 +917,8 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+
+        "409": { description: Idempotency-Key reused with different order contents. }
 
   /api/persons/{id}/location:
     post:
@@ -964,7 +976,7 @@ paths:
       operationId: reassignPatientQrCode
       description: Replaces the patient's current QR binding with the supplied unbound patient QR token.
       summary: Unbind the patient's current QR code and bind the given UNBOUND code (mis-attached tag correction, FR-QR-07). Policy TriageWrite.
-      parameters: [{ $ref: "#/components/parameters/idPath" }]
+      parameters: [{ $ref: "#/components/parameters/idPath" }, { $ref: "#/components/parameters/patientWriteKey" }]
       requestBody:
         required: true
         content:
@@ -1094,7 +1106,7 @@ paths:
         authorized patients; a named responder may export only a patient they own.
         Anonymous QR sessions and cross-owner responders receive 403, with no archive
         or success audit created.
-      parameters: [{ $ref: "#/components/parameters/patientIdPath" }]
+      parameters: [{ $ref: "#/components/parameters/patientIdPath" }, { $ref: "#/components/parameters/patientWriteKey" }]
       responses:
         "200":
           description: Export document.
@@ -1106,6 +1118,8 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
 
   # -------------------------------------------------------- body parts
+
+        "409": { description: Idempotency-Key reused with different order contents. }
   /api/body-parts:
     get:
       tags: [body-parts]
@@ -1279,6 +1293,13 @@ components:
       bearerFormat: JWT
 
   parameters:
+    patientWriteKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Stable non-empty UUID per new user action, scoped to operation and target. Keep key and body on retry. Matching replays return the original result (creation replays use 200) without effects; changed contents return 409. Current access is checked on every replay. Without a key no reliable duplicate protection is possible.
+      schema: { type: string, format: uuid, pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' }
+
     idPath:
       name: id
       in: path
