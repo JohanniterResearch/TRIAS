@@ -4,7 +4,7 @@ import { Router, RouterLink } from '@angular/router';
 
 import { apiErrorMessage, ApiClient } from '../../api/api-client';
 import { OfflineQueueService } from '../../sync/offline-queue.service';
-import { QrScanner } from '../../shared/qr-scanner';
+import { normalizeScannedQrCode, QrScanner } from '../../shared/qr-scanner';
 import { AuthStore } from '../auth.store';
 import { homeRouteForToken } from '../auth.rules';
 import { DevAccess } from '../components/dev-access';
@@ -72,8 +72,9 @@ export class LoginPage {
   private readonly offlineQueue = inject(OfflineQueueService);
 
   protected submitQr(qrCode = this.qrForm.controls.qrCode.value): void {
+    const normalized = normalizeScannedQrCode(qrCode);
     this.run(() =>
-      this.api.qrLogin(qrCode.trim()).subscribe({
+      this.api.qrLogin(normalized).subscribe({
         next: (result) => {
           const expired = this.auth.activeSession();
           if (
