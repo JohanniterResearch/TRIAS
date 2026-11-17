@@ -74,8 +74,8 @@ export interface BlockedItem {
   lastError: string | null;
   createdAt: string;
 }
-type PendingWrite = Exclude<QueueItem, { type: 'manual-patient' }>;
 type ProtocolWrite = Extract<QueueItem, { type: 'protocol' }>;
+type ClinicalWrite = Extract<QueueItem, { type: 'triage' | 'location' | 'body-part' }>;
 type PatientMapping = { provisionalId: number; realId: number; patient: Patient };
 
 const dbName = 'ambulanzsystem-offline';
@@ -97,6 +97,7 @@ export class OfflineQueueService {
   private readonly protocolNotBefore = new Map<number, number>();
   private persistence: Promise<void> = Promise.resolve();
   private readonly unsavedProtocols = new Map<number, ProtocolWrite>();
+  private readonly unsavedClinical = new Map<string, ClinicalWrite>();
   readonly localWrites = signal(0);
   readonly blockedItems = signal<BlockedItem[]>([]);
   private readonly exportedIds = new Set<string>();
@@ -150,7 +151,9 @@ export class OfflineQueueService {
     await this.whenReady();
     const realId = await this.realPatientId(patientId);
     const pending: Array<Extract<QueueItem, { type: 'triage' }>> = [];
-    for (const item of await this.items()) {
+    const items = new Map((await this.items()).map((item) => [item.id, item]));
+    for (const item of this.unsavedClinical.values()) items.set(item.id, item);
+    for (const item of items.values()) {
       if (item.type === 'triage' && (await this.realPatientId(item.patientId)) === realId) {
         pending.push(item);
       }
@@ -173,7 +176,7 @@ export class OfflineQueueService {
       createdAt: new Date().toISOString(),
     });
     if (writeId) item.writeId = writeId;
-    await this.add(item);
+    await this.persistClinical(item);
   }
 
   // One key per patient (location) or per region (body part): a newer intent replaces the older
@@ -183,12 +186,12 @@ export class OfflineQueueService {
       id: `location:${patientId}`,
       type: 'location',
       patientId,
-      body: { ...body, clientUpdatedAt: body.clientUpdatedAt ?? new Date().toISOString() },
+      body: structuredClone(body),
       createdAt: new Date().toISOString(),
     });
     // Keep the key of an online attempt that may already have reached the server.
     if (writeId) item.writeId = writeId;
-    await this.add(item);
+    await this.persistClinical(item);
   }
 
   async queueBodyPart(patientId: number, body: BodyPartRequest, writeId?: string): Promise<void> {
@@ -202,7 +205,26 @@ export class OfflineQueueService {
     });
     // Keep the key of an online attempt that may already have reached the server.
     if (writeId) item.writeId = writeId;
-    await this.add(item);
+    await this.persistClinical(item);
+  }
+
+  private updateLocalWrites(): void {
+    this.localWrites.set(this.unsavedProtocols.size + this.unsavedClinical.size);
+  }
+
+  // Serialize local commits, including rapid replacements of one region/location. A failed
+  // transaction retains the captured order in memory for an explicit/automatic storage retry.
+  private persistClinical(item: ClinicalWrite): Promise<void> {
+    this.unsavedClinical.set(item.id, item);
+    this.updateLocalWrites();
+    const writing = this.persistence.then(async () => {
+      if (this.unsavedClinical.get(item.id) !== item) return;
+      await this.add(item);
+      if (this.unsavedClinical.get(item.id) === item) this.unsavedClinical.delete(item.id);
+      this.updateLocalWrites();
+    });
+    this.persistence = writing.catch(() => undefined);
+    return writing;
   }
 
   queueProtocol(
@@ -220,7 +242,7 @@ export class OfflineQueueService {
     });
     this.protocolNotBefore.set(patientId, Date.now() + 800);
     this.unsavedProtocols.set(patientId, item);
-    this.localWrites.set(this.unsavedProtocols.size);
+    this.updateLocalWrites();
     return this.persistProtocol(item).then(() => item.writeId!);
   }
 
@@ -249,7 +271,7 @@ export class OfflineQueueService {
       await this.add(item);
       if (this.unsavedProtocols.get(item.patientId) === item) {
         this.unsavedProtocols.delete(item.patientId);
-        this.localWrites.set(this.unsavedProtocols.size);
+        this.updateLocalWrites();
       }
       // The committed queue remains authoritative if the optional draft cache fails.
       await this.protocolDrafts.put(protocolDraft(item)).catch(() => undefined);
@@ -270,9 +292,12 @@ export class OfflineQueueService {
     this.flushing = true;
     try {
       for (const item of this.unsavedProtocols.values()) await this.persistProtocol(item);
+      for (const item of this.unsavedClinical.values()) await this.persistClinical(item);
       await this.persistence;
       if (!navigator.onLine) return;
       for (let item of await this.items()) {
+        // Never send a persisted predecessor while its replacement still needs a local commit.
+        if (this.unsavedClinical.has(item.id)) continue;
         if (
           item.type === 'protocol' &&
           (this.unsavedProtocols.has(item.patientId) ||
@@ -329,6 +354,33 @@ export class OfflineQueueService {
               ...results.filter((r) => r.patientId !== patientId || r.region !== completion.region),
               completion,
             ]);
+            continue;
+          }
+          if (item.type === 'triage' || item.type === 'location') {
+            const sourcePatientId = item.patientId;
+            const patientId = await this.realPatientId(item.patientId);
+            if (patientId < 0) {
+              await this.defer(item, 'Patientenzuordnung ausstehend');
+              continue;
+            }
+            const patient = await firstValueFrom(
+              item.type === 'triage'
+                ? this.api.updateTriage(patientId, item.body, item.writeId)
+                : this.api.updatePatientLocation(patientId, item.body, item.writeId),
+            );
+            const pending = [...(await this.items()), ...this.unsavedClinical.values()].filter(
+              (other) =>
+                (other.type === 'triage' || other.type === 'location') &&
+                !sameQueueWrite(other, item) &&
+                (other.patientId === sourcePatientId || other.patientId === patientId),
+            );
+            // Cache before acknowledgement. Overlay newer local fields, including captures
+            // whose local transaction is unfinished; keep unrelated accepted server fields.
+            this.responderState.replacePatient(
+              patientId,
+              this.withPendingPatientEdits(patient, pending),
+            );
+            await this.deleteIfCurrent(item);
             continue;
           }
           const result = await this.replay(item);
@@ -403,7 +455,10 @@ export class OfflineQueueService {
 
   /** Patient IDs (provisional and real) that still have unsent writes on this device. */
   async pendingPatientIds(): Promise<Set<number>> {
-    const ids = new Set<number>(this.unsavedProtocols.keys());
+    const ids = new Set<number>([
+      ...this.unsavedProtocols.keys(),
+      ...[...this.unsavedClinical.values()].map((item) => item.patientId),
+    ]);
     for (const item of await this.items()) {
       const id = item.type === 'manual-patient' ? item.provisionalId : item.patientId;
       ids.add(id);
@@ -454,25 +509,39 @@ export class OfflineQueueService {
     ];
   }
 
-  private async replay(
-    item: Exclude<PendingWrite, { type: 'body-part' }>,
-  ): Promise<boolean | ProtocolSaveResult> {
+  private withPendingPatientEdits(patient: Patient, pending: QueueItem[]): Patient {
+    const updated = { ...patient };
+    for (const item of pending) {
+      if (item.type === 'triage') {
+        const fields = {
+          triageColor: 'triagefarbe',
+          respiration: 'atmung',
+          blutung: 'blutung',
+          radialispuls: 'radialispuls',
+          transport: 'transport',
+          dringend: 'dringend',
+          kontaminiert: 'kontaminiert',
+        } as const;
+        for (const [key, field] of Object.entries(fields)) {
+          const value = item.body[key as keyof TriageUpdateRequest];
+          if (value !== null && value !== undefined) Object.assign(updated, { [field]: value });
+        }
+      } else if (item.type === 'location') {
+        Object.assign(updated, {
+          latitudePatient: item.body.lat,
+          longitudePatient: item.body.lng,
+          locationSource: item.body.source ?? 'gps',
+          locationAccuracyMeters: item.body.accuracyMeters ?? null,
+          indoorLocation: item.body.indoorLocation ?? null,
+        });
+      }
+    }
+    return updated;
+  }
+
+  private async replay(item: ProtocolWrite): Promise<boolean | ProtocolSaveResult> {
     const patientId = await this.realPatientId(item.patientId);
     if (patientId < 0) return false;
-    if (item.type === 'triage') {
-      const patient = await firstValueFrom(
-        this.api.updateTriage(patientId, item.body, item.writeId),
-      );
-      this.responderState.replacePatient(patientId, patient);
-      return true;
-    }
-    if (item.type === 'location') {
-      const patient = await firstValueFrom(
-        this.api.updatePatientLocation(patientId, item.body, item.writeId),
-      );
-      this.responderState.replacePatient(patientId, patient);
-      return true;
-    }
     const record = await firstValueFrom(
       this.api.saveProtokollPage1(patientId, item.body, item.writeId),
     );

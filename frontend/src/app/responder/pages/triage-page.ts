@@ -13,7 +13,6 @@ import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import * as L from 'leaflet';
 
-import { apiErrorMessage, ApiClient, isRetryableFailure } from '../../api/api-client';
 import type { components } from '../../api/openapi-types';
 import { DEFAULT_MAP_CENTER, osmMap } from '../../shared/osm-map';
 import { TRIAGE_COLORS, type TriageColor } from '../../shared/triage';
@@ -147,7 +146,6 @@ export class TriagePage implements AfterViewInit, OnDestroy {
     { name: 'kontaminiert', label: 'Kontaminiert' },
   ] as const;
 
-  private readonly api = inject(ApiClient);
   private readonly router = inject(Router);
   private readonly drafts = inject(TriageDraftStore);
   private readonly offlineQueue = inject(OfflineQueueService);
@@ -230,7 +228,7 @@ export class TriagePage implements AfterViewInit, OnDestroy {
     }
   }
 
-  protected save(body: object): void {
+  protected async save(body: object): Promise<void> {
     const patient = this.state.patient();
     if (!patient) {
       return;
@@ -240,35 +238,17 @@ export class TriagePage implements AfterViewInit, OnDestroy {
     const writeId = crypto.randomUUID();
     ++this.flagsRevision;
     this.error.set('');
-    if (patient.id < 0) {
-      void this.offlineQueue
-        .queueTriage(patient.id, queuedBody, writeId)
-        .then(() => this.message.set('Lokal gespeichert, Sync ausstehend.'))
-        .catch(() => this.error.set('Lokale Sync-Warteschlange konnte nicht gespeichert werden.'));
-      return;
+    try {
+      await this.offlineQueue.queueTriage(patient.id, queuedBody, writeId);
+      this.message.set('Lokal gespeichert, Sync ausstehend.');
+      await this.offlineQueue.flush(true);
+    } catch {
+      this.message.set('');
+      this.error.set('Triage konnte nicht dauerhaft gespeichert werden. Bitte erneut versuchen.');
     }
-    this.api.updateTriage(patient.id, queuedBody, writeId).subscribe({
-      next: (updated) => {
-        this.state.setPatient(updated);
-        this.message.set('Gespeichert.');
-      },
-      error: (error: unknown) => {
-        if (!isRetryableFailure(error)) {
-          this.error.set(apiErrorMessage(error, 'Triage konnte nicht gespeichert werden.'));
-          return;
-        }
-        this.offlineQueue
-          .queueTriage(patient.id, queuedBody, writeId)
-          .then(() => this.message.set('Lokal gespeichert, Sync ausstehend.'))
-          .catch(() => {
-            this.message.set('');
-            this.error.set('Lokale Sync-Warteschlange konnte nicht gespeichert werden.');
-          });
-      },
-    });
   }
 
-  protected saveManualLocation(): void {
+  protected async saveManualLocation(): Promise<void> {
     const patient = this.state.patient();
     const raw = this.locationForm.getRawValue();
     if (!patient || raw.lat === null || raw.lng === null) {
@@ -283,27 +263,16 @@ export class TriagePage implements AfterViewInit, OnDestroy {
       indoorLocation: raw.indoorLocation || undefined,
       clientUpdatedAt: new Date().toISOString(),
     };
-    // The online attempt's writeId is reused so a request that did reach the server is not reapplied.
     const writeId = crypto.randomUUID();
-    const queue = () =>
-      this.offlineQueue
-        .queueLocation(patient.id, body, writeId)
-        .then(() => this.message.set('Lokal gespeichert, Sync ausstehend.'))
-        .catch(() => this.error.set('Lokale Sync-Warteschlange konnte nicht gespeichert werden.'));
-    if (patient.id < 0) {
-      void queue();
-      return;
+    this.error.set('');
+    try {
+      await this.offlineQueue.queueLocation(patient.id, body, writeId);
+      this.message.set('Lokal gespeichert, Sync ausstehend.');
+      await this.offlineQueue.flush(true);
+    } catch {
+      this.message.set('');
+      this.error.set('Position konnte nicht dauerhaft gespeichert werden. Bitte erneut versuchen.');
     }
-    this.api.updatePatientLocation(patient.id, body, writeId).subscribe({
-      next: (updated) => {
-        this.state.setPatient(updated);
-        this.message.set('Position gespeichert.');
-      },
-      error: (error: unknown) =>
-        isRetryableFailure(error)
-          ? void queue()
-          : this.error.set(apiErrorMessage(error, 'Position konnte nicht gespeichert werden.')),
-    });
   }
 
   protected continueToProtocol(): void {

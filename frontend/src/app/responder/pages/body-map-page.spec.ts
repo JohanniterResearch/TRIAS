@@ -2,80 +2,24 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute } from '@angular/router';
 import { of, Subject } from 'rxjs';
-
-import { ApiClient, ApiRequestError } from '../../api/api-client';
+import { ApiClient } from '../../api/api-client';
 import { OfflineQueueService } from '../../sync/offline-queue.service';
 import { ResponderStateStore } from '../services/responder-state';
 import { BodyMapPage } from './body-map-page';
 
-describe('BodyMapPage intent ordering', () => {
-  let queue: {
-    queueBodyPart: ReturnType<typeof vi.fn>;
-    bodyPartResults: ReturnType<typeof signal<any[]>>;
-    bodyPartPending: ReturnType<typeof signal<any[]>>;
-  };
+describe('BodyMapPage durable intents', () => {
+  let queue: any;
+  let api: any;
   beforeEach(() => {
     queue = {
       queueBodyPart: vi.fn().mockResolvedValue(undefined),
-      bodyPartResults: signal([]),
+      flush: vi.fn().mockResolvedValue(undefined),
       bodyPartPending: signal([]),
+      bodyPartResults: signal([]),
     };
-  });
-
-  it.each([0, 1])(
-    'shows a direct stale-write rejection and current server value %i',
-    (serverValue) => {
-      // An older queued intent must not hide the result of the later direct click.
-      queue.bodyPartPending.set([
-        {
-          patientId: 7,
-          sourcePatientId: 7,
-          writeId: 'older-queued',
-          body: { idpatient: 7, bodyPartId: 'kopf_vorne', isClicked: true },
-        },
-      ]);
-      const response = new Subject<any>();
-      TestBed.configureTestingModule({
-        providers: [
-          {
-            provide: ApiClient,
-            useValue: {
-              getBodyParts: () => of({ bodyParts: { kopf_vorne: 0 } }),
-              toggleBodyPart: () => response,
-            },
-          },
-          { provide: OfflineQueueService, useValue: queue },
-          { provide: ResponderStateStore, useValue: { patient: () => ({ id: 7 }) } },
-          {
-            provide: ActivatedRoute,
-            useValue: { snapshot: { routeConfig: { path: 'body/front' } } },
-          },
-        ],
-      });
-      const page = TestBed.runInInjectionContext(() => new BodyMapPage());
-      (page as any).toggle('kopf_vorne');
-      response.next({
-        bodyParts: { kopf_vorne: serverValue },
-        writeResult: {
-          outcome: 'rejected',
-          conflictReason: 'older_edit',
-          bodyPartId: 'kopf_vorne',
-          serverValue,
-        },
-      });
-      expect((page as any).isMarked('kopf_vorne')).toBe(serverValue === 1);
-      expect((page as any).conflictMessages()[0]).toContain(
-        'kopf (vorne): Deine Änderung wurde nicht übernommen',
-      );
-    },
-  );
-
-  it('keeps a newer local edit over an earlier online rejection', () => {
-    const first = new Subject<any>();
-    const second = new Subject<any>();
-    const api = {
-      getBodyParts: () => of({ bodyParts: { kopf_vorne: 0 } }),
-      toggleBodyPart: vi.fn().mockReturnValueOnce(first).mockReturnValueOnce(second),
+    api = {
+      getBodyParts: vi.fn().mockReturnValue(of({ bodyParts: { kopf_vorne: 0 } })),
+      toggleBodyPart: vi.fn(),
     };
     TestBed.configureTestingModule({
       providers: [
@@ -88,238 +32,90 @@ describe('BodyMapPage intent ordering', () => {
         },
       ],
     });
-    const page = TestBed.runInInjectionContext(() => new BodyMapPage());
-    (page as any).toggle('kopf_vorne');
-    (page as any).toggle('kopf_vorne'); // Newer local value is 0; server's old reply says 1.
-    first.next({
-      bodyParts: { kopf_vorne: 1 },
-      writeResult: {
-        outcome: 'rejected',
-        conflictReason: 'older_edit',
-        bodyPartId: 'kopf_vorne',
-        serverValue: 1,
-      },
-    });
-    expect((page as any).isMarked('kopf_vorne')).toBe(false);
-    expect((page as any).latestIntent.get('kopf_vorne').writeId).not.toBe(
-      api.toggleBodyPart.mock.calls[0][1],
-    );
   });
-
-  it('queues a toggle whose response was lost and keeps it over the initial load', async () => {
-    const initialLoad = new Subject<any>();
-    const reconciliationLoad = new Subject<any>();
-    const toggle = new Subject<any>();
-    const api = {
-      getBodyParts: vi
-        .fn()
-        .mockReturnValueOnce(initialLoad)
-        .mockReturnValueOnce(reconciliationLoad),
-      toggleBodyPart: vi.fn().mockReturnValue(toggle),
-    };
-    TestBed.configureTestingModule({
-      providers: [
-        { provide: ApiClient, useValue: api },
-        { provide: OfflineQueueService, useValue: queue },
-        { provide: ResponderStateStore, useValue: { patient: () => ({ id: 7 }) } },
-        {
-          provide: ActivatedRoute,
-          useValue: { snapshot: { routeConfig: { path: 'body/front' } } },
-        },
-      ],
-    });
-    const page = TestBed.runInInjectionContext(() => new BodyMapPage());
-
-    initialLoad.next({ bodyParts: { kopf_vorne: 0 } });
-    const clickTime = '2026-11-01T10:00:00.000Z';
-    vi.spyOn(Date.prototype, 'toISOString').mockReturnValue(clickTime);
-    (page as any).toggle('kopf_vorne');
-    vi.mocked(Date.prototype.toISOString).mockReturnValue('2026-11-01T10:05:00.000Z');
-    toggle.error(new Error('response lost after server update'));
-    await Promise.resolve();
-    initialLoad.next({ bodyParts: { kopf_vorne: 0 } });
-
-    const writeId = api.toggleBodyPart.mock.calls[0][1];
-    expect(writeId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
-    // The queued replay must carry the key of the online attempt that may have reached the server.
-    expect(queue.queueBodyPart).toHaveBeenCalledWith(
-      7,
+  function page(): any {
+    return TestBed.runInInjectionContext(() => new BodyMapPage());
+  }
+  function complete(writeId: string, value: number, rejected = false, superseded = false) {
+    queue.bodyPartResults.set([
       {
-        idpatient: 7,
-        bodyPartId: 'kopf_vorne',
-        isClicked: true,
-        clientUpdatedAt: clickTime,
+        patientId: 7,
+        sourcePatientId: 7,
+        region: 'kopf_vorne',
+        writeId,
+        superseded,
+        record: {
+          bodyParts: { kopf_vorne: value },
+          writeResult: {
+            outcome: rejected ? 'rejected' : 'applied',
+            conflictReason: rejected ? 'older_edit' : null,
+            serverValue: value,
+          },
+        },
       },
-      writeId,
+    ]);
+    TestBed.tick();
+  }
+  it('waits for the local commit before dispatch and captures click time and UUID once', async () => {
+    let commit!: () => void;
+    queue.queueBodyPart.mockReturnValue(
+      new Promise<void>((resolve) => {
+        commit = resolve;
+      }),
     );
-    expect(api.toggleBodyPart.mock.calls[0][0].clientUpdatedAt).toBe(clickTime);
-    expect(api.getBodyParts).toHaveBeenCalledTimes(1);
-    expect((page as any).isMarked('kopf_vorne')).toBe(true);
-  });
-
-  it('keeps the final marked state when the initial load resolves after rapid writes', () => {
-    const initialLoad = new Subject<any>();
-    const first = new Subject<any>();
-    const second = new Subject<any>();
-    const third = new Subject<any>();
-    const api = {
-      getBodyParts: () => initialLoad,
-      toggleBodyPart: vi
-        .fn()
-        .mockReturnValueOnce(first)
-        .mockReturnValueOnce(second)
-        .mockReturnValueOnce(third),
-    };
-    TestBed.configureTestingModule({
-      providers: [
-        { provide: ApiClient, useValue: api },
-        { provide: OfflineQueueService, useValue: queue },
-        { provide: ResponderStateStore, useValue: { patient: () => ({ id: 7 }) } },
-        {
-          provide: ActivatedRoute,
-          useValue: { snapshot: { routeConfig: { path: 'body/front' } } },
-        },
-      ],
+    const instance = page();
+    instance.toggle('kopf_vorne');
+    expect(queue.flush).not.toHaveBeenCalled();
+    expect(api.toggleBodyPart).not.toHaveBeenCalled();
+    const [id, body, key] = queue.queueBodyPart.mock.calls[0];
+    expect(id).toBe(7);
+    expect(body).toMatchObject({
+      bodyPartId: 'kopf_vorne',
+      isClicked: true,
+      clientUpdatedAt: expect.any(String),
     });
-    const page = TestBed.runInInjectionContext(() => new BodyMapPage());
-
-    vi.spyOn(Date.prototype, 'toISOString')
-      .mockReturnValueOnce('2026-11-01T10:00:00.000Z')
-      .mockReturnValueOnce('2026-11-01T10:00:01.000Z');
-    (page as any).toggle('kopf_vorne');
-    (page as any).toggle('kopf_vorne');
-    (page as any).toggle('kopf_vorne');
-    first.next({ bodyParts: { kopf_vorne: 1 } });
-    first.complete();
-    second.next({ bodyParts: { kopf_vorne: 0 } });
-    second.complete();
-    third.next({ bodyParts: { kopf_vorne: 1 } });
-    third.complete();
-    expect(api.toggleBodyPart.mock.calls[0][0].clientUpdatedAt).toBe('2026-11-01T10:00:00.000Z');
-    expect(api.toggleBodyPart.mock.calls[1][0].clientUpdatedAt).toBe('2026-11-01T10:00:01.000Z');
-    initialLoad.next({ bodyParts: { kopf_vorne: 0 } });
-
-    expect((page as any).isMarked('kopf_vorne')).toBe(true);
+    expect(key).toMatch(/^[0-9a-f-]{36}$/);
+    commit();
+    await Promise.resolve();
+    expect(queue.flush).toHaveBeenCalledWith(true);
   });
-
-  it('returns to the confirmed unmarked state when both rapid toggles fail', () => {
-    const first = new Subject<any>();
-    const second = new Subject<any>();
-    const api = {
-      getBodyParts: () => of({ bodyParts: { kopf_vorne: 0 } }),
-      toggleBodyPart: vi.fn().mockReturnValueOnce(first).mockReturnValueOnce(second),
-    };
-    TestBed.configureTestingModule({
-      providers: [
-        { provide: ApiClient, useValue: api },
-        { provide: OfflineQueueService, useValue: queue },
-        { provide: ResponderStateStore, useValue: { patient: () => ({ id: 7 }) } },
-        {
-          provide: ActivatedRoute,
-          useValue: { snapshot: { routeConfig: { path: 'body/front' } } },
-        },
-      ],
-    });
-    const page = TestBed.runInInjectionContext(() => new BodyMapPage());
-
-    (page as any).toggle('kopf_vorne');
-    (page as any).toggle('kopf_vorne');
-    first.error(new ApiRequestError(400, {}));
-    second.error(new ApiRequestError(400, {}));
-
-    expect((page as any).isMarked('kopf_vorne')).toBe(false);
+  it('reports aborted local storage and never starts the request', async () => {
+    queue.queueBodyPart.mockRejectedValue(new Error('transaction aborted'));
+    const instance = page();
+    instance.toggle('kopf_vorne');
+    await Promise.resolve();
+    expect(queue.flush).not.toHaveBeenCalled();
+    expect(instance.error()).toContain('nicht dauerhaft gespeichert');
   });
-
-  it('keeps the final intent when rapid responses would otherwise arrive reversed', () => {
-    const first = new Subject<any>();
-    const second = new Subject<any>();
-    const api = {
-      getBodyParts: () => of({ bodyParts: { kopf_vorne: 0 } }),
-      toggleBodyPart: vi.fn().mockReturnValueOnce(first).mockReturnValueOnce(second),
-    };
-    TestBed.configureTestingModule({
-      providers: [
-        { provide: ApiClient, useValue: api },
-        { provide: OfflineQueueService, useValue: queue },
-        { provide: ResponderStateStore, useValue: { patient: () => ({ id: 7 }) } },
-        {
-          provide: ActivatedRoute,
-          useValue: { snapshot: { routeConfig: { path: 'body/front' } } },
-        },
-      ],
-    });
-    const page = TestBed.runInInjectionContext(() => new BodyMapPage());
-
-    (page as any).toggle('kopf_vorne');
-    (page as any).toggle('kopf_vorne');
-
-    expect(api.toggleBodyPart).toHaveBeenCalledOnce();
-    first.next({ bodyParts: { kopf_vorne: 1 } });
-    first.complete();
-    expect(api.toggleBodyPart).toHaveBeenCalledTimes(2);
-    expect(api.toggleBodyPart.mock.calls[1][1]).not.toBe(api.toggleBodyPart.mock.calls[0][1]);
-    second.next({ bodyParts: { kopf_vorne: 0 } });
-
-    expect((page as any).isMarked('kopf_vorne')).toBe(false);
+  it.each([0, 1])('shows the region and authoritative rejected value %i', (value) => {
+    const instance = page();
+    instance.toggle('kopf_vorne');
+    complete(queue.queueBodyPart.mock.calls[0][2], value, true);
+    expect(instance.isMarked('kopf_vorne')).toBe(value === 1);
+    expect(instance.conflictMessages()[0]).toContain(
+      'kopf (vorne): Deine Änderung wurde nicht übernommen',
+    );
   });
-
-  it('uses the second server response when the first toggle fails', () => {
-    const first = new Subject<any>();
-    const second = new Subject<any>();
-    const api = {
-      getBodyParts: () => of({ bodyParts: { kopf_vorne: 0 } }),
-      toggleBodyPart: vi.fn().mockReturnValueOnce(first).mockReturnValueOnce(second),
-    };
-    TestBed.configureTestingModule({
-      providers: [
-        { provide: ApiClient, useValue: api },
-        { provide: OfflineQueueService, useValue: queue },
-        { provide: ResponderStateStore, useValue: { patient: () => ({ id: 7 }) } },
-        {
-          provide: ActivatedRoute,
-          useValue: { snapshot: { routeConfig: { path: 'body/front' } } },
-        },
-      ],
-    });
-    const page = TestBed.runInInjectionContext(() => new BodyMapPage());
-
-    (page as any).toggle('kopf_vorne');
-    (page as any).toggle('kopf_vorne');
-    first.error(new ApiRequestError(400, {}));
-    second.next({ bodyParts: { kopf_vorne: 0 } });
-
-    expect((page as any).isMarked('kopf_vorne')).toBe(false);
+  it('preserves a newer local region intent when an older rejection arrives', () => {
+    const instance = page();
+    instance.toggle('kopf_vorne');
+    const first = queue.queueBodyPart.mock.calls[0][2];
+    instance.toggle('kopf_vorne');
+    const second = queue.queueBodyPart.mock.calls[1][2];
+    expect(second).not.toBe(first);
+    complete(first, 1, true, true);
+    expect(instance.isMarked('kopf_vorne')).toBe(false);
+    expect(instance.latestIntent.get('kopf_vorne').writeId).toBe(second);
+    complete(second, 0);
+    expect(instance.isMarked('kopf_vorne')).toBe(false);
   });
-
-  it('returns to the first successful server response when the second toggle fails', () => {
-    const first = new Subject<any>();
-    const second = new Subject<any>();
-    const api = {
-      getBodyParts: vi
-        .fn()
-        .mockReturnValueOnce(of({ bodyParts: { kopf_vorne: 0 } }))
-        .mockReturnValueOnce(of({ bodyParts: { kopf_vorne: 1 } })),
-      toggleBodyPart: vi.fn().mockReturnValueOnce(first).mockReturnValueOnce(second),
-    };
-    TestBed.configureTestingModule({
-      providers: [
-        { provide: ApiClient, useValue: api },
-        { provide: OfflineQueueService, useValue: queue },
-        { provide: ResponderStateStore, useValue: { patient: () => ({ id: 7 }) } },
-        {
-          provide: ActivatedRoute,
-          useValue: { snapshot: { routeConfig: { path: 'body/front' } } },
-        },
-      ],
-    });
-    const page = TestBed.runInInjectionContext(() => new BodyMapPage());
-
-    (page as any).toggle('kopf_vorne');
-    (page as any).toggle('kopf_vorne');
-    first.next({ bodyParts: { kopf_vorne: 1 } });
-    first.complete();
-    second.error(new ApiRequestError(400, {}));
-
-    expect((page as any).isMarked('kopf_vorne')).toBe(true);
+  it('does not reset a confirmed latest intent when the initial load arrives late', () => {
+    const initial = new Subject<any>();
+    api.getBodyParts.mockReturnValue(initial);
+    const instance = page();
+    instance.toggle('kopf_vorne');
+    complete(queue.queueBodyPart.mock.calls[0][2], 1);
+    initial.next({ bodyParts: { kopf_vorne: 0 } });
+    expect(instance.isMarked('kopf_vorne')).toBe(true);
   });
 });

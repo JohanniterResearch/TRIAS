@@ -1,9 +1,8 @@
 import { Component, effect, inject, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { EMPTY, Subject, catchError, concatMap, from, tap } from 'rxjs';
 
 import bodyRegions from '../../../../../contract/body-regions.json';
-import { apiErrorMessage, ApiClient, isRetryableFailure } from '../../api/api-client';
+import { apiErrorMessage, ApiClient } from '../../api/api-client';
 import { MyAccess } from '../../auth/components/my-access';
 import { BodyPartResponse, OfflineQueueService } from '../../sync/offline-queue.service';
 import { ResponderStateStore } from '../services/responder-state';
@@ -85,14 +84,6 @@ export class BodyMapPage {
   private readonly api = inject(ApiClient);
   private readonly offlineQueue = inject(OfflineQueueService);
   private readonly route = inject(ActivatedRoute);
-  private readonly intents = new Subject<{
-    patientId: number;
-    region: string;
-    isClicked: boolean;
-    generation: number;
-    writeId: string;
-    clientUpdatedAt: string;
-  }>();
   private readonly latestIntent = new Map<
     string,
     { isClicked: boolean; generation: number; writeId: string }
@@ -115,63 +106,19 @@ export class BodyMapPage {
       // Restore persisted optimistic values after reload and react to queue replacement/removal.
       this.updateDisplay();
     });
-    this.intents
-      .pipe(
-        concatMap((intent) =>
-          intent.patientId < 0
-            ? this.queueIntent(intent)
-            : this.api
-                .toggleBodyPart(
-                  {
-                    idpatient: intent.patientId,
-                    bodyPartId: intent.region,
-                    isClicked: intent.isClicked,
-                    clientUpdatedAt: intent.clientUpdatedAt,
-                  },
-                  intent.writeId,
-                )
-                .pipe(
-                  tap((body) => {
-                    this.applyWriteResult(intent.region, intent.writeId, body);
-                  }),
-                  catchError((error: unknown) => {
-                    if (isRetryableFailure(error)) return this.queueIntent(intent);
-                    const revision = ++this.bodyPartsRevision;
-                    if (this.latestIntent.get(intent.region)?.generation === intent.generation) {
-                      this.latestIntent.delete(intent.region);
-                      this.updateDisplay();
-                    }
-                    this.error.set(
-                      apiErrorMessage(error, 'Körpermarkierung konnte nicht gespeichert werden.'),
-                    );
-                    return this.api.getBodyParts(intent.patientId).pipe(
-                      tap((body) => {
-                        if (this.bodyPartsRevision === revision) {
-                          this.applyServerBody(body.bodyParts);
-                        }
-                      }),
-                      catchError(() => EMPTY),
-                    );
-                  }),
-                ),
-        ),
-      )
-      .subscribe();
     this.load();
   }
 
-  // Offline (or no server answer): keep the optimistic mark and replay it later. The toggle is an
-  // absolute value per region, so a queued newer intent simply replaces an older one.
-  // The online attempt's writeId is reused so a request that did reach the server is not reapplied.
-  private queueIntent(intent: {
+  private async queueIntent(intent: {
     patientId: number;
     region: string;
     isClicked: boolean;
     writeId: string;
     clientUpdatedAt: string;
-  }) {
-    return from(
-      this.offlineQueue.queueBodyPart(
+  }): Promise<void> {
+    this.error.set('');
+    try {
+      await this.offlineQueue.queueBodyPart(
         intent.patientId,
         {
           idpatient: intent.patientId,
@@ -180,13 +127,13 @@ export class BodyMapPage {
           clientUpdatedAt: intent.clientUpdatedAt,
         },
         intent.writeId,
-      ),
-    ).pipe(
-      catchError(() => {
-        this.error.set('Lokale Sync-Warteschlange konnte nicht gespeichert werden.');
-        return EMPTY;
-      }),
-    );
+      );
+      await this.offlineQueue.flush(true);
+    } catch {
+      this.error.set(
+        'Körpermarkierung konnte nicht dauerhaft gespeichert werden. Bitte erneut versuchen.',
+      );
+    }
   }
 
   protected view(): 'front' | 'back' {
@@ -220,11 +167,10 @@ export class BodyMapPage {
     const writeId = crypto.randomUUID();
     this.latestIntent.set(region, { isClicked, generation, writeId });
     this.updateDisplay();
-    this.intents.next({
+    void this.queueIntent({
       patientId: patient.id,
       region,
       isClicked,
-      generation,
       writeId,
       clientUpdatedAt: new Date().toISOString(),
     });
@@ -319,7 +265,6 @@ export class BodyMapPage {
     record: BodyPartResponse,
     superseded = false,
   ): void {
-    this.error.set('');
     const local = this.latestIntent.get(region);
     const newerLocal =
       superseded ||
@@ -336,6 +281,7 @@ export class BodyMapPage {
     this.bodyPartsRevision++;
     if (local?.writeId === writeId) this.latestIntent.delete(region);
     if (!newerLocal) {
+      this.error.set('');
       const value = record.writeResult?.serverValue ?? record.bodyParts[region];
       this.confirmedBodyParts = { ...this.confirmedBodyParts, [region]: value };
     }

@@ -13,7 +13,12 @@ import { TriagePage } from './triage-page';
 describe('triage flag edits', () => {
   const patient = signal<any>(null);
   const api = { updateTriage: vi.fn(), updatePatientLocation: vi.fn() };
-  const queue = { pendingTriage: vi.fn(), queueTriage: vi.fn(), queueLocation: vi.fn() };
+  const queue = {
+    pendingTriage: vi.fn(),
+    queueTriage: vi.fn(),
+    queueLocation: vi.fn(),
+    flush: vi.fn().mockResolvedValue(undefined),
+  };
 
   beforeEach(() => {
     localStorage.clear();
@@ -73,21 +78,23 @@ describe('triage flag edits', () => {
     const instance = await page();
     instance.flagsForm.controls.transport.setValue(true);
     instance.saveFlags('transport');
-    expect(api.updateTriage).toHaveBeenCalledWith(
+    expect(queue.queueTriage).toHaveBeenCalledWith(
       7,
       { transport: true, clientUpdatedAt: expect.any(String) },
       expect.any(String),
     );
   });
 
-  it('keeps the online UUID and body when a structured 503 response is queued', async () => {
+  it('starts the queue dispatcher after durable capture instead of calling the API directly', async () => {
     const instance = await page();
     api.updateTriage.mockReturnValue(
       throwError(() => new ApiRequestError(503, { message: 'Server temporarily unavailable' })),
     );
     instance.flagsForm.controls.transport.setValue(true);
     instance.saveFlags('transport');
-    expect(queue.queueTriage).toHaveBeenCalledWith(...api.updateTriage.mock.calls[0]);
+    await Promise.resolve();
+    expect(queue.flush).toHaveBeenCalledWith(true);
+    expect(api.updateTriage).not.toHaveBeenCalled();
   });
 
   it('queues provisional-patient edits without sending an invalid negative patient id', async () => {
@@ -175,13 +182,13 @@ describe('triage flag edits', () => {
     api.updateTriage.mockReturnValue(throwError(() => new TypeError('response lost')));
     const body = { transport: true };
     instance.save(body);
-    const first = api.updateTriage.mock.calls[0];
+    const first = queue.queueTriage.mock.calls[0];
     expect(first[2]).toMatch(/^[0-9a-f-]{36}$/);
     expect(queue.queueTriage.mock.calls[0]).toEqual(first);
     body.transport = false;
     expect(first[1].transport).toBe(true);
     instance.save(body);
-    const second = api.updateTriage.mock.calls[1];
+    const second = queue.queueTriage.mock.calls[1];
     expect(second[2]).not.toBe(first[2]);
     expect(second[1].transport).toBe(false);
     expect(queue.queueTriage.mock.calls[1]).toEqual(second);
@@ -192,10 +199,38 @@ describe('triage flag edits', () => {
     api.updatePatientLocation.mockReturnValue(throwError(() => new TypeError('response lost')));
     instance.locationForm.patchValue({ lat: 48.2, lng: 16.3 });
     instance.saveManualLocation();
-    const online = api.updatePatientLocation.mock.calls[0];
+    const online = queue.queueLocation.mock.calls[0];
     expect(online[2]).toMatch(/^[0-9a-f-]{36}$/);
     expect(queue.queueLocation.mock.calls[0]).toEqual(online);
     instance.saveManualLocation();
-    expect(api.updatePatientLocation.mock.calls[1][2]).not.toBe(online[2]);
+    expect(queue.queueLocation.mock.calls[1][2]).not.toBe(online[2]);
   });
+  it.each(['triage', 'location'])(
+    'does not dispatch %s until local storage commits and reports failures',
+    async (kind) => {
+      const instance = await page();
+      const persist = kind === 'triage' ? queue.queueTriage : queue.queueLocation;
+      let reject!: (error: Error) => void;
+      persist.mockReturnValueOnce(
+        new Promise((_resolve, fail) => {
+          reject = fail;
+        }),
+      );
+      const submit =
+        kind === 'triage'
+          ? () => instance.save({ transport: true })
+          : () => {
+              instance.locationForm.patchValue({ lat: 48.2, lng: 16.3 });
+              return instance.saveManualLocation();
+            };
+      const saving = submit();
+      expect(queue.flush).not.toHaveBeenCalled();
+      reject(new Error('IndexedDB transaction aborted'));
+      await saving;
+      expect(queue.flush).not.toHaveBeenCalled();
+      expect(instance.error()).toContain('nicht dauerhaft gespeichert');
+      await submit();
+      expect(queue.flush).toHaveBeenCalledWith(true);
+    },
+  );
 });

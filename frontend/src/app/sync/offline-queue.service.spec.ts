@@ -748,6 +748,78 @@ describe('OfflineQueueService', () => {
   });
 });
 
+describe('clinical acknowledgements during local persistence', () => {
+  it.each(['triage', 'location'] as const)(
+    'does not cache a late %s response over a successor whose transaction is unfinished',
+    async (kind) => {
+      vi.spyOn(OfflineQueueService.prototype as any, 'refreshStatus').mockResolvedValue(undefined);
+      vi.spyOn(OfflineQueueService.prototype as any, 'reconcileMappings').mockResolvedValue(
+        undefined,
+      );
+      vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+      const api = { updateTriage: vi.fn(), updatePatientLocation: vi.fn() };
+      const state = { patient: () => null, replacePatient: vi.fn() };
+      TestBed.configureTestingModule({
+        providers: [
+          OfflineQueueService,
+          { provide: ApiClient, useValue: api },
+          { provide: ResponderStateStore, useValue: state },
+          { provide: SyncStatusService, useValue: { markQueueFlushed: vi.fn() } },
+        ],
+      });
+      const service = TestBed.inject(OfflineQueueService);
+      const stored = new Map<string, any>();
+      vi.spyOn(service as any, 'items').mockImplementation(async () => [...stored.values()]);
+      vi.spyOn(service as any, 'deleteIfCurrent').mockImplementation(async (item: any) => {
+        if (!sameQueueWrite(stored.get(item.id), item)) return false;
+        stored.delete(item.id);
+        return true;
+      });
+      let commit!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        commit = resolve;
+      });
+      vi.spyOn(service as any, 'add').mockImplementation(async (item: any) => {
+        if (item.writeId === 'new') await gate;
+        stored.set(item.id, structuredClone(item));
+      });
+      const capture = (key: string) =>
+        kind === 'triage'
+          ? service.queueTriage(7, { transport: key === 'old' }, key)
+          : service.queueLocation(7, { lat: key === 'old' ? 48.2 : 48.3, lng: 16.3 }, key);
+      await capture('old');
+      const reply = new Subject<any>();
+      const call = kind === 'triage' ? api.updateTriage : api.updatePatientLocation;
+      call
+        .mockReturnValueOnce(reply)
+        .mockReturnValue(of({ id: 7, transport: false, latitudePatient: 48.3 }));
+      vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+      const flushing = service.flush(true);
+      await vi.waitFor(() => expect(call).toHaveBeenCalledOnce());
+      const newer = capture('new');
+      reply.next({ id: 7, transport: true, latitudePatient: 48.2 });
+      reply.complete();
+      await flushing;
+      expect(state.replacePatient).toHaveBeenLastCalledWith(
+        7,
+        expect.objectContaining(
+          kind === 'triage' ? { transport: false } : { latitudePatient: 48.3 },
+        ),
+      );
+      expect(service.localWrites()).toBe(1);
+      commit();
+      await newer;
+      await service.flush(true);
+      expect(state.replacePatient).toHaveBeenCalledTimes(2);
+      expect(state.replacePatient).toHaveBeenCalledWith(
+        7,
+        expect.objectContaining({ transport: false, latitudePatient: 48.3 }),
+      );
+      expect(stored.size).toBe(0);
+    },
+  );
+});
+
 function triage(id: string, patientId: number): any {
   return {
     id,

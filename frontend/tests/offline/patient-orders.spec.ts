@@ -53,6 +53,7 @@ for (const manual of [true, false]) {
     await page.route('**/api/validate-token', (route) => route.fulfill({ json: { role: 'user' } }));
     const writes: Array<{ key?: string; body: any }> = [];
     let recover = false;
+    let failed = 0;
     const endpoint = manual ? '**/api/persons/manual' : '**/api/verify-patient-qr-code';
     await page.route(endpoint, async (route) => {
       const body = route.request().postDataJSON();
@@ -72,6 +73,7 @@ for (const manual of [true, false]) {
       if (!recover) {
         await context.setOffline(true);
         await route.abort('failed');
+        failed++;
         return;
       }
       const patient = {
@@ -92,7 +94,9 @@ for (const manual of [true, false]) {
       await page.getByLabel('Patient QR Code', { exact: true }).fill('original-qr');
       await page.getByRole('button', { name: 'QR prüfen', exact: true }).click();
     }
-    await expect.poll(() => writes.length).toBeGreaterThan(0);
+    // A durable queue row now exists before HTTP starts. Wait for the intended transport
+    // failure, including the journal's immediate retry, before exercising offline recovery.
+    await expect.poll(() => failed).toBeGreaterThanOrEqual(manual ? 1 : 2);
     const original = writes[0];
     await page.reload();
     recover = true;

@@ -2,7 +2,7 @@ import { Component, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 
-import { apiErrorMessage, ApiClient, isRetryableFailure } from '../../api/api-client';
+import { apiErrorMessage, ApiClient } from '../../api/api-client';
 import { MyAccess } from '../../auth/components/my-access';
 import { QrScanner } from '../../shared/qr-scanner';
 import { OfflineQueueService } from '../../sync/offline-queue.service';
@@ -84,7 +84,7 @@ export class PatientScanPage {
     this.api.verifyPatientQrCode({ qr_code: qrCode.trim(), operationSceneId: scene.id }).subscribe({
       next: async (result) => {
         this.state.setPatient(result.patient);
-        await this.captureLocation(result.patient.id);
+        if (!(await this.captureLocation(result.patient.id))) return;
         this.router.navigateByUrl(`/patient/${result.patient.id}`);
       },
       error: (error: unknown) =>
@@ -121,7 +121,7 @@ export class PatientScanPage {
         return;
       }
       const current = this.state.patient() ?? patient;
-      await this.captureLocation(current.id);
+      if (!(await this.captureLocation(current.id))) return;
       this.busy.set(false);
       this.router.navigateByUrl(`/patient/${current.id}`);
     } catch (error) {
@@ -135,10 +135,10 @@ export class PatientScanPage {
     return navigator.onLine;
   }
 
-  private async captureLocation(patientId: number): Promise<void> {
+  private async captureLocation(patientId: number): Promise<boolean> {
     const fix = await this.geo.currentPosition();
     if (!fix) {
-      return;
+      return true;
     }
 
     const body = {
@@ -148,18 +148,20 @@ export class PatientScanPage {
       accuracyMeters: fix.accuracyMeters,
       clientUpdatedAt: new Date().toISOString(),
     };
-    // The online attempt's writeId is reused so a request that did reach the server is not reapplied.
     const writeId = crypto.randomUUID();
-    const queue = () =>
-      this.offlineQueue.queueLocation(patientId, body, writeId).catch(() => undefined);
-    if (patientId < 0) {
-      await queue();
-      return;
+    try {
+      await this.offlineQueue.queueLocation(patientId, body, writeId);
+      // Start immediately, without holding up intake navigation on a network response.
+      void this.offlineQueue
+        .flush(true)
+        .catch(() =>
+          this.fail('Position konnte nicht dauerhaft gespeichert werden. Bitte erneut versuchen.'),
+        );
+      return true;
+    } catch {
+      this.fail('Position konnte nicht dauerhaft gespeichert werden. Bitte erneut versuchen.');
+      return false;
     }
-    this.api.updatePatientLocation(patientId, body, writeId).subscribe({
-      next: (patient) => this.state.setPatient(patient),
-      error: (error: unknown) => (isRetryableFailure(error) ? void queue() : undefined),
-    });
   }
 
   private run(): void {
