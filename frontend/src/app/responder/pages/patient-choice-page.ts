@@ -14,7 +14,15 @@ import { ResponderStateStore } from '../services/responder-state';
     <section class="responder-page">
       <app-my-access />
       <p class="eyebrow">Patient</p>
-      <h1>{{ label() }}</h1>
+      <h1>
+        {{ label() }}
+        @if (isCopy()) {
+          <span class="copy-badge">Kopie</span>
+        }
+      </h1>
+      @if (isCopy()) {
+        <p class="copy-notice" role="status">Kopie von Original-Patient {{ copiedFromId() }}</p>
+      }
 
       @if (message()) {
         <p class="status-message" role="status" aria-live="polite">{{ message() }}</p>
@@ -68,6 +76,14 @@ export class PatientChoicePage {
   protected label(): string {
     const patient = this.state.patient();
     return patient?.humanReadableId || `Patient ${this.patientId()}`;
+  }
+
+  protected isCopy(): boolean {
+    return !!this.state.patient()?.copiedFromPatientId;
+  }
+
+  protected copiedFromId(): number | null {
+    return this.state.patient()?.copiedFromPatientId ?? null;
   }
 
   protected reassignQr(qrCode = this.reassignForm.controls.qrCode.value): void {

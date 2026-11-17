@@ -1108,6 +1108,7 @@ export interface components {
             humanReadableId?: string | null;
             /** Format: uuid */
             clientGeneratedId?: string | null;
+            copiedFromPatientId?: number | null;
             name?: string | null;
             triagefarbe?: components["schemas"]["TriageColor"] | null;
             atmung?: boolean | null;

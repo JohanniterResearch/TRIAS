@@ -121,7 +121,16 @@ const pollingErrorMessage = 'Live-Verbindung und Aktualisierung sind unterbroche
                   (click)="openProtocol(patient)"
                   (keydown.enter)="openProtocol(patient)"
                 >
-                  <td>{{ patient.humanReadableId || patient.id }}</td>
+                  <td>
+                    {{ patient.humanReadableId || patient.id }}
+                    @if (patient.copiedFromPatientId) {
+                      <span
+                        class="copy-badge"
+                        [title]="'Kopie von Patient ' + patient.copiedFromPatientId"
+                        >Kopie (Orig: {{ patient.copiedFromPatientId }})</span
+                      >
+                    }
+                  </td>
                   <td>{{ bool(patient.atmung) }}</td>
                   <td>{{ bool(patient.blutung) }}</td>
                   <td>{{ triageLabel(patient.triagefarbe) }}</td>
@@ -142,6 +151,11 @@ const pollingErrorMessage = 'Live-Verbindung und Aktualisierung sind unterbroche
           @if (selectedPatient(); as patient) {
             <div class="selected-panel">
               <strong>Patient {{ patient.humanReadableId || patient.id }}</strong>
+              @if (patient.copiedFromPatientId) {
+                <span class="copy-badge"
+                  >Kopie von Original-Patient {{ patient.copiedFromPatientId }}</span
+                >
+              }
               <div class="row-actions">
                 <a [routerLink]="['/ambulanzprotokoll', patient.id]">Ambulanzprotokoll</a>
                 <a routerLink="/triage">Triage öffnen</a>

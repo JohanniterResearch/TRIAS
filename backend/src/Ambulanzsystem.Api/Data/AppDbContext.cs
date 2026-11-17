@@ -75,6 +75,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasIndex(x => x.ClientGeneratedId).IsUnique().HasFilter("client_generated_id IS NOT NULL");
             e.HasOne(x => x.OperationScene).WithMany(x => x.Patients).HasForeignKey(x => x.OperationSceneId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserIdUser).OnDelete(DeleteBehavior.SetNull);
+            e.HasOne(x => x.CopiedFromPatient).WithMany().HasForeignKey(x => x.CopiedFromPatientId).OnDelete(DeleteBehavior.SetNull);
         });
 
         b.Entity<TriageProcessedWrite>(e =>

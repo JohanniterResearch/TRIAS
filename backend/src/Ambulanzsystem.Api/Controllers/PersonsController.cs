@@ -58,28 +58,73 @@ public class PersonsController(AppDbContext db, AuditService audit, SceneNotifie
 
         if (code.PatientId is int existingPatientId)
         {
-            var existing = await db.Patients.Include(p => p.QrCodePatient).FirstAsync(p => p.Id == existingPatientId);
-            if (!await SceneAccess.CanAccessAsync(User, db, existing.OperationSceneId))
+            var original = await db.Patients.Include(p => p.QrCodePatient).FirstOrDefaultAsync(p => p.Id == existingPatientId);
+            if (original is null)
             {
                 await tx.RollbackAsync();
-                return Forbid();
+                return NotFound(new ErrorResponse("Bound patient not found."));
             }
 
-            var previousScene = existing.OperationSceneId;
-            existing.OperationSceneId = request.OperationSceneId;
-            code.OperationSceneId = request.OperationSceneId;
-            audit.LogFieldWrite(User, "patient", existing.Id, existing.Id, "operationSceneId", previousScene, request.OperationSceneId);
+            // If scanned in the same scene as the original patient, return original.
+            if (original.OperationSceneId == request.OperationSceneId)
+            {
+                await tx.CommitAsync();
+                return Ok(new VerifyQrResult(PatientResponse.From(original), false));
+            }
+
+            // Scanned in a different scene (T-09): Check if a copy already exists in the target scene.
+            var existingCopy = await db.Patients
+                .Include(p => p.QrCodePatient)
+                .FirstOrDefaultAsync(p => p.CopiedFromPatientId == original.Id && p.OperationSceneId == request.OperationSceneId);
+
+            if (existingCopy is not null)
+            {
+                await tx.CommitAsync();
+                return Ok(new VerifyQrResult(PatientResponse.From(existingCopy), false));
+            }
+
+            // Create a new copy of the patient in the target scene with snapshot of master and triage data.
+            var copy = new Patient
+            {
+                OperationSceneId = request.OperationSceneId,
+                CopiedFromPatientId = original.Id,
+                Name = original.Name,
+                HumanReadableId = original.HumanReadableId,
+                Triagefarbe = original.Triagefarbe,
+                Atmung = original.Atmung,
+                Blutung = original.Blutung,
+                Radialispuls = original.Radialispuls,
+                Transport = original.Transport,
+                Dringend = original.Dringend,
+                Kontaminiert = original.Kontaminiert,
+                LongitudePatient = original.LongitudePatient,
+                LatitudePatient = original.LatitudePatient,
+                LocationSource = original.LocationSource,
+                LocationAccuracyMeters = original.LocationAccuracyMeters,
+                IndoorLocation = original.IndoorLocation,
+                LocationUpdatedAt = original.LocationUpdatedAt,
+                UserIdUser = User.OwnerUserId(),
+            };
+
+            db.Patients.Add(copy);
+            await db.SaveChangesAsync(); // assigns copy.Id
+
+            var originalBody = await db.Bodies.FirstOrDefaultAsync(b => b.PatientId == original.Id);
+            db.Bodies.Add(new Body
+            {
+                PatientId = copy.Id,
+                BodyPartsJson = originalBody?.BodyPartsJson ?? BodyRegions.DefaultBodyPartsJson(),
+            });
+
+            audit.LogFieldWrite(User, "patient", copy.Id, copy.Id, "created", null, "copy");
+            audit.LogFieldWrite(User, "patient", copy.Id, copy.Id, "copiedFromPatientId", null, original.Id);
             await db.SaveChangesAsync();
             await tx.CommitAsync();
 
-            await notifier.PatientUpdatedAsync(existing, false);
-            if (previousScene != request.OperationSceneId)
-            {
-                await PublishScenePatientListAsync(previousScene);
-                await PublishScenePatientListAsync(request.OperationSceneId);
-            }
+            await notifier.PatientUpdatedAsync(copy, true);
+            await PublishScenePatientListAsync(request.OperationSceneId);
 
-            return Ok(new VerifyQrResult(PatientResponse.From(existing), false));
+            return StatusCode(201, new VerifyQrResult(PatientResponse.From(copy), true));
         }
 
         var patient = new Patient { OperationSceneId = request.OperationSceneId, UserIdUser = User.OwnerUserId() };

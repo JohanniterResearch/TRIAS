@@ -22,6 +22,10 @@ public class Patient : AuditableEntity
     // Offline idempotency key (D3): replaying the same client-generated id must never duplicate a patient.
     public Guid? ClientGeneratedId { get; set; }
 
+    // Reference to original patient if this record is a scene copy (T-09).
+    public int? CopiedFromPatientId { get; set; }
+    public Patient? CopiedFromPatient { get; set; }
+
     public double? LongitudePatient { get; set; }
     public double? LatitudePatient { get; set; }
     public string? LocationSource { get; set; } // gps|manual

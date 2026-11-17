@@ -73,11 +73,19 @@ public class ExternalStringMigrationTests : IAsyncLifetime
     {
         var scene = new OperationScene { Name = "legacy-scene", Description = "d" };
         var team = new Team { Name = "legacy-team", OperationScene = scene };
-        var patient = new Patient { OperationScene = scene };
         db.OperationScenes.Add(scene);
         db.Teams.Add(team);
-        db.Patients.Add(patient);
         await db.SaveChangesAsync();
+
+        await using var cmd = db.Database.GetDbConnection().CreateCommand();
+        cmd.CommandText = "INSERT INTO patients (operation_scene_id, created_at, updated_at) VALUES (@sceneId, now(), now()) RETURNING id";
+        var param = cmd.CreateParameter();
+        param.ParameterName = "sceneId";
+        param.Value = scene.Id;
+        cmd.Parameters.Add(param);
+        if (cmd.Connection!.State != System.Data.ConnectionState.Open)
+            await cmd.Connection.OpenAsync();
+        var patientId = (int)(await cmd.ExecuteScalarAsync())!;
 
         await db.Database.ExecuteSqlRawAsync(
             "UPDATE teams SET status = repeat('s', 33), name = repeat('n', 256), " +
@@ -86,12 +94,12 @@ public class ExternalStringMigrationTests : IAsyncLifetime
         await db.Database.ExecuteSqlRawAsync(
             "UPDATE patients SET name = repeat('p', 256), location_source = repeat('o', 256), " +
             "indoor_location = repeat('i', 256), human_readable_id = repeat('h', 65) WHERE id = {0}",
-            patient.Id);
+            patientId);
         await db.Database.ExecuteSqlRawAsync(
             "UPDATE operation_scenes SET description = repeat('x', 2001) WHERE id = {0}",
             scene.Id);
 
-        return (scene.Id, team.Id, patient.Id);
+        return (scene.Id, team.Id, patientId);
     }
 
     [Fact]
@@ -162,11 +170,19 @@ public class ExternalStringMigrationTests : IAsyncLifetime
         // doesn't trip the new preflight.
         var scene = new OperationScene { Name = new string('e', 255), Description = "d" };
         var team = new Team { Name = "boundary-team", OperationScene = scene };
-        var patient = new Patient { OperationScene = scene };
         db.OperationScenes.Add(scene);
         db.Teams.Add(team);
-        db.Patients.Add(patient);
         await db.SaveChangesAsync();
+
+        await using var insertCmd = db.Database.GetDbConnection().CreateCommand();
+        insertCmd.CommandText = "INSERT INTO patients (operation_scene_id, created_at, updated_at) VALUES (@sceneId, now(), now()) RETURNING id";
+        var param = insertCmd.CreateParameter();
+        param.ParameterName = "sceneId";
+        param.Value = scene.Id;
+        insertCmd.Parameters.Add(param);
+        if (insertCmd.Connection!.State != System.Data.ConnectionState.Open)
+            await insertCmd.Connection.OpenAsync();
+        var patientId = (int)(await insertCmd.ExecuteScalarAsync())!;
 
         await db.Database.ExecuteSqlRawAsync(
             "UPDATE teams SET status = repeat('s', 32), name = repeat('n', 255), " +
@@ -175,7 +191,7 @@ public class ExternalStringMigrationTests : IAsyncLifetime
         await db.Database.ExecuteSqlRawAsync(
             "UPDATE patients SET name = repeat('p', 255), location_source = repeat('o', 255), " +
             "indoor_location = repeat('i', 255), human_readable_id = repeat('h', 64) WHERE id = {0}",
-            patient.Id);
+            patientId);
         await db.Database.ExecuteSqlRawAsync(
             "UPDATE operation_scenes SET description = repeat('x', 2000) WHERE id = {0}",
             scene.Id);
