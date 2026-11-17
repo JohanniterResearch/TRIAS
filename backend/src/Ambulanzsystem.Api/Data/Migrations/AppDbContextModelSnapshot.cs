@@ -457,6 +457,10 @@ namespace Ambulanzsystem.Api.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("client_generated_id");
 
+                    b.Property<int?>("CopiedFromPatientId")
+                        .HasColumnType("integer")
+                        .HasColumnName("copied_from_patient_id");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -544,6 +548,9 @@ namespace Ambulanzsystem.Api.Data.Migrations
                         .IsUnique()
                         .HasDatabaseName("ix_patients_client_generated_id")
                         .HasFilter("client_generated_id IS NOT NULL");
+
+                    b.HasIndex("CopiedFromPatientId")
+                        .HasDatabaseName("ix_patients_copied_from_patient_id");
 
                     b.HasIndex("OperationSceneId")
                         .HasDatabaseName("ix_patients_operation_scene_id");
@@ -1024,6 +1031,12 @@ namespace Ambulanzsystem.Api.Data.Migrations
 
             modelBuilder.Entity("Ambulanzsystem.Api.Domain.Patient", b =>
                 {
+                    b.HasOne("Ambulanzsystem.Api.Domain.Patient", "CopiedFromPatient")
+                        .WithMany()
+                        .HasForeignKey("CopiedFromPatientId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_patients_patients_copied_from_patient_id");
+
                     b.HasOne("Ambulanzsystem.Api.Domain.OperationScene", "OperationScene")
                         .WithMany("Patients")
                         .HasForeignKey("OperationSceneId")

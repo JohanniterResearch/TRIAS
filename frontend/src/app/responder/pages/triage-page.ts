@@ -35,6 +35,11 @@ import { TriageDraftStore } from '../services/triage-draft-store';
         <p class="form-error" role="alert" aria-live="assertive">Kein Patient ausgewählt.</p>
         <a routerLink="/scan-patient">Patient aufnehmen</a>
       } @else {
+        @if (state.patient()?.copiedFromPatientId; as originalId) {
+          <p class="copy-notice" role="status">
+            <span class="copy-badge">Kopie</span> Verweis auf Original-Patient {{ originalId }}
+          </p>
+        }
         @if (message()) {
           <p class="status-message" role="status" aria-live="polite">{{ message() }}</p>
         }

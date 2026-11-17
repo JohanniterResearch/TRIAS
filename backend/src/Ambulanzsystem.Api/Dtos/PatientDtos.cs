@@ -8,6 +8,7 @@ public record PatientResponse(
     int Id,
     string? HumanReadableId,
     Guid? ClientGeneratedId,
+    int? CopiedFromPatientId,
     string? Name,
     string? Triagefarbe,
     bool? Atmung,
@@ -28,10 +29,10 @@ public record PatientResponse(
     DateTime UpdatedAt)
 {
     public static PatientResponse From(Patient p) => new(
-        p.Id, p.HumanReadableId, p.ClientGeneratedId, p.Name, p.Triagefarbe,
+        p.Id, p.HumanReadableId, p.ClientGeneratedId, p.CopiedFromPatientId, p.Name, p.Triagefarbe,
         p.Atmung, p.Blutung, p.Radialispuls, p.Transport, p.Dringend, p.Kontaminiert,
         p.LongitudePatient, p.LatitudePatient, p.LocationSource, p.LocationAccuracyMeters,
-        p.IndoorLocation, p.LocationUpdatedAt, p.OperationSceneId, p.QrCodePatient != null,
+        p.IndoorLocation, p.LocationUpdatedAt, p.OperationSceneId, p.QrCodePatient != null || p.CopiedFromPatientId != null,
         p.CreatedAt, p.UpdatedAt);
 }
 

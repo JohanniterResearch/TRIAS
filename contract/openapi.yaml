@@ -1522,6 +1522,7 @@ components:
         id: { type: integer }
         humanReadableId: { type: [string, "null"], description: Set for manually created patients; no patient-identifying content (FR-PAT-07). }
         clientGeneratedId: { type: [string, "null"], format: uuid }
+        copiedFromPatientId: { type: [integer, "null"], description: Null for original patients; references original patient id when this patient is a scene copy. }
         name: { type: [string, "null"] }
         triagefarbe:
           oneOf:

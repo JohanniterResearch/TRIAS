@@ -191,6 +191,28 @@ button:disabled {
   width: 100%;
 }
 
+.copy-badge {
+  background: #e8f0fe;
+  border: 1px solid #1a73e8;
+  border-radius: 0.25rem;
+  color: #1a73e8;
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
+  margin-left: 0.35rem;
+  padding: 0.2rem 0.4rem;
+  vertical-align: middle;
+}
+
+.copy-notice {
+  background: #eef4fc;
+  border-left: 4px solid #1a73e8;
+  font-size: 0.9rem;
+  margin: 0;
+  padding: 0.75rem;
+}
+
 .dev-button {
   background: #ffffff;
   border: 2px dashed #b3261e;

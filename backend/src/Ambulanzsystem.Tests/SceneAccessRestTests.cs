@@ -239,7 +239,7 @@ public class SceneAccessRestTests(WebApplicationFactory<Program> factory) : ICla
     }
 
     [Fact]
-    public async Task QrPatientMove_AllowedWithinScope_ForbiddenWhenDestinationOutOfScope()
+    public async Task QrPatientCopy_AllowedWithinScope_ForbiddenWhenDestinationOutOfScope()
     {
         var admin = await AdminClientAsync();
         var eventA = await CreateSceneAsync(admin, $"event-a-{Guid.NewGuid():N}");
@@ -254,24 +254,32 @@ public class SceneAccessRestTests(WebApplicationFactory<Program> factory) : ICla
         // Create the QR-bound patient in the session's own scene.
         var create = await qr.PostAsJsonAsync("/api/verify-patient-qr-code", new { qr_code = qrToken, operationSceneId = eventA });
         Assert.Equal(HttpStatusCode.Created, create.StatusCode);
+        var originalPatient = await create.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        var originalId = originalPatient.GetProperty("patient").GetProperty("id").GetInt32();
 
-        // Move within scope: eventA -> subSite (both accessible) must succeed.
-        var moveWithinScope = await qr.PostAsJsonAsync("/api/verify-patient-qr-code", new { qr_code = qrToken, operationSceneId = subSite });
-        Assert.Equal(HttpStatusCode.OK, moveWithinScope.StatusCode);
-        var movedPatient = await moveWithinScope.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
-        Assert.Equal(subSite, movedPatient.GetProperty("patient").GetProperty("operationSceneId").GetInt32());
+        // Scan in subSite (in scope): creates a copy in subSite referencing original in eventA.
+        var scanInSubSite = await qr.PostAsJsonAsync("/api/verify-patient-qr-code", new { qr_code = qrToken, operationSceneId = subSite });
+        Assert.Equal(HttpStatusCode.Created, scanInSubSite.StatusCode);
+        var copiedPatient = await scanInSubSite.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        var copyId = copiedPatient.GetProperty("patient").GetProperty("id").GetInt32();
+        Assert.NotEqual(originalId, copyId);
+        Assert.Equal(subSite, copiedPatient.GetProperty("patient").GetProperty("operationSceneId").GetInt32());
+        Assert.Equal(originalId, copiedPatient.GetProperty("patient").GetProperty("copiedFromPatientId").GetInt32());
 
-        // Move to an out-of-scope destination must be rejected, and must not mutate the patient.
-        var moveOutOfScope = await qr.PostAsJsonAsync("/api/verify-patient-qr-code", new { qr_code = qrToken, operationSceneId = eventB });
-        Assert.Equal(HttpStatusCode.Forbidden, moveOutOfScope.StatusCode);
+        // Original in eventA remains unchanged.
+        var originalAfterCopy = await qr.PostAsJsonAsync("/api/verify-patient-qr-code", new { qr_code = qrToken, operationSceneId = eventA });
+        Assert.Equal(HttpStatusCode.OK, originalAfterCopy.StatusCode);
+        var originalBody = await originalAfterCopy.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        Assert.Equal(originalId, originalBody.GetProperty("patient").GetProperty("id").GetInt32());
+        Assert.Equal(eventA, originalBody.GetProperty("patient").GetProperty("operationSceneId").GetInt32());
 
-        var afterFailedMove = await admin.PostAsJsonAsync("/api/verify-patient-qr-code", new { qr_code = qrToken, operationSceneId = subSite });
-        var afterFailedMoveBody = await afterFailedMove.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
-        Assert.Equal(subSite, afterFailedMoveBody.GetProperty("patient").GetProperty("operationSceneId").GetInt32());
+        // Scan in an out-of-scope destination must be rejected.
+        var scanOutOfScope = await qr.PostAsJsonAsync("/api/verify-patient-qr-code", new { qr_code = qrToken, operationSceneId = eventB });
+        Assert.Equal(HttpStatusCode.Forbidden, scanOutOfScope.StatusCode);
     }
 
     [Fact]
-    public async Task QrPatientMove_ForbiddenWhenCurrentSceneOutOfScope()
+    public async Task QrPatientCopy_FromOtherEvent_CreatesLocalCopyAndPreservesIsolation()
     {
         var admin = await AdminClientAsync();
         var eventA = await CreateSceneAsync(admin, $"event-a-{Guid.NewGuid():N}");
@@ -280,21 +288,29 @@ public class SceneAccessRestTests(WebApplicationFactory<Program> factory) : ICla
         var genRes = await admin.PostAsJsonAsync("/api/patient-qr-codes/generate", new { number = 1 });
         var qrToken = (await genRes.Content.ReadFromJsonAsync<string[]>())![0];
 
-        // Patient is created directly in eventB (out of the eventA session's scope) by admin.
+        // Original patient is created in eventB by admin.
         var create = await admin.PostAsJsonAsync("/api/verify-patient-qr-code", new { qr_code = qrToken, operationSceneId = eventB });
         Assert.Equal(HttpStatusCode.Created, create.StatusCode);
+        var originalPatient = await create.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        var originalId = originalPatient.GetProperty("patient").GetProperty("id").GetInt32();
 
         var qr = await QrSessionClientAsync(admin, eventA);
 
-        // Attempting to move it into the session's own (in-scope) scene must still fail: the
-        // *current* scene (eventB) is out of scope, so the session has no authority over this
-        // patient at all.
-        var moveAttempt = await qr.PostAsJsonAsync("/api/verify-patient-qr-code", new { qr_code = qrToken, operationSceneId = eventA });
-        Assert.Equal(HttpStatusCode.Forbidden, moveAttempt.StatusCode);
+        // When scanned in eventA, creates a copy in eventA referencing original from eventB.
+        var copyAttempt = await qr.PostAsJsonAsync("/api/verify-patient-qr-code", new { qr_code = qrToken, operationSceneId = eventA });
+        Assert.Equal(HttpStatusCode.Created, copyAttempt.StatusCode);
+        var copyBody = await copyAttempt.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        var copyId = copyBody.GetProperty("patient").GetProperty("id").GetInt32();
+        Assert.NotEqual(originalId, copyId);
+        Assert.Equal(eventA, copyBody.GetProperty("patient").GetProperty("operationSceneId").GetInt32());
+        Assert.Equal(originalId, copyBody.GetProperty("patient").GetProperty("copiedFromPatientId").GetInt32());
 
-        var afterFailedMove = await admin.PostAsJsonAsync("/api/verify-patient-qr-code", new { qr_code = qrToken, operationSceneId = eventB });
-        var afterFailedMoveBody = await afterFailedMove.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
-        Assert.Equal(eventB, afterFailedMoveBody.GetProperty("patient").GetProperty("operationSceneId").GetInt32());
+        // The session in eventA can access its own copy, but cannot access the original in eventB.
+        var getCopy = await qr.GetAsync($"/api/persons/{copyId}/ambulanzprotokoll-page1");
+        Assert.Equal(HttpStatusCode.OK, getCopy.StatusCode);
+
+        var getOriginal = await qr.GetAsync($"/api/persons/{originalId}/ambulanzprotokoll-page1");
+        Assert.Equal(HttpStatusCode.Forbidden, getOriginal.StatusCode);
     }
 
     [Fact]
