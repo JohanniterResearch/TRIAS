@@ -73,6 +73,7 @@ for (const newer of [false, true]) {
       .poll(async () => (await queued(page))[0]?.body.status)
       .toBe(newer ? 'draft' : 'finalized');
     await page.getByRole('link', { name: 'Zurück zur Startseite' }).click();
+    await expect(page).toHaveURL(/\/menu$/);
     await page.evaluate(
       () =>
         new Promise<void>((resolve, reject) => {
@@ -298,6 +299,7 @@ test('transaction abort after request success remains unsaved and blocks logout 
   await expect.poll(() => queued(page)).toHaveLength(0);
   await expect(page.getByRole('button', { name: 'Zugang beenden' })).toBeDisabled();
   await page.getByRole('link', { name: 'Zurück zur Startseite' }).click();
+  await expect(page).toHaveURL(/\/menu$/);
   await page.goBack();
   await expect(page.getByLabel('Vorname', { exact: true })).toHaveValue(
     'Retain after failed storage',
@@ -351,6 +353,7 @@ test('newer replacement survives an in-flight save and finalization retains serv
   await acknowledgements[0]();
   await expect.poll(() => uploaded.length).toBe(2);
   await page.getByRole('link', { name: 'Zurück zur Startseite' }).click();
+  await expect(page).toHaveURL(/\/menu$/);
   await page.goBack();
   await expect(page.getByLabel('Vorname', { exact: true })).toHaveValue('Replacement');
   await expect(page.getByText('Server warning 1', { exact: true })).toHaveCount(0);
