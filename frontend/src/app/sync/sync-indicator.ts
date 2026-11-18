@@ -1,10 +1,11 @@
 import { Component, inject } from '@angular/core';
 
-import { formatTime } from '../shared/date-time-format';
+import { formatDateTime } from '../shared/date-time-format';
 import { SyncStatusService } from './sync-status.service';
 
 @Component({
   selector: 'app-sync-indicator',
+  imports: [],
   template: `
     <div
       class="sync-indicator"
@@ -19,27 +20,52 @@ import { SyncStatusService } from './sync-status.service';
               : 'synced'
       "
     >
-      <span role="status" aria-live="polite">
-        <span class="sync-dot" aria-hidden="true"></span>
-        <span>{{
-          !sync.online() ? 'Offline' : sync.serverReachable() ? 'Online' : 'Server nicht erreichbar'
-        }}</span>
-        @if (sync.validationDegraded()) {
-          <span class="form-error"
-            >Anmeldung kann nicht bestätigt werden · erneuter Versuch folgt</span
-          >
-        }
-        @if (sync.pendingCount()) {
-          <span>{{ sync.pendingCount() }} offen</span>
-        }
-        @if (isOld()) {
-          <span class="form-error">älter als 12 h</span>
-        }
-        @if (sync.lastSuccessfulQueueFlush(); as lastSync) {
-          <span class="sync-time">Queue-Sync {{ formatTime(lastSync) }}</span>
-        }
-        @if (sync.lastServerContact(); as lastContact) {
-          <span class="sync-time">Serverkontakt {{ formatTime(lastContact) }}</span>
+      <div class="sync-status" role="status" aria-live="polite">
+        <svg class="sync-icon" viewBox="0 0 32 32" aria-hidden="true">
+          @if (sync.online()) {
+            <path d="M5 12a17 17 0 0 1 22 0M9 17a11 11 0 0 1 14 0m-10 5a5 5 0 0 1 6 0"></path>
+            <circle cx="16" cy="26" r="1"></circle>
+          } @else {
+            <path d="M5 12a17 17 0 0 1 17-2M9 17a11 11 0 0 1 8-2"></path>
+            <path d="m5 5 22 22"></path>
+          }
+        </svg>
+        <span class="sync-copy">
+          <strong class="sync-state">
+            @if (!sync.online()) {
+              Offline - Daten werden gespeichert
+            } @else if (!sync.serverReachable()) {
+              Server nicht erreichbar
+            } @else {
+              Online
+            }
+          </strong>
+          @if (sync.pendingCount() > 0) {
+            <span class="sync-pending">
+              {{ sync.pendingCount() }}
+              {{ sync.pendingCount() === 1 ? 'Änderung' : 'Änderungen' }} ausstehend
+            </span>
+          }
+        </span>
+      </div>
+      @if (sync.validationDegraded() || isOld()) {
+        <div class="sync-notices" role="status" aria-live="polite">
+          @if (sync.validationDegraded()) {
+            <span class="form-error"
+              >Anmeldung kann nicht bestätigt werden · erneuter Versuch folgt</span
+            >
+          }
+          @if (isOld()) {
+            <span class="form-error">älter als 12 h</span>
+          }
+        </div>
+      }
+      <span class="sync-time">
+        Zuletzt synchronisiert:
+        @if (lastSync(); as lastSync) {
+          {{ formatDateTime(lastSync) }}
+        } @else {
+          noch keine
         }
       </span>
       @if (sync.failedCount()) {
@@ -52,7 +78,17 @@ import { SyncStatusService } from './sync-status.service';
 })
 export class SyncIndicator {
   protected readonly sync = inject(SyncStatusService);
-  protected readonly formatTime = formatTime;
+  protected readonly formatDateTime = formatDateTime;
+
+  protected lastSync(): string | null {
+    const queueFlush = this.sync.lastSuccessfulQueueFlush();
+    const serverContact = this.sync.lastServerContact();
+    return queueFlush && serverContact
+      ? queueFlush > serverContact
+        ? queueFlush
+        : serverContact
+      : (queueFlush ?? serverContact);
+  }
 
   protected isOld(): boolean {
     const oldest = this.sync.oldestPendingAt();

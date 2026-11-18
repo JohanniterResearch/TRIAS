@@ -13,9 +13,7 @@ import { RoleSelectionPage } from './responder/pages/role-selection-page';
 
 export const routes: Routes = [
   { path: '', pathMatch: 'full', component: Home, canActivate: [guestOnly] },
-  // Same page as '/', but reachable regardless of session state — '/' redirects an active
-  // session onward (see guestOnly), so this is the one link that always works from any page.
-  { path: 'menu', component: Home },
+  { path: 'menu', component: Home, canActivate: [requireSession('authenticated', true)] },
   {
     path: 'login',
     component: LoginPage,

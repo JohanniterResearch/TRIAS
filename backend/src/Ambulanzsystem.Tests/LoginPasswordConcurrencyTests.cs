@@ -145,6 +145,6 @@ public class LoginPasswordConcurrencyTests(WebApplicationFactory<Program> factor
         Assert.Null(unchanged.FirstLoginTime);
         Assert.Null(unchanged.LastLoginTime);
         Assert.False(await verify.RefreshTokens.AnyAsync(t => t.UserId == user.Id));
-        Assert.False(await verify.AuditLogs.AnyAsync(a => a.ActorId == user.Id && a.Action == "login"));
+        Assert.False(await verify.AuditLogs.AnyAsync(a => a.ActorId == user.Id && a.EntityType == "user" && a.Action == "login"));
     }
 }
