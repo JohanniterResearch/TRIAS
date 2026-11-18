@@ -370,6 +370,22 @@ describe('route guard failure modes', () => {
     expect(api.validateToken).not.toHaveBeenCalled();
   });
 
+  it('redirects unauthenticated visitors from the app root to login', async () => {
+    auth.activeSession.mockReturnValue(null);
+    const guard = routes.find((route) => route.path === '')!.canActivate![0] as CanActivateFn;
+
+    expect(await run(guard, '/')).toEqual({ redirect: '/login' });
+  });
+
+  it('denies the menu route without an authenticated session', async () => {
+    auth.activeSession.mockReturnValue(null);
+    auth.hasPersistedSession.mockReturnValue(false);
+    const guard = routes.find((route) => route.path === 'menu')!.canActivate![0] as CanActivateFn;
+
+    expect(await run(guard, '/menu')).toEqual({ redirect: '/login' });
+    expect(api.validateToken).not.toHaveBeenCalled();
+  });
+
   it('marks a JWT-expired stored session and allows its login route', async () => {
     let session: any = { tokenType: 'user' };
     auth.activeSession.mockImplementation(() => session);
