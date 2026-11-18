@@ -140,7 +140,7 @@ async function createManualPatient(page: Page): Promise<{ id: string; label: str
   await expect(page).toHaveURL(/\/patient\/-?\d+$/);
   return {
     id: page.url().split('/').at(-1)!,
-    label: (await page.getByRole('heading', { level: 1 }).innerText()).trim(),
+    label: (await page.locator('main').getByRole('heading', { level: 1 }).innerText()).trim(),
   };
 }
 
@@ -206,11 +206,11 @@ test('offline manual intake and triage replay after reconnect', async ({ context
   await context.setOffline(true);
   await page.getByRole('button', { name: 'Gelb', exact: true }).click();
   await expect(page.getByText('Lokal gespeichert, Sync ausstehend.')).toBeVisible();
-  await expect(page.getByText(/offen/)).toBeVisible();
+  await expect(page.getByText(/\d+ Änderung(en)? ausstehend/)).toBeVisible();
 
   await context.setOffline(false);
   await page.evaluate(() => window.dispatchEvent(new Event('online')));
-  await expect(page.getByText(/offen/)).toHaveCount(0, { timeout: 15_000 });
+  await expect(page.getByText(/\d+ Änderung(en)? ausstehend/)).toHaveCount(0, { timeout: 15_000 });
 });
 
 test('situation room receives a triage update from another browser', async ({ browser }) => {
@@ -406,7 +406,8 @@ test('offline provisional identity and drafts survive reload and bind to the rea
   await page.getByRole('button', { name: 'Weiter zum Ambulanzprotokoll' }).click();
   await page.getByLabel('Ambulanzort').fill('Draft source');
   await page.waitForTimeout(900);
-  await page.getByRole('link', { name: 'Ambulanzsystem' }).click();
+  await page.getByRole('link', { name: 'Zurück zur Startseite' }).click();
+  await page.getByRole('link', { name: 'Einsatz wählen' }).click();
   await expect(page).toHaveURL(/\/role-selection$/);
   await selectFirstScene(page);
   await context.setOffline(true);
