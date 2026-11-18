@@ -176,4 +176,22 @@ describe('triage flag edits', () => {
     instance.saveManualLocation();
     expect(api.updatePatientLocation.mock.calls[1][2]).not.toBe(online[2]);
   });
+
+  it('queues triage color change when server returns a 500 error', async () => {
+    const instance = await page();
+    api.updateTriage.mockReturnValue(
+      throwError(() => ({ status: 500, error: { message: 'Internal Server Error' } })),
+    );
+    instance.save({ triageColor: 'red' });
+    await Promise.resolve();
+    expect(queue.queueTriage).toHaveBeenCalledWith(
+      7,
+      {
+        triageColor: 'red',
+        clientUpdatedAt: expect.any(String),
+      },
+      expect.any(String),
+    );
+    expect(instance.message()).toBe('Lokal gespeichert, Sync ausstehend.');
+  });
 });

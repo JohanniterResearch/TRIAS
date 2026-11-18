@@ -9,7 +9,7 @@ import { SyncStatusService } from './sync-status.service';
   template: `
     <div
       class="sync-indicator"
-      [class.offline]="!sync.online()"
+      [class.offline]="!sync.online() || !sync.serverReachable()"
       [attr.data-sync-state]="
         sync.validationDegraded()
           ? 'validation-degraded'
@@ -32,7 +32,13 @@ import { SyncStatusService } from './sync-status.service';
         </svg>
         <span class="sync-copy">
           <strong class="sync-state">
-            {{ sync.online() ? 'Online' : 'Offline – Daten werden gespeichert' }}
+            @if (!sync.online()) {
+              Offline - Daten werden gespeichert
+            } @else if (!sync.serverReachable()) {
+              Server nicht erreichbar
+            } @else {
+              Online
+            }
           </strong>
           @if (sync.pendingCount() > 0) {
             <span class="sync-pending">

@@ -6,6 +6,7 @@ import { apiErrorMessage, ApiClient, isRetryableFailure } from '../../api/api-cl
 import { MyAccess } from '../../auth/components/my-access';
 import { QrScanner } from '../../shared/qr-scanner';
 import { OfflineQueueService } from '../../sync/offline-queue.service';
+import { SyncStatusService } from '../../sync/sync-status.service';
 import { GeolocationService } from '../services/geolocation.service';
 import { ResponderStateStore } from '../services/responder-state';
 
@@ -36,15 +37,15 @@ import { ResponderStateStore } from '../services/responder-state';
           </button>
         }
 
+        <app-qr-scanner (scanned)="verifyQr($event)" />
+
         <form [formGroup]="qrForm" (ngSubmit)="verifyQr()" class="auth-form">
           <label>
             Patient QR Code
-            <input formControlName="qrCode" autocomplete="off" autofocus />
+            <input formControlName="qrCode" autocomplete="off" />
           </label>
           <button type="submit" [disabled]="busy() || qrForm.invalid">QR prüfen</button>
         </form>
-
-        <app-qr-scanner (scanned)="verifyQr($event)" />
 
         <h2>Manuelle Aufnahme</h2>
         <form [formGroup]="manualForm" (ngSubmit)="createManual()" class="auth-form">
@@ -71,6 +72,7 @@ export class PatientScanPage {
 
   private readonly api = inject(ApiClient);
   private readonly offlineQueue = inject(OfflineQueueService);
+  private readonly syncStatus = inject(SyncStatusService);
   private readonly geo = inject(GeolocationService);
   private readonly router = inject(Router);
 
@@ -104,6 +106,10 @@ export class PatientScanPage {
     }
 
     const clientGeneratedId = crypto.randomUUID();
+    if (!this.online()) {
+      void this.createManualOffline(clientGeneratedId);
+      return;
+    }
     this.run();
     this.api
       .createManualPatient({
@@ -127,7 +133,7 @@ export class PatientScanPage {
   }
 
   protected online(): boolean {
-    return navigator.onLine;
+    return this.syncStatus.online() && this.syncStatus.serverReachable();
   }
 
   private async captureLocation(patientId: number): Promise<void> {

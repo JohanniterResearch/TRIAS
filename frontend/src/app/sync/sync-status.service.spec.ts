@@ -24,4 +24,24 @@ describe('SyncStatusService timestamps', () => {
     expect(sync.failedCount()).toBe(1);
     expect(sync.lastQueueError()).toBe('HTTP 400');
   });
+
+  it('tracks server reachability and offline events', () => {
+    localStorage.clear();
+    const sync = TestBed.inject(SyncStatusService);
+
+    expect(sync.serverReachable()).toBe(true);
+
+    sync.markServerUnreachable();
+    expect(sync.serverReachable()).toBe(false);
+
+    sync.markServerContact(new Date('2026-01-01T12:00:00Z'));
+    expect(sync.serverReachable()).toBe(true);
+
+    window.dispatchEvent(new Event('offline'));
+    expect(sync.online()).toBe(false);
+    expect(sync.serverReachable()).toBe(false);
+
+    window.dispatchEvent(new Event('online'));
+    expect(sync.online()).toBe(true);
+  });
 });

@@ -37,15 +37,15 @@ import { ResponderStateStore } from '../services/responder-state';
         <button type="button" disabled>Dritte Option folgt</button>
       </div>
 
+      <h2>QR neu zuweisen</h2>
+      <app-qr-scanner buttonLabel="Neuen QR Code scannen" (scanned)="reassignQr($event)" />
       <form [formGroup]="reassignForm" (ngSubmit)="reassignQr()" class="auth-form">
-        <h2>QR neu zuweisen</h2>
         <label>
           Neuer QR Code
           <input formControlName="qrCode" />
         </label>
         <button type="submit" [disabled]="reassignForm.invalid || busy()">QR ersetzen</button>
       </form>
-      <app-qr-scanner buttonLabel="Neuen QR Code scannen" (scanned)="reassignQr($event)" />
     </section>
   `,
 })
