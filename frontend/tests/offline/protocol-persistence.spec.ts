@@ -72,7 +72,7 @@ for (const newer of [false, true]) {
     await expect
       .poll(async () => (await queued(page))[0]?.body.status)
       .toBe(newer ? 'draft' : 'finalized');
-    await page.getByRole('link', { name: 'Alle Seiten' }).click();
+    await page.getByRole('link', { name: 'Zurück zur Startseite' }).click();
     await page.evaluate(
       () =>
         new Promise<void>((resolve, reject) => {
@@ -256,7 +256,7 @@ test('edit then navigate before 800 ms survives offline reload and reconnect', a
   await page.clock.pauseAt(new Date('2026-09-07T12:00:01Z'));
   await context.setOffline(true);
   await page.getByLabel('Vorname', { exact: true }).fill('Latest offline snapshot');
-  await page.getByRole('link', { name: 'Alle Seiten' }).click();
+  await page.getByRole('link', { name: 'Zurück zur Startseite' }).click();
   await expect(page).toHaveURL(/\/menu$/);
   await expect
     .poll(async () => (await queued(page))[0]?.body.formState.patient.vorname)
@@ -297,7 +297,7 @@ test('transaction abort after request success remains unsaved and blocks logout 
   await expect(page.getByText('local-only, queue failed', { exact: true })).toBeVisible();
   await expect.poll(() => queued(page)).toHaveLength(0);
   await expect(page.getByRole('button', { name: 'Zugang beenden' })).toBeDisabled();
-  await page.getByRole('link', { name: 'Alle Seiten' }).click();
+  await page.getByRole('link', { name: 'Zurück zur Startseite' }).click();
   await page.goBack();
   await expect(page.getByLabel('Vorname', { exact: true })).toHaveValue(
     'Retain after failed storage',
@@ -350,7 +350,7 @@ test('newer replacement survives an in-flight save and finalization retains serv
   await expect.poll(async () => (await queued(page))[0]?.body.status).toBe('finalized');
   await acknowledgements[0]();
   await expect.poll(() => uploaded.length).toBe(2);
-  await page.getByRole('link', { name: 'Alle Seiten' }).click();
+  await page.getByRole('link', { name: 'Zurück zur Startseite' }).click();
   await page.goBack();
   await expect(page.getByLabel('Vorname', { exact: true })).toHaveValue('Replacement');
   await expect(page.getByText('Server warning 1', { exact: true })).toHaveCount(0);
