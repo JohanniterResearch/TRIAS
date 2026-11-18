@@ -22,7 +22,7 @@ import { SyncStatusService } from './sync-status.service';
     >
       <div class="sync-status" role="status" aria-live="polite">
         <svg class="sync-icon" viewBox="0 0 32 32" aria-hidden="true">
-          @if (sync.online()) {
+          @if (sync.online() && sync.serverReachable()) {
             <path d="M5 12a17 17 0 0 1 22 0M9 17a11 11 0 0 1 14 0m-10 5a5 5 0 0 1 6 0"></path>
             <circle cx="16" cy="26" r="1"></circle>
           } @else {

@@ -26,3 +26,33 @@ describe('SyncIndicator last synchronization time', () => {
     expect((indicator as any).lastSync()).toBe('2026-01-01T10:01:00.000Z');
   });
 });
+
+describe('SyncIndicator connectivity icon', () => {
+  it('uses the online icon only when the browser is online and the server is reachable', () => {
+    const sync = TestBed.inject(SyncStatusService);
+    sync.online.set(true);
+    const fixture = TestBed.createComponent(SyncIndicator);
+    const element: HTMLElement = fixture.nativeElement;
+    fixture.detectChanges();
+    expect(element.querySelector('.sync-icon circle')).not.toBeNull();
+
+    sync.markServerUnreachable();
+    fixture.detectChanges();
+    expect(element.querySelector('.sync-state')?.textContent?.trim()).toBe(
+      'Server nicht erreichbar',
+    );
+    expect(element.querySelector('.sync-icon circle')).toBeNull();
+
+    sync.markServerContact();
+    sync.online.set(false);
+    fixture.detectChanges();
+    expect(element.querySelector('.sync-state')?.textContent?.trim()).toBe(
+      'Offline - Daten werden gespeichert',
+    );
+    expect(element.querySelector('.sync-icon circle')).toBeNull();
+
+    sync.online.set(true);
+    fixture.detectChanges();
+    expect(element.querySelector('.sync-icon circle')).not.toBeNull();
+  });
+});
