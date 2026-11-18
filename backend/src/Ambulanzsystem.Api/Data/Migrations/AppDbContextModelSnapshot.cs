@@ -243,6 +243,10 @@ namespace Ambulanzsystem.Api.Data.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("timestamp");
 
+                    b.Property<string>("WriteDetailsJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("write_details_json");
+
                     b.HasKey("Id")
                         .HasName("pk_audit_logs");
 
@@ -276,6 +280,13 @@ namespace Ambulanzsystem.Api.Data.Migrations
                     b.Property<int>("PatientId")
                         .HasColumnType("integer")
                         .HasColumnName("patient_id");
+
+                    b.Property<string>("RegionTimestampsJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasDefaultValue("{}")
+                        .HasColumnName("region_timestamps_json");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -313,6 +324,10 @@ namespace Ambulanzsystem.Api.Data.Migrations
                         .HasColumnName("processed_at")
                         .HasDefaultValueSql("now()");
 
+                    b.Property<bool?>("RejectedAsStale")
+                        .HasColumnType("boolean")
+                        .HasColumnName("rejected_as_stale");
+
                     b.HasKey("PatientId", "WriteId")
                         .HasName("pk_body_part_processed_writes");
 
@@ -334,6 +349,10 @@ namespace Ambulanzsystem.Api.Data.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)")
                         .HasColumnName("checksum");
+
+                    b.Property<string>("DecisionsJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("decisions_json");
 
                     b.Property<DateTime>("ProcessedAt")
                         .ValueGeneratedOnAdd()
@@ -557,6 +576,52 @@ namespace Ambulanzsystem.Api.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Ambulanzsystem.Api.Domain.PatientWriteReceipt", b =>
+                {
+                    b.Property<string>("Scope")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("scope");
+
+                    b.Property<string>("Target")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("target");
+
+                    b.Property<Guid>("WriteId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("write_id");
+
+                    b.Property<string>("Checksum")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("checksum");
+
+                    b.Property<int?>("PatientId")
+                        .HasColumnType("integer")
+                        .HasColumnName("patient_id");
+
+                    b.Property<DateTime>("ProcessedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("processed_at")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<string>("ResultJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("result_json");
+
+                    b.HasKey("Scope", "Target", "WriteId")
+                        .HasName("pk_patient_write_receipts");
+
+                    b.HasIndex("PatientId")
+                        .HasDatabaseName("ix_patient_write_receipts_patient_id");
+
+                    b.ToTable("patient_write_receipts", (string)null);
+                });
+
             modelBuilder.Entity("Ambulanzsystem.Api.Domain.ProtokollProcessedWrite", b =>
                 {
                     b.Property<int>("PatientId")
@@ -572,6 +637,10 @@ namespace Ambulanzsystem.Api.Data.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)")
                         .HasColumnName("checksum");
+
+                    b.Property<string>("DecisionsJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("decisions_json");
 
                     b.Property<DateTime>("ProcessedAt")
                         .ValueGeneratedOnAdd()
@@ -823,6 +892,10 @@ namespace Ambulanzsystem.Api.Data.Migrations
                         .HasColumnType("character varying(64)")
                         .HasColumnName("checksum");
 
+                    b.Property<string>("DecisionsJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("decisions_json");
+
                     b.Property<DateTime>("ProcessedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("timestamp with time zone")
@@ -1040,6 +1113,15 @@ namespace Ambulanzsystem.Api.Data.Migrations
                     b.Navigation("OperationScene");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Ambulanzsystem.Api.Domain.PatientWriteReceipt", b =>
+                {
+                    b.HasOne("Ambulanzsystem.Api.Domain.Patient", null)
+                        .WithMany()
+                        .HasForeignKey("PatientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("fk_patient_write_receipts_patients_patient_id");
                 });
 
             modelBuilder.Entity("Ambulanzsystem.Api.Domain.ProtokollProcessedWrite", b =>

@@ -308,7 +308,7 @@ paths:
       tags: [admin]
       operationId: updateAdminPatient
       description: Applies an administrative clinical correction with an audit reason where required.
-      parameters: [{ $ref: "#/components/parameters/adminPatientReferencePath" }]
+      parameters: [{ $ref: "#/components/parameters/adminPatientReferencePath" }, { $ref: "#/components/parameters/patientWriteKey" }]
       requestBody: { required: true, content: { application/json: { schema: { type: object, additionalProperties: true } } } }
       responses:
         "200": { description: Updated, content: { application/json: { schema: { $ref: "#/components/schemas/AdminPatient" } } } }
@@ -327,11 +327,13 @@ paths:
       tags: [admin]
       operationId: updateAdminPatientBodyParts
       description: Replaces the complete validated canonical body-map state as an administrative clinical correction.
-      parameters: [{ $ref: "#/components/parameters/adminPatientReferencePath" }]
+      parameters: [{ $ref: "#/components/parameters/adminPatientReferencePath" }, { $ref: "#/components/parameters/patientWriteKey" }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/AdminBodyPartsUpdate" } } } }
       responses:
         "200": { description: Updated detailed record, content: { application/json: { schema: { $ref: "#/components/schemas/AdminPatientDetails" } } } }
         "400": { $ref: "#/components/responses/BadRequest" }
+        "409": { description: Idempotency-Key reused with different order contents. }
+
   /api/admin/patient-qr-codes/available:
     get:
       tags: [admin]
@@ -347,7 +349,7 @@ paths:
       tags: [admin]
       operationId: assignAdminPatientQrCode
       description: Atomically assigns either an unused opaque QR reference or a new QR code. A newly generated token is returned only for one-time printing.
-      parameters: [{ $ref: "#/components/parameters/adminPatientReferencePath" }]
+      parameters: [{ $ref: "#/components/parameters/adminPatientReferencePath" }, { $ref: "#/components/parameters/patientWriteKey" }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/AssignAdminPatientQrCode" } } } }
       responses:
         "200": { description: Assigned, content: { application/json: { schema: { $ref: "#/components/schemas/AssignAdminPatientQrCodeResponse" } } } }
@@ -710,7 +712,7 @@ paths:
         online-only in V1: requests carry no client timestamp, disjoint fields are updated
         independently, and concurrent writes to the same field use database-arrival order.
       summary: Update any subset of optional coordination fields (FR-TEAM-07 — every field independently optional/clearable). Policy TriageWrite.
-      parameters: [{ $ref: "#/components/parameters/idPath" }]
+      parameters: [{ $ref: "#/components/parameters/idPath" }, { $ref: "#/components/parameters/patientWriteKey" }]
       requestBody:
         required: true
         content:
@@ -735,6 +737,8 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
 
   # ----------------------------------------------------------- persons
+        "409": { description: Idempotency-Key reused with different order contents. }
+
   /api/persons:
     get:
       tags: [persons]
@@ -766,6 +770,8 @@ paths:
         fully-seeded Body, binds code, links scene (201). Bound -> returns existing
         patient, refreshes scene link (200). Concurrency-safe (row lock) — parallel
         scans of the same code yield the same patient. Online-only. Policy TriageWrite.
+      parameters:
+        - { $ref: "#/components/parameters/patientWriteKey" }
       requestBody:
         required: true
         content:
@@ -789,6 +795,8 @@ paths:
               schema: { $ref: "#/components/schemas/VerifyQrResult" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Unknown QR token — rejected (UC-04). }
+
+        "409": { description: Idempotency-Key reused with different order contents. }
 
   /api/persons/manual:
     post:
@@ -824,6 +832,8 @@ paths:
               schema: { $ref: "#/components/schemas/Patient" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+
+        "409": { description: clientGeneratedId reused with different creation contents. Historical patients without a recorded creation checksum retain legacy replay behavior. }
   /api/persons/{id}/update-triage-color:
     post:
       tags: [persons]
@@ -886,7 +896,7 @@ paths:
       operationId: updatePatientRespiration
       description: Updates the patient's breathing-sufficient flag and publishes the resulting patient state.
       summary: Set the breathing-sufficient flag. Publishes realtime update. Policy TriageWrite.
-      parameters: [{ $ref: "#/components/parameters/idPath" }]
+      parameters: [{ $ref: "#/components/parameters/idPath" }, { $ref: "#/components/parameters/patientWriteKey" }]
       requestBody:
         required: true
         content:
@@ -907,6 +917,8 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+
+        "409": { description: Idempotency-Key reused with different order contents. }
 
   /api/persons/{id}/location:
     post:
@@ -964,7 +976,7 @@ paths:
       operationId: reassignPatientQrCode
       description: Replaces the patient's current QR binding with the supplied unbound patient QR token.
       summary: Unbind the patient's current QR code and bind the given UNBOUND code (mis-attached tag correction, FR-QR-07). Policy TriageWrite.
-      parameters: [{ $ref: "#/components/parameters/idPath" }]
+      parameters: [{ $ref: "#/components/parameters/idPath" }, { $ref: "#/components/parameters/patientWriteKey" }]
       requestBody:
         required: true
         content:
@@ -1094,7 +1106,7 @@ paths:
         authorized patients; a named responder may export only a patient they own.
         Anonymous QR sessions and cross-owner responders receive 403, with no archive
         or success audit created.
-      parameters: [{ $ref: "#/components/parameters/patientIdPath" }]
+      parameters: [{ $ref: "#/components/parameters/patientIdPath" }, { $ref: "#/components/parameters/patientWriteKey" }]
       responses:
         "200":
           description: Export document.
@@ -1106,6 +1118,8 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
 
   # -------------------------------------------------------- body parts
+
+        "409": { description: Idempotency-Key reused with different order contents. }
   /api/body-parts:
     get:
       tags: [body-parts]
@@ -1132,7 +1146,18 @@ paths:
         Sets one validated body-region marker and returns the patient's complete updated marker state.
         With Idempotency-Key, a repeated order for the same patient returns the current marker state
         without another write, audit or notification. Reusing the key with a different order returns 409.
-        Without the header, existing behavior is retained.
+        Without the header, duplicate detection is not performed.
+        clientUpdatedAt is compared per patient and canonical region: a strictly older order is
+        ignored, including when the stored value is zero. A newer order advances the region time
+        even if its value is unchanged. Equal timestamps retain arrival-order behavior. Orders
+        without a timestamp retain unconditional assignment and do not change the region time.
+        Device times are not clamped. Retain the original timestamp and key on retry.
+        A stale order completes with HTTP 200 and writeResult.outcome=rejected,
+        conflictReason=older_edit, the affected bodyPartId and its current serverValue (including 0).
+        Its decision is persisted with the key: retries keep that decision but return the current
+        region value, even after later writes. writeResult is absent/null for reads and retries of
+        historical orders whose decision was not recorded. HTTP 409 remains reserved for key reuse
+        with different order contents.
       summary: Toggle one region's marker. bodyPartId validated against the canonical key list. Publishes realtime update. Policy TriageWrite.
       parameters:
         - name: Idempotency-Key
@@ -1155,6 +1180,7 @@ paths:
                 idpatient: { type: integer }
                 bodyPartId: { type: string, description: One key from contract/body-regions.json. }
                 isClicked: { type: boolean }
+                clientUpdatedAt: { type: string, format: date-time, description: UTC edit time captured at the user action before the first send; optional for legacy orders. }
       responses:
         "200":
           description: Updated full body state.
@@ -1267,6 +1293,13 @@ components:
       bearerFormat: JWT
 
   parameters:
+    patientWriteKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Stable non-empty UUID per new user action, scoped to operation and target. Keep key and body on retry. Matching replays return the original result (creation replays use 200) without effects; changed contents return 409. Current access is checked on every replay. Without a key no reliable duplicate protection is possible.
+      schema: { type: string, format: uuid, pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' }
+
     idPath:
       name: id
       in: path
@@ -1519,6 +1552,10 @@ components:
       type: object
       required: [id, operationSceneId, createdAt, updatedAt]
       properties:
+        fieldResults:
+          type: [array, "null"]
+          description: Original per-field decisions with current server values. Null for historical receipts without recorded decisions.
+          items: { $ref: "#/components/schemas/FieldWriteResult" }
         id: { type: integer }
         humanReadableId: { type: [string, "null"], description: Set for manually created patients; no patient-identifying content (FR-PAT-07). }
         clientGeneratedId: { type: [string, "null"], format: uuid }
@@ -1572,11 +1609,37 @@ components:
           description: One entry per key in contract/body-regions.json; 0 = unmarked, non-zero = marked.
           additionalProperties: { type: integer }
         updatedAt: { type: string, format: date-time }
+        writeResult:
+          oneOf:
+            - $ref: "#/components/schemas/BodyPartWriteResult"
+            - type: "null"
+
+    FieldWriteResult:
+      type: object
+      required: [field, outcome, conflictReason, serverValue]
+      properties:
+        field: { type: string, description: Patient field key or protocol leaf path; location is one aggregate. }
+        outcome: { type: string, enum: [applied, rejected] }
+        conflictReason: { type: [string, "null"], enum: [older_edit, null] }
+        serverValue: { description: Current JSON value at response time including false, zero and null; refreshed on replay. }
+
+    BodyPartWriteResult:
+      type: object
+      required: [outcome, conflictReason, bodyPartId, serverValue]
+      properties:
+        outcome: { type: string, enum: [applied, rejected] }
+        conflictReason: { type: [string, "null"], enum: [older_edit, null], description: older_edit for a rejected order; null when applied. }
+        bodyPartId: { type: string, description: A canonical key from contract/body-regions.json. }
+        serverValue: { type: integer, enum: [0, 1], description: Current region value at response time, including on replay. }
 
     ProtokollRecord:
       type: object
       required: [patientId, status, formState, updatedAt]
       properties:
+        fieldResults:
+          type: [array, "null"]
+          description: Original per-field decisions with current server values. Null for historical receipts without recorded decisions.
+          items: { $ref: "#/components/schemas/FieldWriteResult" }
         patientId: { type: integer }
         status: { type: string, enum: [draft, finalized] }
         formState:
@@ -1636,3 +1699,4 @@ components:
         before: { type: [string, "null"], description: JSON-encoded value before the action, or null when no prior value applies. }
         after: { type: [string, "null"], description: JSON-encoded value after the action, or null when no resulting value applies. }
         reason: { type: [string, "null"], description: Required justification for an administrative clinical correction. }
+        writeDetails: { type: [string, "null"], description: JSON-encoded per-field requested/stored/result values and edit times plus writeId and decision. Unknown edit times remain null. }

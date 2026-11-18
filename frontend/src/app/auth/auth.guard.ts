@@ -154,6 +154,11 @@ export const guestOnly: CanActivateFn = (_route, state) => {
     if (!session.expired) auth.markExpired();
     return state.url === requiredLogin ? true : router.createUrlTree([requiredLogin]);
   }
+  // Administrative workspaces require online validation. Settle on login while offline
+  // instead of redirecting back into their guard; retain the session for journal replay.
+  if (!navigator.onLine && (session.tokenType === 'admin' || session.tokenType === 'leitstelle')) {
+    return state.url === requiredLogin ? true : router.createUrlTree([requiredLogin]);
+  }
   return router.createUrlTree([
     homeRouteForToken(session.tokenType, session.requiresPasswordChange),
   ]);

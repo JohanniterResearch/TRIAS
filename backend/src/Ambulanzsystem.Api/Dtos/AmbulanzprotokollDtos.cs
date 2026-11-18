@@ -10,7 +10,8 @@ public record ProtokollRecordResponse(
     JsonElement FormState,
     DateTime UpdatedAt,
     DateTime? FinalizedAt,
-    List<string>? Warnings = null);
+    List<string>? Warnings = null,
+    IReadOnlyList<FieldWriteResult>? FieldResults = null);
 
 public record ProtokollExportMetadata(
     int PatientId,

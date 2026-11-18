@@ -1,4 +1,5 @@
 using System.Data;
+using Ambulanzsystem.Api.Filters;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Ambulanzsystem.Api.Auth;
@@ -60,33 +61,36 @@ public class AmbulanzprotokollController(AppDbContext db, AuditService audit, Sc
         if (!await SceneAccess.CanAccessAsync(User, db, patient.OperationSceneId)) return Forbid();
 
         var record = await db.AmbulanzprotokollPage1s.FirstOrDefaultAsync(r => r.PatientId == patientId);
+        ProtokollProcessedWrite? receipt = null;
+        var decisions = new FieldWriteDecisions(writeId);
         if (writeId is Guid keyId)
         {
             // Missing required JSON cannot be serialized as a bound order.
             if (request.FormState.ValueKind == JsonValueKind.Undefined)
                 return BadRequest(new ErrorResponse("formState must be a JSON object."));
+            var processed = await db.ProtokollProcessedWrites.FindAsync(patientId, keyId);
             string checksum;
             try
             {
                 checksum = ProtokollWriteChecksum.Compute(request);
+                if (processed is not null && !ProtokollWriteChecksum.MatchesStored(request, checksum, processed.Checksum))
+                    return Conflict(new ErrorResponse("Idempotency-Key was already used for a different protocol order."));
             }
             catch (Exception ex) when (ex is JsonException or InvalidOperationException or FormatException)
             {
                 return BadRequest(new ErrorResponse("formState contains a value that doesn't match the expected field types."));
             }
-            var processed = await db.ProtokollProcessedWrites.FindAsync(patientId, keyId);
             if (processed is not null)
             {
-                if (processed.Checksum != checksum)
-                    return Conflict(new ErrorResponse("Idempotency-Key was already used for a different protocol order."));
                 // Access was checked above. A replay is not a new correction, even after finalize.
                 var currentJson = FormStateMerge.WithDefaults(record?.FormStateJson ?? "{}");
                 return Ok(new ProtokollRecordResponse(patientId, record?.Status ?? "draft",
                     JsonDocument.Parse(currentJson).RootElement, record?.UpdatedAt ?? DateTime.UnixEpoch,
-                    record?.FinalizedAt, record?.Status == "finalized" ? BuildFinalizeWarnings(currentJson) : []));
+                    record?.FinalizedAt, record?.Status == "finalized" ? BuildFinalizeWarnings(currentJson) : [],
+                    FieldWriteDecisions.FormResults(processed.DecisionsJson, currentJson)));
             }
             // Same transaction as the protocol, audit and revision; patient lock serializes replays.
-            db.ProtokollProcessedWrites.Add(new ProtokollProcessedWrite
+            db.ProtokollProcessedWrites.Add(receipt = new ProtokollProcessedWrite
             {
                 PatientId = patientId, WriteId = keyId, Checksum = checksum,
             });
@@ -125,10 +129,10 @@ public class AmbulanzprotokollController(AppDbContext db, AuditService audit, Sc
             var merge = FieldMerge.Load(record.FieldTimestampsJson);
             // A device clock running ahead must not win every later merge, nor get its offline
             // write rejected (which would strand it in the device queue): clamp to server time.
-            var clientUpdatedAt = request.ClientUpdatedAt > now ? now : request.ClientUpdatedAt;
-            record.FormStateJson = FormStateMerge.Apply(record.FormStateJson, incoming, merge, clientUpdatedAt, now);
+            record.FormStateJson = FormStateMerge.Apply(record.FormStateJson, incoming, merge, request.ClientUpdatedAt, now, decisions);
             record.FieldTimestampsJson = merge.Save();
             record.FormStateJson = ApplyGcsAutoSum(record.FormStateJson);
+            decisions.RefreshFormResults(record.FormStateJson);
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException or FormatException)
         {
@@ -167,7 +171,10 @@ public class AmbulanzprotokollController(AppDbContext db, AuditService audit, Sc
         {
             diffs["status"] = (oldStatus, record.Status);
         }
-        audit.LogFieldsWrite(User, "ambulanzprotokoll", record.Id, patientId, diffs, wasFinalized ? request.CorrectionReason : null);
+        foreach (var rejected in decisions.Details.Where(d => d.Decision == "rejected_older_edit"))
+            diffs.TryAdd(rejected.Field, (rejected.StoredValue, rejected.ResultValue));
+        audit.LogFieldsWrite(User, "ambulanzprotokoll", record.Id, patientId, diffs, wasFinalized ? request.CorrectionReason : null, decisions.Details);
+        if (receipt is not null) receipt.DecisionsJson = decisions.Save();
 
         await db.SaveChangesAsync();
 
@@ -191,12 +198,13 @@ public class AmbulanzprotokollController(AppDbContext db, AuditService audit, Sc
         await notifier.PatientUpdatedAsync(patient, false, record.Status);
 
         var formStateOut = JsonDocument.Parse(FormStateMerge.WithDefaults(record.FormStateJson)).RootElement;
-        return Ok(new ProtokollRecordResponse(patientId, record.Status, formStateOut, record.UpdatedAt, record.FinalizedAt, warnings));
+        return Ok(new ProtokollRecordResponse(patientId, record.Status, formStateOut, record.UpdatedAt, record.FinalizedAt, warnings, FieldWriteDecisions.FormResults(decisions.Save(), newFormStateJson)));
     }
 
     // JSON export (FR-DOC-09): persists an immutable archive snapshot (FR-DOC-14) and
     // audit-logs the export action, distinct from the live/mutable AmbulanzprotokollPage1 row.
     [HttpGet("export")]
+    [PatientWrite("protocol-export")]
     public async Task<IActionResult> Export(int patientId)
     {
         var patient = await db.Patients.Include(p => p.OperationScene).FirstOrDefaultAsync(p => p.Id == patientId);

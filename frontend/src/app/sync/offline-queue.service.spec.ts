@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { of, throwError } from 'rxjs';
+import { of, Subject, throwError } from 'rxjs';
 
 import { ApiClient, ApiRequestError } from '../api/api-client';
 import { ProtokollDraftStore } from '../protokoll/services/protokoll-draft-store';
@@ -47,6 +47,35 @@ describe('OfflineQueueService', () => {
     });
     service = TestBed.inject(OfflineQueueService);
   });
+
+  it.each(['triage', 'location', 'body-part', 'manual-patient'])(
+    'durably upgrades legacy %s identity without inventing an edit time',
+    async (type) => {
+      let stored: any = {
+        id: 'legacy',
+        type,
+        patientId: 7,
+        createdAt: '2026-01-01T00:00:00Z',
+        body: {},
+      };
+      (service as any).withStore = vi.fn(async (_name: string, _mode: string, work: any) =>
+        work({
+          get: () => successfulRequest(structuredClone(stored)),
+          put: (item: any) => {
+            stored = structuredClone(item);
+            return successfulRequest(item);
+          },
+        }),
+      );
+      const first = await (service as any).ensureQueueWriteId(structuredClone(stored));
+      expect(first.writeId).toMatch(/^[0-9a-f-]{36}$/);
+      expect(stored.writeId).toBe(first.writeId);
+      expect(first.body).not.toHaveProperty('clientUpdatedAt');
+      if (type === 'manual-patient') expect(first.body.clientGeneratedId).toBe(first.writeId);
+      const retry = await (service as any).ensureQueueWriteId(structuredClone(stored));
+      expect(retry).toEqual(first);
+    },
+  );
 
   it('uses one intentional replacement key for full protocol snapshots', async () => {
     const added: any[] = [];
@@ -174,6 +203,7 @@ describe('OfflineQueueService', () => {
   it('commits a legacy protocol key before transmission and reuses a concurrently assigned key', async () => {
     const item = {
       ...triage('protocol:7', 7),
+      writeId: undefined,
       type: 'protocol',
       body: { status: 'draft', formState: {} },
     };
@@ -229,6 +259,7 @@ describe('OfflineQueueService', () => {
   it('does not send a legacy protocol when persisting its key fails or a newer snapshot replaced it', async () => {
     const item = {
       ...triage('protocol:7', 7),
+      writeId: undefined,
       type: 'protocol',
       body: { status: 'draft', formState: {} },
     };
@@ -369,7 +400,7 @@ describe('OfflineQueueService', () => {
     await service.flush();
 
     expect(api.updateTriage).toHaveBeenCalledOnce();
-    expect(api.updateTriage).toHaveBeenCalledWith(2, expect.anything(), undefined);
+    expect(api.updateTriage).toHaveBeenCalledWith(2, expect.anything(), expect.any(String));
     expect(remove).toHaveBeenCalledWith(expect.objectContaining({ id: 'ready' }));
     expect((service as any).replaceIfCurrent).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'dependent' }),
@@ -573,6 +604,45 @@ describe('OfflineQueueService', () => {
     expect(added[0].writeId).toBe('online-write');
     expect(added[1].writeId).toEqual(expect.any(String));
     expect(added[1].writeId).not.toBe('online-write');
+    expect(added[0].body).not.toHaveProperty('clientUpdatedAt');
+  });
+
+  it('preserves the body-part click time and key through persistence and retry', async () => {
+    const writeId = crypto.randomUUID();
+    const body = {
+      idpatient: 7,
+      bodyPartId: 'kopf_vorne',
+      isClicked: true,
+      clientUpdatedAt: '2026-11-01T10:00:00.000Z',
+    };
+    const original = structuredClone(body);
+    let persisted: any;
+    vi.spyOn(service as any, 'add').mockImplementation(async (item: any) => {
+      persisted = structuredClone(item);
+    });
+    await service.queueBodyPart(7, body, writeId);
+    body.clientUpdatedAt = '2026-11-01T11:00:00.000Z';
+    body.isClicked = false;
+    vi.spyOn(service as any, 'items').mockImplementation(async () => [structuredClone(persisted)]);
+    vi.spyOn(service as any, 'realPatientId').mockResolvedValue(7);
+    vi.spyOn(service as any, 'replaceIfCurrent').mockImplementation(
+      async (_old: any, next: any) => {
+        persisted = structuredClone(next);
+        return true;
+      },
+    );
+    const remove = vi.spyOn(service as any, 'deleteIfCurrent').mockResolvedValue(true);
+    api.toggleBodyPart
+      .mockReturnValueOnce(throwError(() => new TypeError('response lost')))
+      .mockReturnValueOnce(of({}));
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+    await service.flush();
+    expect(remove).not.toHaveBeenCalled();
+    expect(persisted).toMatchObject({ writeId, body: original, state: 'retrying' });
+    await service.retry(persisted.id);
+    expect(api.toggleBodyPart).toHaveBeenNthCalledWith(1, original, writeId);
+    expect(api.toggleBodyPart).toHaveBeenNthCalledWith(2, original, writeId);
+    expect(remove).toHaveBeenCalledOnce();
   });
 
   it('marks queue flush time only after a persisted queue deletion', async () => {
@@ -582,10 +652,183 @@ describe('OfflineQueueService', () => {
 
     expect(sync.markQueueFlushed).toHaveBeenCalledOnce();
   });
+
+  it('finishes rejected body-part orders and exposes their region result without retry', async () => {
+    const item = {
+      id: 'body-part:7:kopf_vorne',
+      patientId: 7,
+      type: 'body-part',
+      writeId: 'old',
+      createdAt: '2026-11-01T10:00:00Z',
+      body: { idpatient: 7, bodyPartId: 'kopf_vorne', isClicked: true },
+    };
+    let stored: any = item;
+    vi.spyOn(service as any, 'items').mockImplementation(async () =>
+      stored ? [structuredClone(stored)] : [],
+    );
+    vi.spyOn(service as any, 'realPatientId').mockResolvedValue(7);
+    vi.spyOn(service as any, 'deleteIfCurrent').mockImplementation(async (expected: any) => {
+      if (!sameQueueWrite(stored, expected)) return false;
+      stored = undefined;
+      return true;
+    });
+    const record = {
+      idpatient: 7,
+      bodyParts: { kopf_vorne: 0 },
+      writeResult: {
+        outcome: 'rejected',
+        conflictReason: 'older_edit',
+        bodyPartId: 'kopf_vorne',
+        serverValue: 0,
+      },
+    };
+    api.toggleBodyPart.mockReturnValue(of(record));
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+    await service.flush();
+    expect(stored).toBeUndefined();
+    expect(service.bodyPartResults()).toEqual([
+      expect.objectContaining({ writeId: 'old', region: 'kopf_vorne', record }),
+    ]);
+    await service.flush();
+    expect(api.toggleBodyPart).toHaveBeenCalledOnce();
+  });
+
+  it('does not delete a newer body-part UUID and marks the old rejection as superseded', async () => {
+    const original = {
+      id: 'body-part:7:kopf_vorne',
+      patientId: 7,
+      type: 'body-part',
+      writeId: 'old',
+      createdAt: '2026-11-01T10:00:00Z',
+      body: { idpatient: 7, bodyPartId: 'kopf_vorne', isClicked: true },
+    };
+    let stored: any = original;
+    vi.spyOn(service as any, 'items').mockImplementation(async () => [structuredClone(stored)]);
+    vi.spyOn(service as any, 'realPatientId').mockResolvedValue(7);
+    // Exercise the real atomic deleteIfCurrent / UUID check using asynchronous IDB requests.
+    (service as any).withStore = vi.fn(async (_name: string, _mode: string, work: any) =>
+      work({
+        get: () => {
+          const req: any = { result: structuredClone(stored) };
+          queueMicrotask(() => req.onsuccess?.());
+          return req;
+        },
+        delete: () => {
+          stored = undefined;
+          const req: any = {};
+          queueMicrotask(() => req.onsuccess?.());
+          return req;
+        },
+      }),
+    );
+    const response = new Subject<any>();
+    api.toggleBodyPart.mockReturnValue(response);
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+    const flushing = service.flush();
+    await vi.waitFor(() => expect(api.toggleBodyPart).toHaveBeenCalledOnce());
+    const newer = { ...original, writeId: 'new', body: { ...original.body, isClicked: false } };
+    stored = structuredClone(newer);
+    response.next({
+      idpatient: 7,
+      bodyParts: { kopf_vorne: 1 },
+      writeResult: {
+        outcome: 'rejected',
+        conflictReason: 'older_edit',
+        bodyPartId: 'kopf_vorne',
+        serverValue: 1,
+      },
+    });
+    response.complete();
+    await flushing;
+    expect(stored).toEqual(newer);
+    expect(service.bodyPartResults()).toEqual([
+      expect.objectContaining({ writeId: 'old', superseded: true }),
+    ]);
+    expect(sync.markQueueFlushed).not.toHaveBeenCalled();
+  });
+});
+
+describe('clinical acknowledgements during local persistence', () => {
+  it.each(['triage', 'location'] as const)(
+    'does not cache a late %s response over a successor whose transaction is unfinished',
+    async (kind) => {
+      vi.spyOn(OfflineQueueService.prototype as any, 'refreshStatus').mockResolvedValue(undefined);
+      vi.spyOn(OfflineQueueService.prototype as any, 'reconcileMappings').mockResolvedValue(
+        undefined,
+      );
+      vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+      const api = { updateTriage: vi.fn(), updatePatientLocation: vi.fn() };
+      const state = { patient: () => null, replacePatient: vi.fn() };
+      TestBed.configureTestingModule({
+        providers: [
+          OfflineQueueService,
+          { provide: ApiClient, useValue: api },
+          { provide: ResponderStateStore, useValue: state },
+          { provide: SyncStatusService, useValue: { markQueueFlushed: vi.fn() } },
+        ],
+      });
+      const service = TestBed.inject(OfflineQueueService);
+      const stored = new Map<string, any>();
+      vi.spyOn(service as any, 'items').mockImplementation(async () => [...stored.values()]);
+      vi.spyOn(service as any, 'deleteIfCurrent').mockImplementation(async (item: any) => {
+        if (!sameQueueWrite(stored.get(item.id), item)) return false;
+        stored.delete(item.id);
+        return true;
+      });
+      let commit!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        commit = resolve;
+      });
+      vi.spyOn(service as any, 'add').mockImplementation(async (item: any) => {
+        if (item.writeId === 'new') await gate;
+        stored.set(item.id, structuredClone(item));
+      });
+      const capture = (key: string) =>
+        kind === 'triage'
+          ? service.queueTriage(7, { transport: key === 'old' }, key)
+          : service.queueLocation(7, { lat: key === 'old' ? 48.2 : 48.3, lng: 16.3 }, key);
+      await capture('old');
+      const reply = new Subject<any>();
+      const call = kind === 'triage' ? api.updateTriage : api.updatePatientLocation;
+      call
+        .mockReturnValueOnce(reply)
+        .mockReturnValue(of({ id: 7, transport: false, latitudePatient: 48.3 }));
+      vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+      const flushing = service.flush(true);
+      await vi.waitFor(() => expect(call).toHaveBeenCalledOnce());
+      const newer = capture('new');
+      reply.next({ id: 7, transport: true, latitudePatient: 48.2 });
+      reply.complete();
+      await flushing;
+      expect(state.replacePatient).toHaveBeenLastCalledWith(
+        7,
+        expect.objectContaining(
+          kind === 'triage' ? { transport: false } : { latitudePatient: 48.3 },
+        ),
+      );
+      expect(service.localWrites()).toBe(1);
+      commit();
+      await newer;
+      await service.flush(true);
+      expect(state.replacePatient).toHaveBeenCalledTimes(2);
+      expect(state.replacePatient).toHaveBeenCalledWith(
+        7,
+        expect.objectContaining({ transport: false, latitudePatient: 48.3 }),
+      );
+      expect(stored.size).toBe(0);
+    },
+  );
 });
 
 function triage(id: string, patientId: number): any {
-  return { id, type: 'triage', patientId, body: {}, createdAt: '2026-01-01T00:00:00Z' };
+  return {
+    id,
+    type: 'triage',
+    patientId,
+    writeId: crypto.randomUUID(),
+    body: {},
+    createdAt: '2026-01-01T00:00:00Z',
+  };
 }
 
 function successfulRequest(result: any): any {

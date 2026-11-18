@@ -18,10 +18,10 @@ namespace Ambulanzsystem.Api.Services;
 //     clientUpdatedAt for every leaf it touches (the contract doesn't carry per-leaf timestamps).
 public static class FormStateMerge
 {
-    public static string Apply(string existingJson, JsonNode incomingRoot, FieldMerge merge, DateTime? clientUpdatedAt, DateTime now)
+    public static string Apply(string existingJson, JsonNode incomingRoot, FieldMerge merge, DateTime? clientUpdatedAt, DateTime now, FieldWriteDecisions? decisions = null)
     {
         var existing = (JsonNode.Parse(existingJson) as JsonObject) ?? [];
-        MergeObject(existing, incomingRoot as JsonObject ?? [], "", merge, clientUpdatedAt, now);
+        MergeObject(existing, incomingRoot as JsonObject ?? [], "", merge, clientUpdatedAt, now, decisions);
         return existing.ToJsonString();
     }
 
@@ -35,7 +35,7 @@ public static class FormStateMerge
         return result.ToJsonString();
     }
 
-    private static void MergeObject(JsonObject existing, JsonObject incoming, string pathPrefix, FieldMerge merge, DateTime? clientUpdatedAt, DateTime now)
+    private static void MergeObject(JsonObject existing, JsonObject incoming, string pathPrefix, FieldMerge merge, DateTime? clientUpdatedAt, DateTime now, FieldWriteDecisions? decisions)
     {
         foreach (var (key, incomingValue) in incoming)
         {
@@ -48,7 +48,7 @@ public static class FormStateMerge
                     existingObj = [];
                     existing[key] = existingObj;
                 }
-                MergeObject(existingObj, incomingObj, path, merge, clientUpdatedAt, now);
+                MergeObject(existingObj, incomingObj, path, merge, clientUpdatedAt, now, decisions);
                 continue;
             }
 
@@ -57,7 +57,8 @@ public static class FormStateMerge
                 continue; // rule 1
             }
 
-            if (!merge.TryApply(path, clientUpdatedAt, now))
+            if (!(decisions is null ? merge.TryApply(path, clientUpdatedAt, now)
+                : decisions.Apply(merge, path, existing[key]?.DeepClone(), incomingValue?.DeepClone(), clientUpdatedAt, now)))
             {
                 continue; // rule 2: stale write for this exact leaf
             }

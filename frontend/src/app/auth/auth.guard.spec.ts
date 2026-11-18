@@ -392,6 +392,41 @@ describe('route guard failure modes', () => {
     expect(await run(guard, '/admin')).toEqual({ redirect: '/admin/login' });
     expect(api.validateToken).not.toHaveBeenCalled();
   });
+
+  it.each(['admin', 'leitstelle'] as const)(
+    'settles an offline %s redirect on its login page without expiring the journal owner',
+    async (tokenType) => {
+      vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+      const session = { tokenType };
+      auth.activeSession.mockReturnValue(session);
+      const path = tokenType === 'admin' ? 'admin' : 'teams';
+      const protectedGuard = routes.find((route) => route.path === path)!
+        .canActivate![0] as CanActivateFn;
+      const loginGuard = routes.find((route) => route.path === 'admin/login')!
+        .canActivate![0] as CanActivateFn;
+
+      expect(await run(protectedGuard, `/${path}`)).toEqual({ redirect: '/admin/login' });
+      expect(await run(loginGuard, '/admin/login')).toBe(true);
+      expect(await run(loginGuard, '/login')).toEqual({ redirect: '/admin/login' });
+      expect(auth.activeSession()).toBe(session);
+      expect(auth.markExpired).not.toHaveBeenCalled();
+      expect(api.validateToken).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['admin', 'leitstelle'] as const)(
+    'keeps the online %s login redirect to its protected home',
+    async (tokenType) => {
+      vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+      auth.activeSession.mockReturnValue({ tokenType });
+      const loginGuard = routes.find((route) => route.path === 'admin/login')!
+        .canActivate![0] as CanActivateFn;
+
+      expect(await run(loginGuard, '/admin/login')).toEqual({
+        redirect: tokenType === 'admin' ? '/admin' : '/teams',
+      });
+    },
+  );
 });
 
 async function run(guard: CanActivateFn, url: string): Promise<unknown> {

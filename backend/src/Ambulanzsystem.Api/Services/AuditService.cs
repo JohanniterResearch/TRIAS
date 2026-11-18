@@ -18,20 +18,44 @@ public class AuditService(AppDbContext db)
     // its audit row commit as one transaction. BeforeJson/AfterJson are the raw scalar value
     // (kept as-is: existing consumers like PersonsController.TriageHistory pass these straight
     // through to clients and expect a bare scalar, not an object).
-    public void LogFieldWrite(ClaimsPrincipal actor, string entityType, int? entityId, int? patientId, string field, object? before, object? after) =>
-        LogEvent(actor.SubjectId(), actor.TokenType() ?? "unknown", "write", entityType, entityId, patientId, new[] { field }, before, after);
+    public void LogFieldWrite(ClaimsPrincipal actor, string entityType, int? entityId, int? patientId, string field, object? before, object? after, object? writeDetails = null) =>
+        LogEvent(actor.SubjectId(), actor.TokenType() ?? "unknown", "write", entityType, entityId, patientId, new[] { field }, before, after, reason: (writeDetails as FieldWriteDetail)?.Reason, writeDetails: writeDetails);
+
+    // One audit row for a triage body-region order, including rejected attempts. Reuse the
+    // existing JSON snapshots; other field-write consumers keep their scalar before/after.
+    // Null edit times mean unknown, never the audit/server receipt time.
+    public void LogBodyPartWrite(ClaimsPrincipal actor, int bodyId, int patientId, string region,
+        Guid? writeId, int storedValue, DateTime? storedTime, int requestedValue, DateTime? requestedTime,
+        bool rejected)
+    {
+        var resultValue = rejected ? storedValue : requestedValue;
+        var resultTime = rejected || requestedTime is null ? storedTime : requestedTime;
+        var decision = rejected ? "rejected_older_edit"
+            : resultValue != storedValue ? "value_changed"
+            : resultTime != storedTime ? "timestamp_only" : "unchanged";
+        LogEvent(actor.SubjectId(), actor.TokenType() ?? "unknown", "write", "body", bodyId, patientId,
+            new[] { region },
+            new { value = storedValue, clientUpdatedAt = storedTime },
+            new
+            {
+                value = resultValue, clientUpdatedAt = resultTime,
+                requested = new { value = requestedValue, clientUpdatedAt = requestedTime },
+                writeId, decision,
+            },
+            rejected ? "newer_stored_edit" : null);
+    }
 
     // Multi-leaf writes (protocol formState diffs, team/scene multi-field PUTs): records every
     // changed leaf path and its before/after value in one row, e.g. {"vitals.pulse": 80} ->
     // {"vitals.pulse": 92}, rather than a single generic field name. Always logs — even zero
     // changes — so every authenticated write on these endpoints still produces exactly one audit
     // row (D7 requirement 2), matching the always-log behavior of the single-field writes above.
-    public void LogFieldsWrite(ClaimsPrincipal actor, string entityType, int? entityId, int? patientId, IReadOnlyDictionary<string, (object? Before, object? After)> changes, string? reason = null)
+    public void LogFieldsWrite(ClaimsPrincipal actor, string entityType, int? entityId, int? patientId, IReadOnlyDictionary<string, (object? Before, object? After)> changes, string? reason = null, object? writeDetails = null)
     {
         var fields = changes.Keys.OrderBy(k => k, StringComparer.Ordinal).ToArray();
         var before = fields.ToDictionary(f => f, f => changes[f].Before);
         var after = fields.ToDictionary(f => f, f => changes[f].After);
-        LogEvent(actor.SubjectId(), actor.TokenType() ?? "unknown", "write", entityType, entityId, patientId, fields, before, after, reason);
+        LogEvent(actor.SubjectId(), actor.TokenType() ?? "unknown", "write", entityType, entityId, patientId, fields, before, after, reason, writeDetails);
     }
 
     // FR-DOC-09/14: a real export event, distinct from the "write" that persists the export
@@ -47,7 +71,7 @@ public class AuditService(AppDbContext db)
     public void LogRevoke(ClaimsPrincipal? actor, string actorRole, string entityType, int entityId) =>
         LogEvent(actor?.SubjectId(), actor?.TokenType() ?? actorRole, "revoke", entityType, entityId, null, null, null, null);
 
-    private void LogEvent(int? actorId, string actorRole, string action, string entityType, int? entityId, int? patientId, string[]? fields, object? before, object? after, string? reason = null)
+    private void LogEvent(int? actorId, string actorRole, string action, string entityType, int? entityId, int? patientId, string[]? fields, object? before, object? after, string? reason = null, object? writeDetails = null)
     {
         db.AuditLogs.Add(new AuditLog
         {
@@ -62,6 +86,7 @@ public class AuditService(AppDbContext db)
             BeforeJson = before is null ? null : JsonSerializer.Serialize(before),
             AfterJson = after is null ? null : JsonSerializer.Serialize(after),
             Reason = reason,
+            WriteDetailsJson = writeDetails is null ? null : JsonSerializer.Serialize(writeDetails, new JsonSerializerOptions(JsonSerializerDefaults.Web)),
         });
     }
 }

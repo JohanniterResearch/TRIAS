@@ -1,6 +1,7 @@
 import { Component, inject } from '@angular/core';
 
 import { formatTime } from '../shared/date-time-format';
+import { FieldConflicts } from './field-conflicts';
 import { SyncStatusService } from './sync-status.service';
 
 @Component({
@@ -40,15 +41,24 @@ import { SyncStatusService } from './sync-status.service';
           <span class="sync-time">Serverkontakt {{ formatTime(lastContact) }}</span>
         }
       </span>
-      @if (sync.failedCount()) {
-        <span class="form-error" role="alert" aria-live="assertive"
-          >{{ sync.failedCount() }} Sync-Fehler · {{ sync.lastQueueError() }}</span
-        >
+      @if (sync.failedCount() || conflicts.notices().length) {
+        <div class="form-error" role="alert" aria-live="assertive">
+          @if (sync.failedCount()) {
+            <span>{{ sync.failedCount() }} Sync-Fehler · {{ sync.lastQueueError() }}</span>
+          }
+          @for (notice of conflicts.notices(); track notice.key) {
+            <div>
+              Patient {{ notice.patientId }}: {{ notice.message }}
+              <button type="button" (click)="conflicts.dismiss(notice.key)">Gelesen</button>
+            </div>
+          }
+        </div>
       }
     </div>
   `,
 })
 export class SyncIndicator {
+  protected readonly conflicts = inject(FieldConflicts);
   protected readonly sync = inject(SyncStatusService);
   protected readonly formatTime = formatTime;
 

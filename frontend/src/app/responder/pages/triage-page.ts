@@ -1,3 +1,4 @@
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DecimalPipe } from '@angular/common';
 import {
   AfterViewInit,
@@ -13,7 +14,6 @@ import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import * as L from 'leaflet';
 
-import { apiErrorMessage, ApiClient, isRetryableFailure } from '../../api/api-client';
 import type { components } from '../../api/openapi-types';
 import { DEFAULT_MAP_CENTER, osmMap } from '../../shared/osm-map';
 import { TRIAGE_COLORS, type TriageColor } from '../../shared/triage';
@@ -147,7 +147,6 @@ export class TriagePage implements AfterViewInit, OnDestroy {
     { name: 'kontaminiert', label: 'Kontaminiert' },
   ] as const;
 
-  private readonly api = inject(ApiClient);
   private readonly router = inject(Router);
   private readonly drafts = inject(TriageDraftStore);
   private readonly offlineQueue = inject(OfflineQueueService);
@@ -156,9 +155,46 @@ export class TriagePage implements AfterViewInit, OnDestroy {
   private map: L.Map | null = null;
   private marker: L.CircleMarker | null = null;
   private flagsRevision = 0;
+  private locationRevision = 0;
+  private readonly locationVersions = new Map<string, number>();
   private flagsEdited = false;
 
   constructor() {
+    this.locationForm.valueChanges
+      .pipe(takeUntilDestroyed())
+      .subscribe(() => this.locationRevision++);
+    this.offlineQueue.patientResults?.pipe(takeUntilDestroyed()).subscribe((result) => {
+      if (
+        result.type !== 'location' ||
+        result.superseded ||
+        (result.patientId !== this.state.patient()?.id &&
+          result.sourcePatientId !== this.state.patient()?.id)
+      )
+        return;
+      const version = this.locationVersions.get(result.writeId) ?? 0;
+      if (version !== this.locationRevision) return;
+      if (
+        !result.patient.fieldResults?.some(
+          (r) => r.field === 'location' && r.outcome === 'rejected',
+        )
+      )
+        return;
+      this.locationForm.patchValue(
+        {
+          lat: result.patient.latitudePatient ?? null,
+          lng: result.patient.longitudePatient ?? null,
+          indoorLocation: result.patient.indoorLocation ?? '',
+        },
+        { emitEvent: false },
+      );
+      if (
+        result.patient.latitudePatient != null &&
+        result.patient.longitudePatient != null &&
+        this.map
+      )
+        this.setMarker(result.patient.latitudePatient, result.patient.longitudePatient);
+      this.locationVersions.delete(result.writeId);
+    });
     effect(() => {
       this.syncStatus.lastSuccessfulQueueFlush();
       this.syncStatus.pendingCount();
@@ -170,7 +206,7 @@ export class TriagePage implements AfterViewInit, OnDestroy {
       return;
     }
     const draft = this.drafts.get(patient.id);
-    this.locationForm.patchValue(draft);
+    this.locationForm.patchValue(draft, { emitEvent: false });
   }
 
   ngAfterViewInit(): void {
@@ -184,11 +220,14 @@ export class TriagePage implements AfterViewInit, OnDestroy {
     this.map = osmMap(element, [lat, lng], patient?.latitudePatient == null ? 13 : 17);
     if (patient?.latitudePatient != null && patient.longitudePatient != null) {
       this.setMarker(patient.latitudePatient, patient.longitudePatient);
-      this.locationForm.patchValue({
-        lat: patient.latitudePatient,
-        lng: patient.longitudePatient,
-        indoorLocation: patient.indoorLocation ?? '',
-      });
+      this.locationForm.patchValue(
+        {
+          lat: patient.latitudePatient,
+          lng: patient.longitudePatient,
+          indoorLocation: patient.indoorLocation ?? '',
+        },
+        { emitEvent: false },
+      );
     }
     this.map.on('click', ({ latlng }: L.LeafletMouseEvent) => {
       this.locationForm.patchValue({ lat: latlng.lat, lng: latlng.lng });
@@ -230,7 +269,7 @@ export class TriagePage implements AfterViewInit, OnDestroy {
     }
   }
 
-  protected save(body: object): void {
+  protected async save(body: object): Promise<void> {
     const patient = this.state.patient();
     if (!patient) {
       return;
@@ -240,29 +279,17 @@ export class TriagePage implements AfterViewInit, OnDestroy {
     const writeId = crypto.randomUUID();
     ++this.flagsRevision;
     this.error.set('');
-    this.api.updateTriage(patient.id, queuedBody, writeId).subscribe({
-      next: (updated) => {
-        this.state.setPatient(updated);
-        this.message.set('Gespeichert.');
-      },
-      error: (error: unknown) => {
-        const message = apiErrorMessage(error, '');
-        if (message) {
-          this.error.set(message);
-          return;
-        }
-        this.offlineQueue
-          .queueTriage(patient.id, queuedBody, writeId)
-          .then(() => this.message.set('Lokal gespeichert, Sync ausstehend.'))
-          .catch(() => {
-            this.message.set('');
-            this.error.set('Lokale Sync-Warteschlange konnte nicht gespeichert werden.');
-          });
-      },
-    });
+    try {
+      await this.offlineQueue.queueTriage(patient.id, queuedBody, writeId);
+      this.message.set('Lokal gespeichert, Sync ausstehend.');
+      await this.offlineQueue.flush(true);
+    } catch {
+      this.message.set('');
+      this.error.set('Triage konnte nicht dauerhaft gespeichert werden. Bitte erneut versuchen.');
+    }
   }
 
-  protected saveManualLocation(): void {
+  protected async saveManualLocation(): Promise<void> {
     const patient = this.state.patient();
     const raw = this.locationForm.getRawValue();
     if (!patient || raw.lat === null || raw.lng === null) {
@@ -277,27 +304,17 @@ export class TriagePage implements AfterViewInit, OnDestroy {
       indoorLocation: raw.indoorLocation || undefined,
       clientUpdatedAt: new Date().toISOString(),
     };
-    // The online attempt's writeId is reused so a request that did reach the server is not reapplied.
     const writeId = crypto.randomUUID();
-    const queue = () =>
-      this.offlineQueue
-        .queueLocation(patient.id, body, writeId)
-        .then(() => this.message.set('Lokal gespeichert, Sync ausstehend.'))
-        .catch(() => this.error.set('Lokale Sync-Warteschlange konnte nicht gespeichert werden.'));
-    if (patient.id < 0) {
-      void queue();
-      return;
+    this.error.set('');
+    try {
+      this.locationVersions.set(writeId, this.locationRevision);
+      await this.offlineQueue.queueLocation(patient.id, body, writeId);
+      this.message.set('Lokal gespeichert, Sync ausstehend.');
+      await this.offlineQueue.flush(true);
+    } catch {
+      this.message.set('');
+      this.error.set('Position konnte nicht dauerhaft gespeichert werden. Bitte erneut versuchen.');
     }
-    this.api.updatePatientLocation(patient.id, body, writeId).subscribe({
-      next: (updated) => {
-        this.state.setPatient(updated);
-        this.message.set('Position gespeichert.');
-      },
-      error: (error: unknown) =>
-        isRetryableFailure(error)
-          ? void queue()
-          : this.error.set(apiErrorMessage(error, 'Position konnte nicht gespeichert werden.')),
-    });
   }
 
   protected continueToProtocol(): void {

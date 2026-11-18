@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -34,6 +35,153 @@ public class ProtokollIdempotencyTests
         status, formState = new { patient = new { vorname = "Original" } },
         clientUpdatedAt = Timestamp, correctionReason = reason,
     };
+
+    [Theory]
+    [InlineData("draft")]
+    [InlineData("finalized")]
+    public async Task LegacyChecksum_IdenticalReplayPreservesEveryEffect(string status)
+    {
+        using var factory = new ProtocolFactory();
+        var (client, id, _) = await SetupAsync(factory);
+        var key = Guid.NewGuid().ToString();
+        var order = LegacyOrder(status);
+        var first = await SendAsync(client, id, key, order);
+        first.EnsureSuccessStatusCode();
+        await SeedLegacyChecksumAsync(factory, id, key, order);
+        var snapshot = await SnapshotAsync(factory, id);
+
+        // Simulate losing the first answer, then retrying the exact same order.
+        var replay = await SendAsync(client, id, key, order);
+        replay.EnsureSuccessStatusCode();
+        await AssertSameRecordAsync(first, replay);
+        var parallelReplays = await Task.WhenAll(Enumerable.Range(0, 4)
+            .Select(_ => SendAsync(client, id, key, order)));
+        Assert.All(parallelReplays, response => response.EnsureSuccessStatusCode());
+        Assert.Equal(snapshot, await SnapshotAsync(factory, id));
+        await AssertCountsAsync(factory, id, 1, 1, status == "finalized" ? 1 : 0);
+
+        // Legacy compatibility must not bypass authentication.
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await SendAsync(factory.CreateClient(), id, key, order)).StatusCode);
+        Assert.Equal(snapshot, await SnapshotAsync(factory, id));
+    }
+
+    [Theory]
+    [InlineData("status")]
+    [InlineData("formState")]
+    [InlineData("clientUpdatedAt")]
+    [InlineData("correctionReason")]
+    [InlineData("omittedNull")]
+    public async Task LegacyChecksum_OnlyAnExactHistoricalMatchReplays(string changedField)
+    {
+        using var factory = new ProtocolFactory();
+        var (client, id, _) = await SetupAsync(factory);
+        var key = Guid.NewGuid().ToString();
+        var original = LegacyOrder();
+        (await SendAsync(client, id, key, original)).EnsureSuccessStatusCode();
+        await SeedLegacyChecksumAsync(factory, id, key, original);
+        var snapshot = await SnapshotAsync(factory, id);
+        var changed = changedField switch
+        {
+            "status" => original with { Status = "finalized" },
+            "formState" => original with { FormState = JsonSerializer.SerializeToElement(new { patient = new { vorname = "Changed" } }) },
+            "clientUpdatedAt" => original with { ClientUpdatedAt = Timestamp.AddMinutes(1) },
+            "correctionReason" => original with { CorrectionReason = "Changed reason" },
+            _ => original with { FormState = JsonSerializer.SerializeToElement(new { patient = new { vorname = "Original" } }) },
+        };
+        if (changedField == "omittedNull")
+            Assert.Equal(ProtokollWriteChecksum.Compute(original), ProtokollWriteChecksum.Compute(changed));
+        Assert.Equal(HttpStatusCode.Conflict, (await SendAsync(client, id, key, changed)).StatusCode);
+        Assert.Equal(snapshot, await SnapshotAsync(factory, id));
+    }
+
+    private static UpsertProtokollRequest LegacyOrder(string status = "draft") => new(status,
+        JsonSerializer.SerializeToElement(new { patient = new { vorname = "Original", geschlecht = (string?)null } }),
+        Timestamp);
+
+    [Fact]
+    public async Task LegacyChecksum_ReplayReturnsLatestStateWithoutReapplyingOldOrder()
+    {
+        using var factory = new ProtocolFactory();
+        var (client, id, _) = await SetupAsync(factory);
+        var key = Guid.NewGuid().ToString();
+        var order = LegacyOrder();
+        (await SendAsync(client, id, key, order)).EnsureSuccessStatusCode();
+        await SeedLegacyChecksumAsync(factory, id, key, order);
+        var latest = await SendAsync(client, id, Guid.NewGuid().ToString(), new
+        {
+            status = "finalized", clientUpdatedAt = Timestamp.AddMinutes(1),
+            formState = new { patient = new { vorname = "Latest" } },
+        });
+        latest.EnsureSuccessStatusCode();
+        var snapshot = await SnapshotAsync(factory, id);
+        var replay = await SendAsync(client, id, key, order);
+        replay.EnsureSuccessStatusCode();
+        await AssertSameRecordAsync(latest, replay);
+        Assert.Equal(snapshot, await SnapshotAsync(factory, id));
+        await AssertCountsAsync(factory, id, 2, 2, 1);
+    }
+
+    [Fact]
+    public async Task LegacyChecksum_InvalidUtf16StillReturnsBadRequestWithoutEffects()
+    {
+        using var factory = new ProtocolFactory();
+        var (client, id, _) = await SetupAsync(factory);
+        var key = Guid.NewGuid().ToString();
+        var order = LegacyOrder();
+        (await SendAsync(client, id, key, order)).EnsureSuccessStatusCode();
+        await SeedLegacyChecksumAsync(factory, id, key, order);
+        var snapshot = await SnapshotAsync(factory, id);
+        using var request = new HttpRequestMessage(HttpMethod.Put, $"/api/persons/{id}/ambulanzprotokoll-page1")
+        {
+            Content = new StringContent("""
+                {"status":"draft","formState":{"patient":{"vorname":"Broken \uD83D"}}}
+                """, Encoding.UTF8, "application/json"),
+        };
+        request.Headers.TryAddWithoutValidation("Idempotency-Key", key);
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.SendAsync(request)).StatusCode);
+        Assert.Equal(snapshot, await SnapshotAsync(factory, id));
+        (await SendAsync(client, id, key, order)).EnsureSuccessStatusCode();
+        Assert.Equal(snapshot, await SnapshotAsync(factory, id));
+    }
+
+    private static async Task SeedLegacyChecksumAsync(ProtocolFactory factory, int id, string key, UpsertProtokollRequest order)
+    {
+        // Test fixture only: model the persisted receipt produced by 4f859ca before 9d261c1.
+        // Independent historical algorithm: include DTO/form nulls, sort object keys, retain arrays.
+        static void WriteHistorical(Utf8JsonWriter writer, JsonElement value)
+        {
+            if (value.ValueKind == JsonValueKind.Object)
+            {
+                writer.WriteStartObject();
+                foreach (var property in value.EnumerateObject().OrderBy(p => p.Name, StringComparer.Ordinal))
+                {
+                    writer.WritePropertyName(property.Name);
+                    WriteHistorical(writer, property.Value);
+                }
+                writer.WriteEndObject();
+            }
+            else if (value.ValueKind == JsonValueKind.Array)
+            {
+                writer.WriteStartArray();
+                foreach (var item in value.EnumerateArray()) WriteHistorical(writer, item);
+                writer.WriteEndArray();
+            }
+            else value.WriteTo(writer);
+        }
+        using var buffer = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(buffer))
+            WriteHistorical(writer, JsonSerializer.SerializeToElement(order));
+        var historicalChecksum = Convert.ToHexString(SHA256.HashData(buffer.ToArray()));
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var receipt = (await db.ProtokollProcessedWrites.FindAsync(id, Guid.Parse(key)))!;
+        Assert.Equal(ProtokollWriteChecksum.Compute(order), receipt.Checksum);
+        Assert.NotEqual(receipt.Checksum, historicalChecksum);
+        receipt.Checksum = historicalChecksum;
+        receipt.DecisionsJson = null;
+        await db.SaveChangesAsync();
+    }
 
     [Theory]
     [InlineData("draft", false)]
@@ -242,9 +390,11 @@ public class ProtokollIdempotencyTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task FirstFinalize_ReplaysForOwnerAndQr_WithoutCorrectionReason(bool qr)
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task FirstFinalize_ReplaysForOwnerAndQr_WithoutCorrectionReason(bool qr, bool legacyChecksum)
     {
         using var factory = new ProtocolFactory();
         var (admin, _, sceneId) = await SetupAsync(factory);
@@ -271,24 +421,26 @@ public class ProtokollIdempotencyTests
         var id = (await created.Content.ReadFromJsonAsync<IdResponse>())!.Id;
         Drain(factory);
         var key = Guid.NewGuid().ToString();
-        (await SendAsync(client, id, key, Order("finalized"))).EnsureSuccessStatusCode();
+        object order = legacyChecksum ? LegacyOrder("finalized") : Order("finalized");
+        (await SendAsync(client, id, key, order)).EnsureSuccessStatusCode();
+        if (legacyChecksum) await SeedLegacyChecksumAsync(factory, id, key, LegacyOrder("finalized"));
         var snapshot = await SnapshotAsync(factory, id);
-        (await SendAsync(client, id, key, Order("finalized"))).EnsureSuccessStatusCode();
+        (await SendAsync(client, id, key, order)).EnsureSuccessStatusCode();
         Assert.Equal(snapshot, await SnapshotAsync(factory, id));
         await AssertCountsAsync(factory, id, 1, 1, 1);
-        var rejected = await SendAsync(client, id, Guid.NewGuid().ToString(), Order("finalized"));
+        var rejected = await SendAsync(client, id, Guid.NewGuid().ToString(), order);
         Assert.Equal(qr ? HttpStatusCode.Forbidden : HttpStatusCode.BadRequest, rejected.StatusCode);
         Assert.Equal(snapshot, await SnapshotAsync(factory, id));
 
         // Replay must still pass authentication and current scene access, including QR sessions.
-        Assert.Equal(HttpStatusCode.Unauthorized, (await SendAsync(factory.CreateClient(), id, key, Order("finalized"))).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await SendAsync(factory.CreateClient(), id, key, order)).StatusCode);
         using (var scope = factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             (await db.OperationScenes.FindAsync(sceneId))!.Active = false;
             await db.SaveChangesAsync();
         }
-        Assert.Equal(HttpStatusCode.Forbidden, (await SendAsync(client, id, key, Order("finalized"))).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await SendAsync(client, id, key, order)).StatusCode);
         Assert.Equal(snapshot, await SnapshotAsync(factory, id));
     }
 
@@ -405,6 +557,9 @@ public class ProtokollIdempotencyTests
             Assert.Equal(expected[name]?.GetValue<DateTime>().Ticks / 10, actual[name]?.GetValue<DateTime>().Ticks / 10);
             expected[name] = actual[name]?.DeepClone();
         }
+        // Form/status are current; per-order decisions can legitimately differ.
+        expected.AsObject().Remove("fieldResults");
+        actual.AsObject().Remove("fieldResults");
         Assert.True(JsonNode.DeepEquals(expected, actual));
     }
 

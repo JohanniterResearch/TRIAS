@@ -254,7 +254,7 @@ public class TriageIdempotencyTests
         var order = new { triageColor = "gelb", clientUpdatedAt = Timestamp.AddMinutes(-1) };
         (await SendAsync(client, patientId, key, order)).EnsureSuccessStatusCode();
         (await SendAsync(client, patientId, key, order)).EnsureSuccessStatusCode();
-        await AssertEffectsAsync(factory, patientId, 2, 2, auditCount: 1);
+        await AssertEffectsAsync(factory, patientId, 2, 2, auditCount: 2);
     }
 
     private static async Task<HttpClient> AdminClientAsync(TriageFactory factory)

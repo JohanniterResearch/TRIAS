@@ -1,11 +1,10 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, effect, inject, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { EMPTY, Subject, catchError, concatMap, from, tap } from 'rxjs';
 
 import bodyRegions from '../../../../../contract/body-regions.json';
-import { apiErrorMessage, ApiClient, isRetryableFailure } from '../../api/api-client';
+import { apiErrorMessage, ApiClient } from '../../api/api-client';
 import { MyAccess } from '../../auth/components/my-access';
-import { OfflineQueueService } from '../../sync/offline-queue.service';
+import { BodyPartResponse, OfflineQueueService } from '../../sync/offline-queue.service';
 import { ResponderStateStore } from '../services/responder-state';
 
 @Component({
@@ -23,6 +22,9 @@ import { ResponderStateStore } from '../services/responder-state';
       } @else {
         @if (error()) {
           <p class="form-error" role="alert" aria-live="assertive">{{ error() }}</p>
+        }
+        @for (message of conflictMessages(); track message) {
+          <p class="form-error" role="alert" aria-live="assertive">{{ message }}</p>
         }
 
         <div
@@ -74,96 +76,64 @@ export class BodyMapPage {
   protected readonly state = inject(ResponderStateStore);
   protected readonly bodyParts = signal<Record<string, number>>({});
   protected readonly error = signal('');
+  protected readonly conflictMessages = signal<string[]>([]);
+  private readonly conflicts = new Map<string, string>();
+  private readonly completedWrites = new Set<string>();
+  private readonly supersededLocalWrites = new Set<string>();
 
   private readonly api = inject(ApiClient);
   private readonly offlineQueue = inject(OfflineQueueService);
   private readonly route = inject(ActivatedRoute);
-  private readonly intents = new Subject<{
-    patientId: number;
-    region: string;
-    isClicked: boolean;
-    generation: number;
-    writeId: string;
-  }>();
-  private readonly latestIntent = new Map<string, { isClicked: boolean; generation: number }>();
+  private readonly latestIntent = new Map<
+    string,
+    { isClicked: boolean; generation: number; writeId: string }
+  >();
   private confirmedBodyParts: Record<string, number> = {};
   private intentGeneration = 0;
   private bodyPartsRevision = 0;
 
   constructor() {
-    this.intents
-      .pipe(
-        concatMap((intent) =>
-          intent.patientId < 0
-            ? this.queueIntent(intent)
-            : this.api
-                .toggleBodyPart(
-                  {
-                    idpatient: intent.patientId,
-                    bodyPartId: intent.region,
-                    isClicked: intent.isClicked,
-                  },
-                  intent.writeId,
-                )
-                .pipe(
-                  tap((body) => {
-                    if (this.latestIntent.get(intent.region)?.generation === intent.generation) {
-                      this.latestIntent.delete(intent.region);
-                    }
-                    this.bodyPartsRevision++;
-                    this.applyServerBody(body.bodyParts);
-                  }),
-                  catchError((error: unknown) => {
-                    if (isRetryableFailure(error)) return this.queueIntent(intent);
-                    const revision = ++this.bodyPartsRevision;
-                    if (this.latestIntent.get(intent.region)?.generation === intent.generation) {
-                      this.latestIntent.delete(intent.region);
-                      this.updateDisplay();
-                    }
-                    this.error.set(
-                      apiErrorMessage(error, 'Körpermarkierung konnte nicht gespeichert werden.'),
-                    );
-                    return this.api.getBodyParts(intent.patientId).pipe(
-                      tap((body) => {
-                        if (this.bodyPartsRevision === revision) {
-                          this.applyServerBody(body.bodyParts);
-                        }
-                      }),
-                      catchError(() => EMPTY),
-                    );
-                  }),
-                ),
-        ),
-      )
-      .subscribe();
+    effect(() => {
+      const patientId = this.state.patient()?.id;
+      for (const result of this.offlineQueue.bodyPartResults()) {
+        if (
+          (result.patientId === patientId || result.sourcePatientId === patientId) &&
+          !this.completedWrites.has(result.writeId)
+        ) {
+          this.applyWriteResult(result.region, result.writeId, result.record, result.superseded);
+        }
+      }
+      // Restore persisted optimistic values after reload and react to queue replacement/removal.
+      this.updateDisplay();
+    });
     this.load();
   }
 
-  // Offline (or no server answer): keep the optimistic mark and replay it later. The toggle is an
-  // absolute value per region, so a queued newer intent simply replaces an older one.
-  // The online attempt's writeId is reused so a request that did reach the server is not reapplied.
-  private queueIntent(intent: {
+  private async queueIntent(intent: {
     patientId: number;
     region: string;
     isClicked: boolean;
     writeId: string;
-  }) {
-    return from(
-      this.offlineQueue.queueBodyPart(
+    clientUpdatedAt: string;
+  }): Promise<void> {
+    this.error.set('');
+    try {
+      await this.offlineQueue.queueBodyPart(
         intent.patientId,
         {
           idpatient: intent.patientId,
           bodyPartId: intent.region,
           isClicked: intent.isClicked,
+          clientUpdatedAt: intent.clientUpdatedAt,
         },
         intent.writeId,
-      ),
-    ).pipe(
-      catchError(() => {
-        this.error.set('Lokale Sync-Warteschlange konnte nicht gespeichert werden.');
-        return EMPTY;
-      }),
-    );
+      );
+      await this.offlineQueue.flush(true);
+    } catch {
+      this.error.set(
+        'Körpermarkierung konnte nicht dauerhaft gespeichert werden. Bitte erneut versuchen.',
+      );
+    }
   }
 
   protected view(): 'front' | 'back' {
@@ -185,15 +155,24 @@ export class BodyMapPage {
     }
 
     const isClicked = !this.isMarked(region);
+    // A fresh click supersedes older local intents even if they remain queued/in flight.
+    // Their acknowledgement may explain a conflict, but cannot restore their display.
+    const previous = this.latestIntent.get(region);
+    if (previous) this.supersededLocalWrites.add(previous.writeId);
+    for (const pending of this.pendingForPatient()) {
+      if (pending.body.bodyPartId === region && pending.writeId)
+        this.supersededLocalWrites.add(pending.writeId);
+    }
     const generation = ++this.intentGeneration;
-    this.latestIntent.set(region, { isClicked, generation });
+    const writeId = crypto.randomUUID();
+    this.latestIntent.set(region, { isClicked, generation, writeId });
     this.updateDisplay();
-    this.intents.next({
+    void this.queueIntent({
       patientId: patient.id,
       region,
       isClicked,
-      generation,
-      writeId: crypto.randomUUID(),
+      writeId,
+      clientUpdatedAt: new Date().toISOString(),
     });
   }
 
@@ -273,10 +252,68 @@ export class BodyMapPage {
     this.updateDisplay();
   }
 
+  private pendingForPatient() {
+    const patientId = this.state.patient()?.id;
+    return this.offlineQueue
+      .bodyPartPending()
+      .filter((item) => item.patientId === patientId || item.sourcePatientId === patientId);
+  }
+
+  private applyWriteResult(
+    region: string,
+    writeId: string,
+    record: BodyPartResponse,
+    superseded = false,
+  ): void {
+    const local = this.latestIntent.get(region);
+    const newerLocal =
+      superseded ||
+      this.supersededLocalWrites.has(writeId) ||
+      (local && local.writeId !== writeId) ||
+      this.pendingForPatient().some(
+        (item) =>
+          item.body.bodyPartId === region &&
+          item.writeId !== writeId &&
+          !this.supersededLocalWrites.has(item.writeId ?? '') &&
+          !this.completedWrites.has(item.writeId ?? ''),
+      );
+    this.completedWrites.add(writeId);
+    this.bodyPartsRevision++;
+    if (local?.writeId === writeId) this.latestIntent.delete(region);
+    if (!newerLocal) {
+      this.error.set('');
+      const value = record.writeResult?.serverValue ?? record.bodyParts[region];
+      this.confirmedBodyParts = { ...this.confirmedBodyParts, [region]: value };
+    }
+    if (
+      record.writeResult?.outcome === 'rejected' &&
+      record.writeResult.conflictReason === 'older_edit'
+    ) {
+      const side = region.endsWith('_hinten') ? 'hinten' : 'vorne';
+      this.conflicts.set(
+        region,
+        `${this.label(region)} (${side}): Deine Änderung wurde nicht übernommen, weil bereits eine neuere Änderung vorliegt.`,
+      );
+    } else if (!newerLocal) {
+      this.conflicts.delete(region);
+    }
+    this.conflictMessages.set([...this.conflicts.values()]);
+    this.updateDisplay();
+  }
+
   private updateDisplay(): void {
+    const queued = Object.fromEntries(
+      this.pendingForPatient()
+        .filter(
+          (item) =>
+            !this.completedWrites.has(item.writeId ?? '') &&
+            !this.supersededLocalWrites.has(item.writeId ?? ''),
+        )
+        .map((item) => [item.body.bodyPartId, item.body.isClicked ? 1 : 0]),
+    );
     const pending = Object.fromEntries(
       [...this.latestIntent].map(([region, intent]) => [region, intent.isClicked ? 1 : 0]),
     );
-    this.bodyParts.set({ ...this.confirmedBodyParts, ...pending });
+    this.bodyParts.set({ ...this.confirmedBodyParts, ...queued, ...pending });
   }
 }

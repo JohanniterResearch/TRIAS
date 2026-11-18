@@ -1,3 +1,4 @@
+using Ambulanzsystem.Api.Filters;
 using System.Text.Json;
 using Ambulanzsystem.Api.Auth;
 using Ambulanzsystem.Api.Data;
@@ -100,6 +101,7 @@ public class AdminManagementController(AppDbContext db, RefreshTokenService refr
     }
 
     [HttpPut("patients/{reference}")]
+    [PatientWrite("admin-patient")]
     public async Task<IActionResult> UpdatePatient(string reference, [FromBody] JsonElement body)
     {
         if (body.ValueKind != JsonValueKind.Object) return BadRequest(new ErrorResponse("Patient update must be a JSON object."));
@@ -144,6 +146,7 @@ public class AdminManagementController(AppDbContext db, RefreshTokenService refr
     }
 
     [HttpPut("patients/{reference}/body-parts")]
+    [PatientWrite("admin-body")]
     public async Task<ActionResult<AdminPatientDetails>> UpdateBodyParts(string reference, AdminBodyPartsUpdate request)
     {
         var id = Unprotect(patientReferences, reference);
@@ -183,13 +186,13 @@ public class AdminManagementController(AppDbContext db, RefreshTokenService refr
     }
 
     [HttpPost("patients/{reference}/assign-qr-code")]
+    [PatientWrite("admin-qr")]
     public async Task<ActionResult<AssignAdminPatientQrCodeResponse>> AssignQrCode(string reference, AssignAdminPatientQrCodeRequest request)
     {
         var id = Unprotect(patientReferences, reference);
         if (id is null) return NotFound();
         if (request.Source is not ("existing" or "new") || request.Source == "existing" && string.IsNullOrWhiteSpace(request.QrReference))
             return BadRequest(new ErrorResponse("source must be existing with qrReference or new."));
-        await using var tx = await db.Database.BeginTransactionAsync();
         var patient = await RowLocks.PatientAsync(db, id.Value);
         if (patient is null) return NotFound();
         var old = await db.QrCodePatients.FromSqlInterpolated($"SELECT * FROM qr_code_patients WHERE patient_id = {patient.Id} FOR UPDATE").SingleOrDefaultAsync();
@@ -211,7 +214,7 @@ public class AdminManagementController(AppDbContext db, RefreshTokenService refr
         if (old is not null) { old.PatientId = null; old.OperationSceneId = null; }
         code.PatientId = patient.Id; code.OperationSceneId = patient.OperationSceneId;
         audit.LogFieldWrite(User, "patient", patient.Id, patient.Id, "qr_code", old?.QrToken, code.QrToken);
-        await db.SaveChangesAsync(); await tx.CommitAsync();
+        await db.SaveChangesAsync();
         var status = await db.AmbulanzprotokollPage1s.Where(p => p.PatientId == id).Select(p => p.Status).FirstOrDefaultAsync();
         return Ok(new AssignAdminPatientQrCodeResponse(AdminPatientResponse.From(patient, status, Protect(patientReferences, patient.Id)), request.Source == "new" ? code.QrToken : null));
     }
