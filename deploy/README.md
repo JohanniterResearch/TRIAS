@@ -92,6 +92,93 @@ must not record query strings. On the NPMplus host, run
 To confirm `TRUSTED_PROXY` is right, run `sudo docker compose exec caddy netstat -tn` while
 someone uses the site. The foreign addresses on `:8080` must be the `TRUSTED_PROXY` IP.
 
+## Portainer (build from the `prod` branch)
+
+An alternative to the bundle for a test instance: Portainer clones the repository and builds the
+images on the server. It always runs in reverse-proxy mode (Caddy on `HTTP_PORT`, see above). It
+has no PLS site and no MQTT broker, and `install.sh` is not used.
+
+One-time setup:
+
+1. On GitHub, protect `prod`: changes only through pull requests from `main`, CI must pass.
+   Every merge there is what the server builds.
+2. Install Docker and Portainer (CE or Business Edition) on the server. Keep the Portainer UI on
+   the admin network; do not publish it through NPMplus. The stack's environment variables hold
+   the secrets below and are visible to everyone with access to the stack, so restrict access to
+   this environment (Business Edition: role-based access) to the people allowed to see them. The
+   stack needs no "relative path volumes" setting.
+3. Generate the secrets once and keep a copy in a password manager:
+
+   ```sh
+   echo "DB_PASSWORD=$(openssl rand -hex 24)"
+   echo "JWT_SECRET=$(openssl rand -hex 32)"
+   echo "BOOTSTRAP_ADMIN_PASSWORD=$(openssl rand -hex 8)"
+   echo "BACKUP_EXPECTED_DEPLOYMENT_ID=ambulanz-$(hostname -s)-$(date +%Y%m%d)-$(openssl rand -hex 4)"
+   ```
+
+   Never change them later for the same database: Postgres keeps its first password and the app
+   refuses to start if the deployment ID changes.
+4. In Portainer: Stacks → Add stack → Repository. Name `ambulanzsystem` (the name selects the
+   volumes; a different name means a different, empty database). Repository URL
+   `https://github.com/JohanniterResearch/TRIAS`, reference `refs/heads/prod`, compose path
+   `deploy/docker-compose.portainer.yml`. Leave automatic updates off. Add the four secrets and
+   `SITE_ADDRESS=<public DNS name>`, `TRUSTED_PROXY=<IP of NPMplus>`, `HTTP_PORT=8080` as
+   environment variables, then deploy. The first build takes several minutes; give the machine
+   4 GB RAM while it builds.
+5. Set up the NPMplus proxy host as described in "Behind a reverse proxy". Port `HTTP_PORT`
+   serves plain HTTP on every interface, so allow it only from `TRUSTED_PROXY`. Ports published
+   by Docker bypass the server's INPUT chain, so `ufw` or INPUT rules on the server do not block
+   them. Use the Proxmox firewall of the container (accept tcp `HTTP_PORT` from `TRUSTED_PROXY`,
+   and Portainer's port only from the admin network), or Docker's `DOCKER-USER` chain:
+
+   ```sh
+   sudo iptables -I DOCKER-USER -p tcp -m conntrack --ctorigdstport 8080 --ctdir ORIGINAL \
+     ! -s <TRUSTED_PROXY> -j DROP
+   ```
+
+   A `DOCKER-USER` rule is lost on reboot unless it is saved (e.g. `iptables-persistent`). Check
+   from another host in the network: `curl -m 5 http://<server-ip>:8080/health` must time out.
+6. Install the nightly backup on the server, from a checkout of the same branch:
+
+   ```sh
+   sudo install -m 755 deploy/scripts/backup-stack.sh /usr/local/sbin/ambulanz-backup-stack
+   sed 's#@ROOT@/scripts/backup.sh#/usr/local/sbin/ambulanz-backup-stack#' deploy/systemd/ambulanz-backup.service \
+     | sudo tee /etc/systemd/system/ambulanz-backup.service >/dev/null
+   sudo cp deploy/systemd/ambulanz-backup.timer /etc/systemd/system/
+   sudo systemctl daemon-reload && sudo systemctl enable --now ambulanz-backup.timer
+   ```
+
+   Dumps go to `/var/backups/ambulanzsystem` (`BACKUP_DIR`, `BACKUP_KEEP` and `STACK` change the
+   folder, the number kept and the stack name). The script reads the deployment ID from the
+   running backend and refuses to dump a database that doesn't match it.
+
+Each release:
+
+1. Merge a pull request from `main` into `prod`.
+2. On the server: `sudo ambulanz-backup-stack`. Migrations run when the new version starts and are
+   not reversed, so this dump is the rollback point.
+3. In Portainer, open the stack and click "Pull and redeploy". Both images are rebuilt on every
+   deploy (`pull_policy: build`).
+4. Check `https://<public name>/health`.
+
+Rollback: revert the change on `prod`. If the release ran a migration, restore the dump
+from step 2 before redeploying, as root (`sudo -i`):
+
+```sh
+p=label=com.docker.compose.project=ambulanzsystem
+db=$(docker ps -q --filter $p --filter label=com.docker.compose.service=db)
+app="$(docker ps -q --filter $p --filter label=com.docker.compose.service=backend) $(docker ps -q --filter $p --filter label=com.docker.compose.service=caddy)"
+docker stop $app
+docker exec $db dropdb -U pls ambulanzsystem
+docker exec $db createdb -U pls ambulanzsystem
+docker exec -i $db pg_restore -U pls -d ambulanzsystem --no-owner < /var/backups/ambulanzsystem/<file>.dump
+```
+
+`-i` is required: without it the dump never reaches `pg_restore` and the database stays empty.
+Then click "Pull and redeploy" in Portainer. Do not start the stopped containers by hand, since
+they still run the new version, which would apply its migrations again. `scripts/verify-restore.sh`
+reads the bundle's `.env` and does not work with this stack.
+
 ## Operation
 
 Run these commands from the `ambulanzsystem` folder:

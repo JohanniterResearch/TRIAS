@@ -1,0 +1,84 @@
+# Portainer stack ("Repository" build method) behind an upstream reverse proxy such as NPMplus.
+# Portainer clones the repo and builds both images on the Docker host; see README, "Portainer".
+# All values come from the stack's environment variables in Portainer. Generate the secrets once
+# and never change them for an existing database: Postgres keeps its first password and the
+# backend refuses to start when BACKUP_EXPECTED_DEPLOYMENT_ID changes.
+# Self-contained on purpose: no bind mounts, so it needs no "relative path volumes" setting
+# (Business Edition only; without it relative host paths resolve inside Portainer's own
+# container), and the Caddy config is versioned with the image. No install.sh, so no PLS site
+# and no MQTT broker.
+name: ambulanzsystem
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      POSTGRES_DB: ambulanzsystem
+      POSTGRES_USER: pls
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in the stack environment}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pls -d ambulanzsystem"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    image: ambulanzsystem-backend:portainer
+    # Rebuild on every deploy. Otherwise "Pull and redeploy" keeps the existing image and silently
+    # runs the old code.
+    pull_policy: build
+    restart: unless-stopped
+    logging: *logging
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__Default: Host=db;Database=ambulanzsystem;Username=pls;Password=${DB_PASSWORD}
+      Jwt__Secret: ${JWT_SECRET:?set JWT_SECRET in the stack environment}
+      Bootstrap__AdminPassword: ${BOOTSTRAP_ADMIN_PASSWORD:?set BOOTSTRAP_ADMIN_PASSWORD in the stack environment}
+      PLS_ALLOWED_ORIGINS: https://${SITE_ADDRESS:?set SITE_ADDRESS in the stack environment}
+      BACKUP_EXPECTED_DEPLOYMENT_ID: ${BACKUP_EXPECTED_DEPLOYMENT_ID:?set BACKUP_EXPECTED_DEPLOYMENT_ID in the stack environment}
+      RateLimiting__LoginPermitLimit: ${LOGIN_RATE_LIMIT:-10}
+      RateLimiting__RefreshPermitLimit: ${REFRESH_RATE_LIMIT:-10}
+      Mqtt__Enabled: "false"
+    volumes:
+      - dataprotection:/home/app/.aspnet/DataProtection-Keys
+    # Deliberately no published ports: the API trusts one X-Forwarded-For hop from any source
+    # (Program.cs), so it must only be reachable through Caddy on the compose network.
+
+  caddy:
+    build:
+      context: .
+      dockerfile: caddy-proxy.Dockerfile
+    image: ambulanzsystem-caddy:portainer
+    pull_policy: build
+    restart: unless-stopped
+    logging: *logging
+    depends_on: [backend]
+    environment:
+      TRUSTED_PROXY: ${TRUSTED_PROXY:?set TRUSTED_PROXY in the stack environment}
+    # Plain HTTP on every interface of the host: firewall it to TRUSTED_PROXY (README).
+    ports:
+      - "${HTTP_PORT:-8080}:8080"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  pgdata:
+  dataprotection:
+  caddy_data:
+  caddy_config:
