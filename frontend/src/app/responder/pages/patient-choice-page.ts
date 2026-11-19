@@ -4,7 +4,7 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 
 import { apiErrorMessage, ApiClient } from '../../api/api-client';
 import { MyAccess } from '../../auth/components/my-access';
-import { QrScanner } from '../../shared/qr-scanner';
+import { normalizeScannedQrCode, QrScanner } from '../../shared/qr-scanner';
 import { ResponderStateStore } from '../services/responder-state';
 
 @Component({
@@ -74,7 +74,8 @@ export class PatientChoicePage {
     this.busy.set(true);
     this.error.set('');
     this.message.set('');
-    this.api.reassignPatientQrCode(this.patientId(), { qr_code: qrCode.trim() }).subscribe({
+    const normalized = normalizeScannedQrCode(qrCode);
+    this.api.reassignPatientQrCode(this.patientId(), { qr_code: normalized }).subscribe({
       next: (patient) => {
         this.state.setPatient(patient);
         this.busy.set(false);

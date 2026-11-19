@@ -4,7 +4,7 @@ import { Router, RouterLink } from '@angular/router';
 
 import { apiErrorMessage, ApiClient, isRetryableFailure } from '../../api/api-client';
 import { MyAccess } from '../../auth/components/my-access';
-import { QrScanner } from '../../shared/qr-scanner';
+import { normalizeScannedQrCode, QrScanner } from '../../shared/qr-scanner';
 import { OfflineQueueService } from '../../sync/offline-queue.service';
 import { SyncStatusService } from '../../sync/sync-status.service';
 import { GeolocationService } from '../services/geolocation.service';
@@ -82,8 +82,9 @@ export class PatientScanPage {
       return;
     }
 
+    const normalized = normalizeScannedQrCode(qrCode);
     this.run();
-    this.api.verifyPatientQrCode({ qr_code: qrCode.trim(), operationSceneId: scene.id }).subscribe({
+    this.api.verifyPatientQrCode({ qr_code: normalized, operationSceneId: scene.id }).subscribe({
       next: async (result) => {
         this.state.setPatient(result.patient);
         await this.captureLocation(result.patient.id);
